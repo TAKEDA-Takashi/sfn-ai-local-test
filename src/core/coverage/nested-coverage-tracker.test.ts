@@ -71,10 +71,10 @@ describe('NestedCoverageTracker', () => {
       const tracker = new NestedCoverageTracker(stateMachine)
       const coverage = tracker.getCoverage()
 
-      // Should count 1 top-level + 4 nested states = 5 total
-      expect(coverage.states.total).toBe(5)
-      // Should count 2 branches (Choice has 1 choice + 1 default)
-      expect(coverage.branches.total).toBe(2)
+      // Top level: Should count 1 state only (MapState)
+      expect(coverage.topLevel.total).toBe(1)
+      // Top level branches: 0 (no Choice states at top level)
+      expect(coverage.branches.total).toBe(0)
     })
 
     it('should track coverage of nested states', () => {
@@ -119,15 +119,14 @@ describe('NestedCoverageTracker', () => {
 
       const coverage = tracker.getCoverage()
 
-      // Total: 3 states (1 top + 2 nested)
-      expect(coverage.states.total).toBe(3)
-      // All should be covered
-      expect(coverage.states.covered).toBe(3)
-      expect(coverage.states.percentage).toBe(100)
+      // Top level: 1 state (MapState only)
+      expect(coverage.topLevel.total).toBe(1)
+      expect(coverage.topLevel.covered).toBe(1)
+      expect(coverage.topLevel.percentage).toBe(100)
 
-      // Check nested coverage report
-      expect(coverage.nestedCoverage).toBeDefined()
-      expect(coverage.nestedCoverage?.MapState).toEqual({
+      // Nested coverage for MapState
+      expect(coverage.nested).toBeDefined()
+      expect(coverage.nested.MapState).toEqual({
         total: 2,
         covered: 2,
         percentage: 100,
@@ -187,17 +186,19 @@ describe('NestedCoverageTracker', () => {
 
       const coverage = tracker.getCoverage()
 
-      // Total: 4 states (1 top + 3 nested)
-      expect(coverage.states.total).toBe(4)
-      // Covered: 3 states (MapState, Process, HandleA)
-      expect(coverage.states.covered).toBe(3)
-      // HandleB is not covered
-      expect(coverage.states.uncovered).toContain('MapState.HandleB')
+      // Top level: 1 state (MapState only)
+      expect(coverage.topLevel.total).toBe(1)
+      expect(coverage.topLevel.covered).toBe(1)
+      expect(coverage.topLevel.percentage).toBe(100)
 
-      // Branch coverage
-      expect(coverage.branches.total).toBe(2) // Choice + Default
-      expect(coverage.branches.covered).toBe(1) // Only Choice branch covered
-      expect(coverage.branches.uncovered).toContain('MapState.Process->HandleB')
+      // Nested coverage for MapState: Process + HandleA covered, HandleB not covered
+      expect(coverage.nested.MapState.total).toBe(3) // Process + HandleA + HandleB
+      expect(coverage.nested.MapState.covered).toBe(2) // Process + HandleA
+      expect(coverage.nested.MapState.uncovered).toContain('HandleB')
+
+      // Branch coverage (top level only - no Choice at top level)
+      expect(coverage.branches.total).toBe(0) // No Choice at top level
+      expect(coverage.branches.covered).toBe(0) // No branches at top level
     })
   })
 
@@ -268,11 +269,11 @@ describe('NestedCoverageTracker', () => {
       const tracker = new NestedCoverageTracker(stateMachine)
       const coverage = tracker.getCoverage()
 
-      // Total states: 3 top-level + 5 nested = 8
-      expect(coverage.states.total).toBe(8)
+      // Top level: Should count 3 states only
+      expect(coverage.topLevel.total).toBe(3)
 
-      // Total branches: 2 (ValidateResults has 1 choice + 1 default)
-      expect(coverage.branches.total).toBe(2)
+      // Total branches: 0 (ValidateResults is inside Map, not top-level)
+      expect(coverage.branches.total).toBe(0)
     })
 
     it('should track coverage with different iteration paths', () => {
@@ -331,20 +332,167 @@ describe('NestedCoverageTracker', () => {
 
       const coverage = tracker.getCoverage()
 
-      // All states should be covered
-      expect(coverage.states.covered).toBe(5) // 1 top + 4 nested
-      expect(coverage.states.percentage).toBe(100)
+      // Top level: 1 state (ProcessLargeDataset only)
+      expect(coverage.topLevel.total).toBe(1)
+      expect(coverage.topLevel.covered).toBe(1)
+      expect(coverage.topLevel.percentage).toBe(100)
 
-      // All branches should be covered
-      expect(coverage.branches.covered).toBe(2)
+      // No branches at top level (Choice is inside Map)
+      expect(coverage.branches.covered).toBe(0)
       expect(coverage.branches.percentage).toBe(100)
 
-      // Nested coverage should be complete
-      expect(coverage.nestedCoverage?.ProcessLargeDataset).toEqual({
+      // Nested coverage for ProcessLargeDataset should be complete
+      expect(coverage.nested.ProcessLargeDataset).toEqual({
         total: 4,
         covered: 4,
         percentage: 100,
         uncovered: [],
+      })
+    })
+  })
+
+  describe('Bug reproduction tests', () => {
+    it('should never exceed 100% coverage even with duplicate tracking', () => {
+      const stateMachine: StateMachine = StateFactory.createStateMachine({
+        StartAt: 'State1',
+        States: {
+          State1: {
+            Type: 'Pass',
+            Next: 'State2',
+          },
+          State2: {
+            Type: 'Pass',
+            Next: 'State3',
+          },
+          State3: {
+            Type: 'Pass',
+            End: true,
+          },
+        },
+      })
+
+      const tracker = new NestedCoverageTracker(stateMachine)
+
+      // Track the same execution multiple times (this might cause over-counting)
+      tracker.trackExecution(['State1', 'State2', 'State3'])
+      tracker.trackExecution(['State1', 'State2', 'State3'])
+      tracker.trackExecution(['State1', 'State2', 'State3'])
+      tracker.trackExecution(['State1', 'State2'])
+      tracker.trackExecution(['State1'])
+
+      const coverage = tracker.getCoverage()
+
+      // Even with multiple tracking, total should never exceed 100%
+      expect(coverage.topLevel.total).toBe(3)
+      expect(coverage.topLevel.covered).toBeLessThanOrEqual(3) // Should never exceed total
+      expect(coverage.topLevel.percentage).toBeLessThanOrEqual(100) // Should never exceed 100%
+
+      console.log('Coverage debug:', {
+        total: coverage.topLevel.total,
+        covered: coverage.topLevel.covered,
+        percentage: coverage.topLevel.percentage,
+      })
+    })
+
+    it('should reproduce 166.7% coverage bug with specific scenario', () => {
+      // Create a scenario that might cause the 166.7% bug (5/3 = 1.667)
+      const stateMachine: StateMachine = StateFactory.createStateMachine({
+        StartAt: 'State1',
+        States: {
+          State1: {
+            Type: 'Pass',
+            Next: 'State2',
+          },
+          State2: {
+            Type: 'Pass',
+            Next: 'State3',
+          },
+          State3: {
+            Type: 'Pass',
+            End: true,
+          },
+        },
+      })
+
+      const tracker = new NestedCoverageTracker(stateMachine)
+
+      // Try to simulate the conditions that might cause over-counting
+      // This could happen if states are tracked through multiple different mechanisms
+      tracker.trackExecution(['State1', 'State2', 'State3'])
+
+      // Maybe the bug happens when trackExecution is called with partial paths
+      // and then the coverage is somehow accumulated incorrectly
+      tracker.trackExecution(['State1', 'State2'])
+      tracker.trackExecution(['State2', 'State3'])
+      tracker.trackExecution(['State1'])
+      tracker.trackExecution(['State2'])
+
+      const coverage = tracker.getCoverage()
+
+      console.log('Potential bug scenario:', {
+        total: coverage.topLevel.total,
+        covered: coverage.topLevel.covered,
+        percentage: coverage.topLevel.percentage,
+        // Remove access to private property
+        // coveredStates: Array.from(tracker.coverage.coveredStates || [])
+      })
+
+      // The bug would be if covered > total
+      expect(coverage.topLevel.total).toBe(3)
+      expect(coverage.topLevel.covered).toBeLessThanOrEqual(3) // Should never exceed total
+      expect(coverage.topLevel.percentage).toBeLessThanOrEqual(100) // Should never exceed 100%
+    })
+
+    it('should handle complex Map scenario without exceeding 100%', () => {
+      const stateMachine: StateMachine = StateFactory.createStateMachine({
+        StartAt: 'StartState',
+        States: {
+          StartState: {
+            Type: 'Pass',
+            Next: 'MapState',
+          },
+          MapState: {
+            Type: 'Map',
+            ItemProcessor: {
+              StartAt: 'ProcessItem',
+              States: {
+                ProcessItem: {
+                  Type: 'Pass',
+                  End: true,
+                },
+              },
+            },
+            Next: 'EndState',
+          } as any,
+          EndState: {
+            Type: 'Pass',
+            End: true,
+          },
+        },
+      })
+
+      const tracker = new NestedCoverageTracker(stateMachine)
+
+      // Multiple overlapping executions
+      tracker.trackExecution(['StartState', 'MapState', 'EndState'])
+      tracker.trackExecution(['StartState', 'MapState'])
+      tracker.trackMapExecutions([
+        {
+          state: 'MapState',
+          iterationPaths: [['ProcessItem'], ['ProcessItem'], ['ProcessItem']],
+        },
+      ])
+
+      const coverage = tracker.getCoverage()
+
+      // Verify top-level never exceeds total
+      expect(coverage.topLevel.total).toBe(3) // StartState, MapState, EndState
+      expect(coverage.topLevel.covered).toBeLessThanOrEqual(3)
+      expect(coverage.topLevel.percentage).toBeLessThanOrEqual(100)
+
+      console.log('Map coverage debug:', {
+        topLevel: coverage.topLevel,
+        nested: coverage.nested,
       })
     })
   })

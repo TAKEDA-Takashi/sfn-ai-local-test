@@ -14,14 +14,14 @@ export class CoverageReporter {
     lines.push(chalk.bold.blue('\n📊 State Machine Coverage Report\n'))
     lines.push('═'.repeat(50))
 
-    lines.push(chalk.bold('\n📍 States Coverage:'))
-    lines.push(this.generateBar(this.coverage.states.percentage))
-    lines.push(`   Total: ${this.coverage.states.total}`)
-    lines.push(`   Covered: ${chalk.green(this.coverage.states.covered)}`)
-    lines.push(`   Percentage: ${this.formatPercentage(this.coverage.states.percentage)}`)
+    lines.push(chalk.bold('\n📍 Top-Level States Coverage:'))
+    lines.push(this.generateBar(this.coverage.topLevel.percentage))
+    lines.push(`   Total: ${this.coverage.topLevel.total}`)
+    lines.push(`   Covered: ${chalk.green(this.coverage.topLevel.covered)}`)
+    lines.push(`   Percentage: ${this.formatPercentage(this.coverage.topLevel.percentage)}`)
 
-    if (this.coverage.states.uncovered.length > 0) {
-      lines.push(chalk.yellow(`   Uncovered: ${this.coverage.states.uncovered.join(', ')}`))
+    if (this.coverage.topLevel.uncovered.length > 0) {
+      lines.push(chalk.yellow(`   Uncovered: ${this.coverage.topLevel.uncovered.join(', ')}`))
     }
 
     lines.push(chalk.bold('\n🌿 Branches Coverage:'))
@@ -39,9 +39,9 @@ export class CoverageReporter {
     lines.push(`   Unique paths: ${this.coverage.paths.unique}`)
 
     // Add nested coverage if present
-    if (this.coverage.nestedCoverage) {
+    if (this.coverage.nested) {
       lines.push(chalk.bold('\n📦 Nested States Coverage:'))
-      for (const [parentState, nested] of Object.entries(this.coverage.nestedCoverage)) {
+      for (const [parentState, nested] of Object.entries(this.coverage.nested)) {
         const nestedTyped = nested as {
           total: number
           covered: number
@@ -152,15 +152,15 @@ export class CoverageReporter {
     <div class="metric-card">
         <div class="metric-title">📍 States Coverage</div>
         <div class="progress-bar">
-            <div class="progress-fill" style="width: ${this.coverage.states.percentage}%">
-                ${this.coverage.states.percentage.toFixed(1)}%
+            <div class="progress-fill" style="width: ${this.coverage.topLevel.percentage}%">
+                ${this.coverage.topLevel.percentage.toFixed(1)}%
             </div>
         </div>
         <div class="metric-details">
-            <span>Total: ${this.coverage.states.total}</span>
-            <span>Covered: ${this.coverage.states.covered}</span>
+            <span>Total: ${this.coverage.topLevel.total}</span>
+            <span>Covered: ${this.coverage.topLevel.covered}</span>
         </div>
-        ${this.generateUncoveredHTML('States', this.coverage.states.uncovered)}
+        ${this.generateUncoveredHTML('States', this.coverage.topLevel.uncovered)}
     </div>
     
     <div class="metric-card">
@@ -190,8 +190,8 @@ export class CoverageReporter {
 
   private generateBar(percentage: number): string {
     const width = 40
-    const filled = Math.round((percentage / 100) * width)
-    const empty = width - filled
+    const filled = Math.min(width, Math.max(0, Math.round((percentage / 100) * width)))
+    const empty = Math.max(0, width - filled)
 
     const color = percentage >= 80 ? chalk.green : percentage >= 60 ? chalk.yellow : chalk.red
 

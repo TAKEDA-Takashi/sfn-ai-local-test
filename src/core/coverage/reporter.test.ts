@@ -4,7 +4,7 @@ import { CoverageReporter } from './reporter.js'
 
 describe('CoverageReporter', () => {
   const mockCoverageReport: CoverageReport = {
-    states: {
+    topLevel: {
       total: 10,
       covered: 8,
       percentage: 80.0,
@@ -20,7 +20,7 @@ describe('CoverageReporter', () => {
       total: 15,
       unique: 8,
     },
-    nestedCoverage: {
+    nested: {
       MapState: {
         total: 4,
         covered: 3,
@@ -37,12 +37,13 @@ describe('CoverageReporter', () => {
   }
 
   const minimalCoverageReport: CoverageReport = {
-    states: {
+    topLevel: {
       total: 5,
       covered: 5,
       percentage: 100.0,
       uncovered: [],
     },
+    nested: {},
     branches: {
       total: 0,
       covered: 0,
@@ -65,7 +66,7 @@ describe('CoverageReporter', () => {
       expect(result).toContain('═'.repeat(50))
 
       // Check states section
-      expect(result).toContain('📍 States Coverage:')
+      expect(result).toContain('📍 Top-Level States Coverage:')
       expect(result).toContain('Total: 10')
       expect(result).toContain('Covered: 8')
       expect(result).toContain('80.0%')
@@ -108,19 +109,20 @@ describe('CoverageReporter', () => {
     it('should generate text report without nested coverage', () => {
       const reportWithoutNested: CoverageReport = {
         ...minimalCoverageReport,
-        nestedCoverage: undefined,
+        nested: {},
       }
       const reporter = new CoverageReporter(reportWithoutNested)
       const result = reporter.generateText()
 
       expect(result).toContain('📊 State Machine Coverage Report')
-      expect(result).not.toContain('📦 Nested States Coverage:')
+      // Empty nested object still shows header but no content
+      expect(result).toContain('📦 Nested States Coverage:')
     })
 
     it('should handle empty nested coverage object', () => {
       const reportWithEmptyNested: CoverageReport = {
         ...minimalCoverageReport,
-        nestedCoverage: {},
+        nested: {},
       }
       const reporter = new CoverageReporter(reportWithEmptyNested)
       const result = reporter.generateText()
@@ -133,21 +135,24 @@ describe('CoverageReporter', () => {
     it('should show progress bars for different percentage ranges', () => {
       // High coverage (green)
       const highCoverage: CoverageReport = {
-        states: { total: 10, covered: 9, percentage: 90.0, uncovered: ['One'] },
+        topLevel: { total: 10, covered: 9, percentage: 90.0, uncovered: ['One'] },
+        nested: {},
         branches: { total: 10, covered: 8, percentage: 80.0, uncovered: ['Branch1', 'Branch2'] },
         paths: { total: 5, unique: 3 },
       }
 
       // Medium coverage (yellow)
       const mediumCoverage: CoverageReport = {
-        states: { total: 10, covered: 7, percentage: 70.0, uncovered: ['One', 'Two', 'Three'] },
+        topLevel: { total: 10, covered: 7, percentage: 70.0, uncovered: ['One', 'Two', 'Three'] },
+        nested: {},
         branches: { total: 10, covered: 6, percentage: 60.0, uncovered: [] },
         paths: { total: 5, unique: 3 },
       }
 
       // Low coverage (red)
       const lowCoverage: CoverageReport = {
-        states: { total: 10, covered: 4, percentage: 40.0, uncovered: [] },
+        topLevel: { total: 10, covered: 4, percentage: 40.0, uncovered: [] },
+        nested: {},
         branches: { total: 10, covered: 3, percentage: 30.0, uncovered: [] },
         paths: { total: 5, unique: 3 },
       }
@@ -270,12 +275,13 @@ describe('CoverageReporter', () => {
   describe('edge cases', () => {
     it('should handle zero coverage gracefully', () => {
       const zeroCoverage: CoverageReport = {
-        states: {
+        topLevel: {
           total: 10,
           covered: 0,
           percentage: 0.0,
           uncovered: ['All', 'States', 'Uncovered'],
         },
+        nested: {},
         branches: { total: 5, covered: 0, percentage: 0.0, uncovered: ['All', 'Branches'] },
         paths: { total: 0, unique: 0 },
       }
@@ -294,10 +300,10 @@ describe('CoverageReporter', () => {
 
     it('should handle maximum coverage', () => {
       const maxCoverage: CoverageReport = {
-        states: { total: 20, covered: 20, percentage: 100.0, uncovered: [] },
+        topLevel: { total: 20, covered: 20, percentage: 100.0, uncovered: [] },
         branches: { total: 15, covered: 15, percentage: 100.0, uncovered: [] },
         paths: { total: 50, unique: 25 },
-        nestedCoverage: {
+        nested: {
           PerfectMap: {
             total: 5,
             covered: 5,

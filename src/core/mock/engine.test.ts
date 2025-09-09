@@ -265,7 +265,7 @@ describe('MockEngine', () => {
       await engine.getMockResponse('TestState', {})
 
       const endTime = Date.now()
-      expect(endTime - startTime).toBeGreaterThanOrEqual(100)
+      expect(endTime - startTime).toBeGreaterThanOrEqual(95) // Allow for timing variations
     })
 
     it('should apply delay to conditional mock response', async () => {

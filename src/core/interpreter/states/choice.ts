@@ -266,7 +266,7 @@ export class ChoiceStateExecutor extends BaseStateExecutor<ChoiceState> {
         input: context.input,
         context: {
           Execution: {
-            Input: context.originalInput || context.input,
+            Input: context.Execution?.Input || context.originalInput || context.input,
             Name: context.Execution?.Name || 'test-execution',
             RoleArn: context.Execution?.RoleArn || 'arn:aws:iam::123456789012:role/test-role',
             StartTime: context.Execution?.StartTime || new Date().toISOString(),

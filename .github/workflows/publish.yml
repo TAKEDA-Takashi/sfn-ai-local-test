@@ -1,0 +1,58 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*' # v1.0.0, v2.1.0 などのタグにマッチ
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance用（オプション）
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run checks
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run test
+
+      - name: Build
+        run: npm run build
+        
+      # ビルド後にバージョンが正しく注入されているか確認
+      - name: Verify version injection
+        run: |
+          echo "Package version: $(node -p "require('./package.json').version")"
+          echo "CLI version: $(node dist/cli/index.js --version 2>/dev/null || echo 'Failed to get version')"
+          
+      # タグとpackage.jsonのバージョンが一致しているか確認
+      - name: Check version consistency
+        run: |
+          PACKAGE_VERSION="v$(node -p "require('./package.json').version")"
+          TAG_VERSION="${{ github.ref_name }}"
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Error: Tag version ($TAG_VERSION) doesn't match package.json version ($PACKAGE_VERSION)"
+            exit 1
+          fi
+          echo "Version check passed: $PACKAGE_VERSION"
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

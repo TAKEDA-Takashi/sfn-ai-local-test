@@ -1,0 +1,80 @@
+name: Release Process
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  release:
+    # PRがマージされた時のみ実行
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 全履歴を取得（タグ作成に必要）
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+      - name: Check for version bump
+        id: version
+        run: |
+          # PRのラベルからバージョンバンプの種類を判定
+          if ${{ contains(github.event.pull_request.labels.*.name, 'release:major') }}; then
+            echo "bump=major" >> $GITHUB_OUTPUT
+          elif ${{ contains(github.event.pull_request.labels.*.name, 'release:minor') }}; then
+            echo "bump=minor" >> $GITHUB_OUTPUT
+          elif ${{ contains(github.event.pull_request.labels.*.name, 'release:patch') }}; then
+            echo "bump=patch" >> $GITHUB_OUTPUT
+          else
+            echo "No release label found. Skipping release."
+            echo "bump=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump version and create tag
+        if: steps.version.outputs.bump != 'none'
+        id: bump
+        run: |
+          npm version ${{ steps.version.outputs.bump }} -m "chore: release %s [skip ci]"
+          VERSION="v$(node -p "require('./package.json').version")"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Push changes
+        if: steps.version.outputs.bump != 'none'
+        run: |
+          git push origin main
+          git push origin --tags
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.bump != 'none'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.bump.outputs.version }}
+          release_name: Release ${{ steps.bump.outputs.version }}
+          body: |
+            ## Changes in this release
+            ${{ github.event.pull_request.body }}
+            
+            ---
+            *Released by GitHub Actions*
+          draft: false
+          prerelease: false

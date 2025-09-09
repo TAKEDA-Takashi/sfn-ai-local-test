@@ -1,0 +1,10 @@
+{
+  "Type": "Pass",
+  "Comment": "Test JSONPath intrinsic functions - StringSplit",
+  "Parameters": {
+    "simpleDelim.$": "States.StringSplit('a,b,c,d', ',')",
+    "multiCharDelim.$": "States.StringSplit('hello.world+foo-bar', '.+-')",
+    "doubleCharDelim.$": "States.StringSplit('one::two::three', '::')"
+  },
+  "End": true
+}

@@ -1,0 +1,11 @@
+{
+  "Type": "Pass",
+  "Comment": "Test JSONPath intrinsic functions - JSON/String conversion",
+  "Parameters": {
+    "stringToJson.$": "States.StringToJson('{\"name\":\"John\",\"age\":30}')",
+    "jsonToString.$": "States.JsonToString(States.StringToJson('{\"active\":true,\"count\":42}'))",
+    "nestedConversion.$": "States.StringToJson('[1,2,3,4,5]')",
+    "complexObject.$": "States.StringToJson('{\"users\":[{\"id\":1},{\"id\":2}],\"active\":true}')"
+  },
+  "End": true
+}

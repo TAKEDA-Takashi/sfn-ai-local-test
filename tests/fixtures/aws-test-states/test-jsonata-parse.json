@@ -1,0 +1,14 @@
+{
+  "Type": "Pass",
+  "QueryLanguage": "JSONata",
+  "Comment": "Test JSONata functions - Parse (JSON string parsing)",
+  "Output": {
+    "simpleObject": "{% $parse('{\"name\":\"John\",\"age\":30}') %}",
+    "arrayData": "{% $parse('[1,2,3,4,5]') %}",
+    "nestedObject": "{% $parse('{\"user\":{\"id\":123,\"email\":\"test@example.com\"}}') %}",
+    "booleanAndNull": "{% $parse('{\"active\":true,\"deleted\":false,\"notes\":null}') %}",
+    "emptyObject": "{% $parse('{}') %}",
+    "emptyArray": "{% $parse('[]') %}"
+  },
+  "End": true
+}

@@ -1,0 +1,11 @@
+{
+  "Type": "Pass",
+  "Comment": "Test JSONPath intrinsic functions - MathRandom",
+  "Parameters": {
+    "random1.$": "States.MathRandom(1, 10)",
+    "random2.$": "States.MathRandom(1, 100, 42)",
+    "random3.$": "States.MathRandom(1, 100, 42)",
+    "random4.$": "States.MathRandom(1.5, 10.7)"
+  },
+  "End": true
+}

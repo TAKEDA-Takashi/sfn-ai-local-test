@@ -1,0 +1,11 @@
+{
+  "Type": "Pass",
+  "Comment": "Test JSONPath intrinsic functions - Base64 encoding/decoding",
+  "Parameters": {
+    "encoded.$": "States.Base64Encode('Hello, World!')",
+    "encodedJson.$": "States.Base64Encode(States.JsonToString(States.StringToJson('{\"key\":\"value\"}')))",
+    "decoded.$": "States.Base64Decode('SGVsbG8sIFdvcmxkIQ==')",
+    "roundTrip.$": "States.Base64Decode(States.Base64Encode('Test string 123'))"
+  },
+  "End": true
+}

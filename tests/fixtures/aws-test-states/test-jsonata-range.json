@@ -1,0 +1,13 @@
+{
+  "Type": "Pass",
+  "QueryLanguage": "JSONata",
+  "Comment": "Test JSONata functions - Range. NOTE: $range requires all 3 arguments (start, end, step). Cannot omit step parameter like $range(1,5) - will return undefined",
+  "Output": {
+    "ascending": "{% $range(1, 5, 1) %}",
+    "withStep": "{% $range(0, 10, 2) %}",
+    "descending": "{% $range(10, 1, -2) %}",
+    "single": "{% $range(5, 5, 1) %}",
+    "negative": "{% $range(-5, 5, 2) %}"
+  },
+  "End": true
+}

@@ -1,0 +1,9 @@
+{
+  "Type": "Pass",
+  "Comment": "Test JSONPath intrinsic functions - ArrayContains",
+  "Parameters": {
+    "primitiveArray.$": "States.ArrayContains(States.Array(1, 2, 3, 4, 5), 3)",
+    "notFound.$": "States.ArrayContains(States.Array('apple', 'banana', 'cherry'), 'grape')"
+  },
+  "End": true
+}

@@ -1,0 +1,10 @@
+{
+  "Type": "Pass",
+  "Comment": "Test JSONPath intrinsic functions - UUID generation",
+  "Parameters": {
+    "uuid1.$": "States.UUID()",
+    "uuid2.$": "States.UUID()",
+    "uuid3.$": "States.UUID()"
+  },
+  "End": true
+}

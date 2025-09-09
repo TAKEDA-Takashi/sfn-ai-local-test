@@ -1,0 +1,12 @@
+{
+  "Type": "Pass",
+  "QueryLanguage": "JSONata",
+  "Comment": "Test JSONata functions - Partition",
+  "Output": {
+    "evenPartition": "{% $partition([1,2,3,4,5,6,7], 2) %}",
+    "oddPartition": "{% $partition([1,2,3,4,5,6,7], 3) %}",
+    "smallerArray": "{% $partition([1,2,3,4,5], 2) %}",
+    "singleElement": "{% $partition([1,2,3,4,5], 5) %}"
+  },
+  "End": true
+}

@@ -1,0 +1,7 @@
+{
+  "Type": "Pass",
+  "QueryLanguage": "JSONata",
+  "Comment": "Test JSONata functions - UUID",
+  "Output": "{% $uuid() %}",
+  "End": true
+}

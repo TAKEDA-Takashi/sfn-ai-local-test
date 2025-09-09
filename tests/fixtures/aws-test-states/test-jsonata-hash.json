@@ -1,0 +1,7 @@
+{
+  "Type": "Pass",
+  "QueryLanguage": "JSONata",
+  "Comment": "Test JSONata functions - Hash",
+  "Output": "{% $hash('test string', 'SHA-256') %}",
+  "End": true
+}

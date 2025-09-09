@@ -1,0 +1,13 @@
+{
+  "Type": "Pass",
+  "Comment": "Test JSONPath intrinsic functions - Format and MathAdd",
+  "Parameters": {
+    "format1.$": "States.Format('Hello, {}!', 'World')",
+    "format2.$": "States.Format('{} + {} = {}', 2, 3, 5)",
+    "formatMultiple.$": "States.Format('Name: {}, Age: {}, Active: {}', 'John', 30, true)",
+    "mathAdd.$": "States.MathAdd(10, 15)",
+    "mathAddNegative.$": "States.MathAdd(-5, 3)",
+    "mathAddDecimal.$": "States.MathAdd(3.14, 2.86)"
+  },
+  "End": true
+}

@@ -1,0 +1,9 @@
+{
+  "Type": "Pass",
+  "Comment": "Test JSONPath intrinsic functions - JsonMerge",
+  "Parameters": {
+    "simpleObjects.$": "States.JsonMerge(States.StringToJson('{\"a\": 1, \"b\": 2}'), States.StringToJson('{\"b\": 3, \"c\": 4}'), false)",
+    "nestedObjects.$": "States.JsonMerge(States.StringToJson('{\"nested\": {\"a\": 1}}'), States.StringToJson('{\"nested\": {\"b\": 2}, \"top\": 3}'), false)"
+  },
+  "End": true
+}

@@ -1,0 +1,13 @@
+{
+  "Type": "Pass",
+  "Comment": "Test JSONPath intrinsic functions - Array operations",
+  "Parameters": {
+    "array.$": "States.Array(1, 'two', true, null, 5)",
+    "arrayPartition.$": "States.ArrayPartition(States.Array(1, 2, 3, 4, 5, 6, 7), 3)",
+    "arrayRange.$": "States.ArrayRange(1, 10, 2)",
+    "arrayGetItem.$": "States.ArrayGetItem(States.Array('a', 'b', 'c', 'd'), 2)",
+    "arrayLength.$": "States.ArrayLength(States.Array(1, 2, 3, 4, 5))",
+    "arrayUnique.$": "States.ArrayUnique(States.Array(1, 2, 2, 3, 3, 3, 4))"
+  },
+  "End": true
+}

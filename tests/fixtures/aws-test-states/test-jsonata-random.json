@@ -1,0 +1,7 @@
+{
+  "Type": "Pass",
+  "QueryLanguage": "JSONata",
+  "Comment": "Test JSONata functions - Random",
+  "Output": "{% $random(42) %}",
+  "End": true
+}

@@ -1,0 +1,65 @@
+{
+  "name": "sfn-test",
+  "version": "0.1.0",
+  "description": "AI-powered local testing tool for AWS Step Functions",
+  "keywords": [
+    "aws",
+    "step-functions",
+    "testing",
+    "cli",
+    "ai",
+    "claude"
+  ],
+  "author": "TAKEDA-Takashi",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "sfn-test": "./bin/sfn-test"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "dev": "tsup --watch",
+    "prebuild": "node scripts/embed-types.js",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:test-states": "./tests/run-aws-test-states.sh",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "prepublishOnly": "npm run check && npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.61.0",
+    "@types/uuid": "^10.0.0",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.0",
+    "dotenv": "^17.2.2",
+    "inquirer": "^12.9.4",
+    "js-yaml": "^4.1.0",
+    "jsonata": "^2.1.0",
+    "jsonpath-plus": "^10.2.0",
+    "ora": "^8.1.1",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.3",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.3.1",
+    "@vitest/coverage-v8": "^3.2.4",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

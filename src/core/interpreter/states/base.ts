@@ -1,0 +1,204 @@
+import type {
+  ExecutionContext,
+  JsonObject,
+  JsonValue,
+  State,
+  StateMachine,
+} from '../../../types/asl'
+
+import type { MockEngine } from '../../mock/engine'
+import { JSONataStrategy } from '../strategies/jsonata-strategy'
+import { JSONPathStrategy } from '../strategies/jsonpath-strategy'
+
+export interface StateExecutionResult {
+  output: JsonValue
+  executionPath: string[]
+  stateExecutions?: Array<{
+    statePath: string[]
+    state: string
+    parentState?: string
+    iterationIndex?: number
+    input: JsonValue
+    output: JsonValue
+    variablesBefore?: JsonObject
+    variablesAfter?: JsonObject
+    isParallelSummary?: boolean
+  }>
+  mapExecutions?: JsonObject[]
+  parallelExecutions?: JsonObject[]
+  variables?: JsonObject
+  success: boolean
+  nextState?: string
+  error?: string
+}
+
+/**
+ * ステートエグゼキュータの基底クラス
+ * Strategy PatternでJSONPath/JSONata処理を分離し、Template Methodで統一フローを提供
+ */
+export abstract class BaseStateExecutor<TState extends State = State> {
+  protected readonly state: TState
+  protected readonly mockEngine?: MockEngine
+  protected readonly stateMachine?: StateMachine
+  protected strategy: JSONPathStrategy | JSONataStrategy
+
+  constructor(state: TState, mockEngine?: MockEngine, stateMachine?: StateMachine) {
+    this.state = state
+    this.mockEngine = mockEngine
+    this.stateMachine = stateMachine
+    this.strategy = state.isJSONataState() ? new JSONataStrategy() : new JSONPathStrategy()
+  }
+
+  /**
+   * ステートの実行 (Template Method)
+   * 統一されたフロー: 前処理 → ステート処理 → 後処理
+   */
+  async execute(context: ExecutionContext): Promise<StateExecutionResult> {
+    let preprocessedInput: JsonValue = context.input
+    try {
+      // 1. 前処理: Strategyによる入力変換
+      preprocessedInput = await this.strategy.preprocess(context.input, this.state, context)
+
+      // 2. ステート固有処理: サブクラスで実装
+      const result = await this.executeState(preprocessedInput, context)
+
+      // 3. 後処理: Strategyによる出力変換
+      const postprocessedOutput = await this.strategy.postprocess(
+        result,
+        context.input,
+        this.state,
+        context,
+      )
+
+      // 4. 次の状態決定
+      const nextState = this.determineNextState()
+
+      return {
+        output: postprocessedOutput,
+        nextState,
+        executionPath: [],
+        success: true,
+        variables: context.variables,
+      }
+    } catch (error) {
+      return this.handleError(error, context, preprocessedInput)
+    }
+  }
+
+  /**
+   * ステート固有の処理（サブクラスで実装）
+   */
+  protected abstract executeState(input: JsonValue, context: ExecutionContext): Promise<JsonValue>
+
+  /**
+   * 次の状態を決定
+   */
+  protected determineNextState(): string | undefined {
+    return this.state.Next
+  }
+
+  /**
+   * エラーハンドリング
+   */
+  protected handleError(
+    error: unknown,
+    context: ExecutionContext,
+    preprocessedInput?: JsonValue,
+  ): StateExecutionResult {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
+    // 設定エラーやChoice評価エラーは再投げ
+    if (
+      error instanceof Error &&
+      (errorMessage.includes('does not support Arguments field') ||
+        errorMessage.includes('Variable field is not supported in JSONata mode') ||
+        errorMessage.includes('No matching choice found and no default specified') ||
+        errorMessage.includes('Invalid path') ||
+        errorMessage.includes("The choice state's condition path references an invalid value"))
+    ) {
+      throw error
+    }
+
+    // ProcessingError は Catch ルールがない場合のみ再投げ
+    if (
+      error instanceof Error &&
+      errorMessage.includes('ProcessingError: State failed') &&
+      !('Catch' in this.state && this.state.Catch)
+    ) {
+      throw error
+    }
+
+    // Catch ルールの処理
+    if ('Catch' in this.state && this.state.Catch) {
+      const matchedCatch = this.findMatchingCatch(error)
+      if (matchedCatch) {
+        let errorOutput = context.input
+
+        // ResultPathがある場合はエラー情報を適用
+        if ('ResultPath' in matchedCatch && matchedCatch.ResultPath) {
+          const errorInfo = {
+            Error:
+              error instanceof Error
+                ? (error as Error & { type?: string }).type || error.name
+                : 'Error',
+            Cause: error instanceof Error ? error.message : String(error),
+          }
+          // ResultPath処理
+          if (matchedCatch.ResultPath === '$') {
+            errorOutput = errorInfo
+          } else {
+            // 簡易的なResultPath処理（$.path形式）
+            const resultPath = matchedCatch.ResultPath as string
+            const path = resultPath.replace('$.', '')
+            errorOutput = {
+              ...(context.input as JsonObject),
+              [path]: errorInfo,
+            } as JsonValue
+          }
+        }
+
+        return {
+          output: errorOutput,
+          nextState: matchedCatch.Next as string,
+          executionPath: [],
+          success: false,
+          error: errorMessage,
+          variables: context.variables,
+        }
+      }
+    }
+
+    return {
+      output: preprocessedInput !== undefined ? preprocessedInput : context.input,
+      executionPath: [],
+      success: false,
+      error: errorMessage,
+    }
+  }
+
+  /**
+   * マッチするCatchルールを検索
+   */
+  protected findMatchingCatch(error: unknown): { Next?: string; ErrorEquals: string[] } | null {
+    if (!('Catch' in this.state && this.state.Catch)) {
+      return null
+    }
+
+    // エラータイプの特定: MockEngineが設定した error.type を優先、なければ error.name を使用
+    let errorType = 'Error'
+    if (error instanceof Error) {
+      errorType = (error as Error & { type?: string }).type || error.name
+    }
+
+    for (const catchRule of this.state.Catch) {
+      if (
+        catchRule.ErrorEquals.includes(errorType) ||
+        catchRule.ErrorEquals.includes('States.ALL')
+      ) {
+        return catchRule
+      }
+    }
+
+    return null
+  }
+}

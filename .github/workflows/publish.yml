@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*' # v1.0.0, v2.1.0 などのタグにマッチ
+  workflow_dispatch: # 手動実行を可能にする
 
 jobs:
   publish:
@@ -43,6 +44,7 @@ jobs:
           
       # タグとpackage.jsonのバージョンが一致しているか確認
       - name: Check version consistency
+        if: github.event_name == 'push'
         run: |
           PACKAGE_VERSION="v$(node -p "require('./package.json').version")"
           TAG_VERSION="${{ github.ref_name }}"
@@ -51,6 +53,13 @@ jobs:
             exit 1
           fi
           echo "Version check passed: $PACKAGE_VERSION"
+      
+      # 手動実行時のバージョン確認
+      - name: Display version (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          PACKAGE_VERSION="v$(node -p "require('./package.json').version")"
+          echo "Publishing version: $PACKAGE_VERSION"
 
       - name: Publish to npm
         run: npm publish --access public

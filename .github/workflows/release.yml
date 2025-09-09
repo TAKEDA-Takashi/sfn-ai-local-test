@@ -1,5 +1,12 @@
 name: Release Process
 
+# このワークフローは、mainブランチへのPRがマージされた時に実行されます
+# release:major, release:minor, release:patch のラベルに基づいて
+# 自動的にバージョンを更新し、タグを作成してGitHubリリースを作成します
+# 
+# 重要: タグプッシュで "Publish to npm" ワークフローをトリガーするために
+# RELEASE_PAT (Personal Access Token) をSecretに設定する必要があります
+
 on:
   pull_request:
     types: [closed]
@@ -20,7 +27,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # 全履歴を取得（タグ作成に必要）
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Personal Access Tokenを使用（他のワークフローをトリガーするため）
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

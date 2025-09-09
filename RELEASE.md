@@ -60,6 +60,13 @@ git push origin main --tags
    - Type: Automation（推奨）
    - GitHubリポジトリのSettings → Secrets → Actions → New repository secret
 
+2. **RELEASE_PAT**（自動化に必要）
+   - GitHub Personal Access Tokenを生成
+   - https://github.com/settings/tokens/new
+   - 必要なスコープ: `repo`, `workflow`
+   - GitHubリポジトリのSettings → Secrets → Actions → New repository secret
+   - **重要**: このトークンにより、Release ProcessワークフローがタグをプッシュしたときにPublish to npmワークフローが自動的にトリガーされます
+
 ### 必要なGitHubラベル
 
 以下のラベルをリポジトリに作成：

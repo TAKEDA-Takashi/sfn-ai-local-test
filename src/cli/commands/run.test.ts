@@ -2,6 +2,7 @@ import * as fs from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectConfig } from '../../config/loader'
 import { loadProjectConfig } from '../../config/loader'
+import { DEFAULT_CONFIG_FILE } from '../../constants/defaults'
 import { CoverageStorageManager } from '../../core/coverage/storage'
 import { StateMachineExecutor } from '../../core/interpreter/executor'
 import { MockEngine } from '../../core/mock/engine'
@@ -50,11 +51,10 @@ describe('runCommand', () => {
           saveExecution: vi.fn(),
           loadExecutions: vi.fn().mockReturnValue([]),
           getCoverage: vi.fn().mockReturnValue({
-            states: { total: 1, covered: 1, percentage: 100 },
-            branches: { total: 0, covered: 0, percentage: 0 },
-            uncoveredStates: [],
-            uncoveredBranches: [],
-            executionPaths: [],
+            topLevel: { total: 1, covered: 1, percentage: 100, uncovered: [] },
+            nested: {},
+            branches: { total: 0, covered: 0, percentage: 0, uncovered: [] },
+            paths: { total: 0, unique: 0 },
           }),
         }) as any,
     )
@@ -168,7 +168,10 @@ describe('runCommand', () => {
       expect(exitCode).toBe(0)
 
       expect(TestSuiteRunner).toHaveBeenCalledWith('./test-suite.yaml')
-      expect(mockRunner.runSuite).toHaveBeenCalledWith(false)
+      expect(mockRunner.runSuite).toHaveBeenCalledWith(false, {
+        verbose: undefined,
+        quiet: undefined,
+      })
       expect(exitSpy).toHaveBeenCalledWith(0)
 
       exitSpy.mockRestore()
@@ -251,6 +254,7 @@ describe('runCommand', () => {
       const { loadProjectConfig, findStateMachine, loadStateMachineDefinition } = await import(
         '../../config/loader'
       )
+      const { TestSuiteRunner } = await import('../../core/test/suite-runner')
 
       vi.mocked(loadProjectConfig).mockReturnValue({
         version: '1.0',
@@ -267,17 +271,58 @@ describe('runCommand', () => {
         States: { Start: { Type: 'Pass', End: true } },
       })
 
-      vi.mocked(fs.existsSync).mockReturnValue(true)
+      // Mock the existence of test suite file
+      vi.mocked(fs.existsSync).mockImplementation((path) => {
+        const pathStr = path.toString()
+        if (pathStr === DEFAULT_CONFIG_FILE) return true
+        if (pathStr.includes('test-sm.test.yaml')) return true
+        return false
+      })
 
-      const mockExecutorResult = { output: {}, executionPath: ['Start'], success: true }
-      const mockExecute = vi.fn().mockResolvedValue(mockExecutorResult)
-      vi.mocked(StateMachineExecutor).mockImplementation(() => ({ execute: mockExecute }) as any)
-      vi.mocked(MockEngine).mockImplementation(() => ({}) as any)
+      // Mock reading the test suite file
+      vi.mocked(fs.readFileSync).mockImplementation((path) => {
+        if (path.toString().includes('test-sm.test.yaml')) {
+          return `
+version: '1.0'
+stateMachine: test-sm
+testCases:
+  - name: Test case
+    input: {}
+    expected:
+      output: {}
+`
+        }
+        return '{}'
+      })
 
-      await runCommand({ name: 'test-sm', input: '{}' })
+      const mockRunner = {
+        runSuite: vi.fn().mockResolvedValue({
+          suiteName: 'test-sm',
+          totalTests: 1,
+          passedTests: 1,
+          failedTests: 0,
+          skippedTests: 0,
+          duration: 100,
+          results: [],
+          summary: {
+            successRate: 100.0,
+            averageDuration: 100.0,
+            slowestTest: { name: 'Test case', duration: 100 },
+          },
+        }),
+      }
+      vi.mocked(TestSuiteRunner).mockImplementation(() => mockRunner as any)
+
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit called')
+      }) as any)
+
+      await expect(runCommand({ name: 'test-sm' })).rejects.toThrow('process.exit called')
 
       expect(findStateMachine).toHaveBeenCalledWith(expect.anything(), 'test-sm')
-      expect(mockExecute).toHaveBeenCalled()
+      expect(TestSuiteRunner).toHaveBeenCalledWith('sfn-test/test-suites/test-sm.test.yaml')
+      expect(mockRunner.runSuite).toHaveBeenCalled()
+      expect(exitSpy).toHaveBeenCalledWith(0)
     })
 
     it('should handle CDK option', async () => {
@@ -515,7 +560,7 @@ describe('runCommand', () => {
           slowestTest: null,
         },
         coverage: {
-          states: { total: 10, covered: 8, percentage: 80, uncovered: [] },
+          topLevel: { total: 10, covered: 8, percentage: 80, uncovered: [] },
           branches: { total: 5, covered: 4, percentage: 80, uncovered: [] },
           paths: { total: 0, unique: 0 },
         },
@@ -542,7 +587,10 @@ describe('runCommand', () => {
 
       await expect(runCommand({ cov: true })).rejects.toThrow('process.exit called')
 
-      expect(mockRunner.runSuite).toHaveBeenCalledWith(true)
+      expect(mockRunner.runSuite).toHaveBeenCalledWith(true, {
+        verbose: undefined,
+        quiet: undefined,
+      })
       expect(mockReporter.generateText).toHaveBeenCalled()
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Coverage Report'))
       expect(exitSpy).toHaveBeenCalledWith(0)
@@ -740,6 +788,11 @@ describe('runCommand', () => {
     it('should handle state machine not found in config', async () => {
       const { loadProjectConfig, findStateMachine } = await import('../../config/loader')
 
+      // Mock config file exists
+      vi.mocked(fs.existsSync).mockImplementation((path) => {
+        return path.toString() === DEFAULT_CONFIG_FILE
+      })
+
       vi.mocked(loadProjectConfig).mockReturnValue({
         version: '1.0',
         stateMachines: [],
@@ -747,49 +800,18 @@ describe('runCommand', () => {
 
       vi.mocked(findStateMachine).mockReturnValue(null)
 
-      const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((code: number) => {
-        throw new Error(`process.exit called with code ${code}`)
-      }) as any)
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
       await expect(runCommand({ name: 'non-existent', input: '{}' })).rejects.toThrow(
-        'process.exit called with code 1',
+        "State machine 'non-existent' not found in configuration",
       )
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: expect.stringContaining("State machine 'non-existent' not found"),
-        }),
-      )
-      expect(processExitSpy).toHaveBeenCalledWith(1)
-
-      processExitSpy.mockRestore()
-      consoleErrorSpy.mockRestore()
     })
 
     it('should handle missing configuration file', async () => {
-      const { loadProjectConfig } = await import('../../config/loader')
-
-      vi.mocked(loadProjectConfig).mockReturnValue(null)
-
-      const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
-        throw new Error('process.exit called')
-      })
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      // Mock config file does not exist
+      vi.mocked(fs.existsSync).mockImplementation(() => false)
 
       await expect(runCommand({ name: 'test-sm', input: '{}' })).rejects.toThrow(
-        'process.exit called',
+        'Configuration file not found: ./sfn-test.config.yaml',
       )
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: expect.stringContaining('No configuration file found'),
-        }),
-      )
-      expect(processExitSpy).toHaveBeenCalledWith(1)
-
-      processExitSpy.mockRestore()
-      consoleErrorSpy.mockRestore()
     })
 
     it('should handle execution failure', async () => {
@@ -1357,7 +1379,7 @@ describe('runCommand', () => {
       )
 
       const mockCoverage = {
-        states: { total: 1, covered: 1, percentage: 100 },
+        topLevel: { total: 1, covered: 1, percentage: 100 },
         branches: { total: 0, covered: 0, percentage: 0 },
         uncoveredStates: [],
         uncoveredBranches: [],
@@ -1607,7 +1629,7 @@ describe('runCommand', () => {
           slowestTest: null,
         },
         coverage: {
-          states: { total: 10, covered: 8, percentage: 80, uncovered: [] },
+          topLevel: { total: 10, covered: 8, percentage: 80, uncovered: [] },
           branches: { total: 5, covered: 4, percentage: 80, uncovered: [] },
           paths: { total: 0, unique: 0 },
         },
@@ -1681,11 +1703,23 @@ describe('runCommand', () => {
         results: [],
         summary: { successRate: 100, averageDuration: 100, slowestTest: null },
         coverage: {
-          stateCoverage: 100,
-          branchCoverage: 100,
-          uncoveredStates: [],
-          uncoveredBranches: [],
-          executionPaths: [],
+          topLevel: {
+            total: 3,
+            covered: 3,
+            percentage: 100,
+            uncovered: [],
+          },
+          nested: {},
+          branches: {
+            total: 2,
+            covered: 2,
+            percentage: 100,
+            uncovered: [],
+          },
+          paths: {
+            total: 1,
+            unique: 1,
+          },
         },
       }
 
@@ -1746,11 +1780,23 @@ describe('runCommand', () => {
         results: [],
         summary: { successRate: 100, averageDuration: 100, slowestTest: null },
         coverage: {
-          stateCoverage: 100,
-          branchCoverage: 100,
-          uncoveredStates: [],
-          uncoveredBranches: [],
-          executionPaths: [],
+          topLevel: {
+            total: 3,
+            covered: 3,
+            percentage: 100,
+            uncovered: [],
+          },
+          nested: {},
+          branches: {
+            total: 2,
+            covered: 2,
+            percentage: 100,
+            uncovered: [],
+          },
+          paths: {
+            total: 1,
+            unique: 1,
+          },
         },
       }
 
@@ -1810,12 +1856,13 @@ describe('runCommand', () => {
       } as any)
 
       const coverage1 = {
-        states: {
+        topLevel: {
           total: 10,
           covered: 8,
           percentage: 80,
           uncovered: ['State1', 'State2'],
         },
+        nested: {},
         branches: {
           total: 10,
           covered: 7,
@@ -1830,12 +1877,13 @@ describe('runCommand', () => {
       }
 
       const coverage2 = {
-        states: {
+        topLevel: {
           total: 10,
           covered: 9,
           percentage: 90,
           uncovered: ['State2'],
         },
+        nested: {},
         branches: {
           total: 10,
           covered: 8,

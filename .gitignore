@@ -1,0 +1,88 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+.next/
+out/
+# Auto-generated files
+# src/ai/agents/embedded-types.ts # コミット対象とするためコメントアウト
+
+# Testing
+/coverage/
+*.lcov
+.nyc_output
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Package manager
+.npm
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+tmp/
+temp/
+
+# Project specific
+sfn-test.mock.yaml
+sfn-test.config.yaml
+.sfn-coverage
+.sfn-test/
+# *.asl.json  # Commented out - example ASL files should be in repository
+cdk.out/
+.cdk.staging/
+cdk.context.json
+
+# Exclude ASL files in root, but include examples
+/*.asl.json
+
+# Test artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+results.json
+results.xml
+
+.claude/*.local.*

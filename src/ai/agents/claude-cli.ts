@@ -3,8 +3,12 @@ import { unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative } from 'node:path'
 import { promisify } from 'node:util'
+import { loadProjectConfig } from '../../config/loader'
 import { DEFAULT_AI_TIMEOUT_MS } from '../../constants/defaults'
 import type { StateMachine } from '../../types/asl'
+import { GenerationRetryManager } from '../generation/generation-retry-manager'
+import { PromptBuilder } from '../generation/prompt-builder'
+import { StateMachineValidator } from '../validation/state-machine-validator'
 
 const execAsync = promisify(exec)
 
@@ -18,11 +22,6 @@ export async function generateMockWithClaudeCLI(
   _aslFilePath?: string, // Prefixed with _ to indicate intentionally unused
   maxAttempts: number = 2, // Default to 2 attempts for better accuracy
 ): Promise<string> {
-  // Import builders dynamically to avoid circular dependencies
-  const { PromptBuilder } = await import('../generation/prompt-builder')
-  const { StateMachineValidator } = await import('../validation/state-machine-validator')
-  const { GenerationRetryManager } = await import('../generation/generation-retry-manager')
-
   // If maxAttempts is 1, use the original logic
   if (maxAttempts === 1) {
     const promptBuilder = new PromptBuilder()
@@ -110,15 +109,10 @@ export async function generateTestWithClaudeCLI(
   mockPath?: string,
   aslPath?: string,
   outputPath?: string,
-  verbose = false,
 ): Promise<string> {
-  // Import builders dynamically to avoid circular dependencies
-  const { PromptBuilder } = await import('../generation/prompt-builder')
-  const { StateMachineValidator } = await import('../validation/state-machine-validator')
-
   console.log('🚀 Using prompt builder for test generation')
   const promptBuilder = new PromptBuilder()
-  const prompt = promptBuilder.buildTestPrompt(stateMachine, mockContent, verbose)
+  const prompt = promptBuilder.buildTestPrompt(stateMachine, mockContent)
 
   // Logging moved to runClaudeCLI to avoid duplication
 
@@ -133,7 +127,7 @@ export async function generateTestWithClaudeCLI(
   }
 
   const fixed = validator.autoFix(result, 'test', stateMachine)
-  const corrected = await correctFilePaths(fixed, aslPath, mockPath, outputPath)
+  const corrected = correctFilePaths(fixed, aslPath, mockPath, outputPath)
   return corrected
 }
 
@@ -141,12 +135,12 @@ export async function generateTestWithClaudeCLI(
  * テスト生成結果のファイルパスを修正
  * Exported for testing purposes
  */
-export async function correctFilePaths(
+export function correctFilePaths(
   content: string,
   aslPath?: string,
   mockPath?: string,
   outputPath?: string, // Now used for relative path calculations
-): Promise<string> {
+): string {
   let corrected = content
 
   // Update YAML field with the given value
@@ -195,7 +189,7 @@ export async function correctFilePaths(
     const nameWithoutExt = aslFilename.replace(/\.(asl\.)?json$/, '')
 
     // Try to detect if this is a name-based setup vs path-based
-    if (await hasNameBasedConfig(nameWithoutExt)) {
+    if (hasNameBasedConfig(nameWithoutExt)) {
       corrected = updateYamlField(corrected, 'stateMachine', nameWithoutExt)
     } else {
       const relativePath = outputPath
@@ -209,7 +203,7 @@ export async function correctFilePaths(
     const mockFilename = mockPath.split('/').pop() || mockPath
     const nameWithoutExt = mockFilename.replace(/\.mock\.yaml$/, '')
 
-    if (await hasNameBasedConfig(nameWithoutExt)) {
+    if (hasNameBasedConfig(nameWithoutExt)) {
       corrected = updateYamlField(corrected, 'baseMock', nameWithoutExt)
     } else {
       const relativePath = outputPath
@@ -347,9 +341,8 @@ export async function isClaudeCLIAvailable(): Promise<boolean> {
  * 設定ファイルが名前ベースの設定を使用しているかチェック
  * Exported for testing purposes
  */
-export async function hasNameBasedConfig(stateMachineName: string): Promise<boolean> {
+export function hasNameBasedConfig(stateMachineName: string): boolean {
   try {
-    const { loadProjectConfig } = await import('../../config/loader')
     const config = loadProjectConfig(undefined, false) // Don't require config file to exist
 
     if (!config?.stateMachines) return false

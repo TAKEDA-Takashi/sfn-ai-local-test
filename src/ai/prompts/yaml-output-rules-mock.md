@@ -17,7 +17,6 @@ mocks:                           # ⚠️ REQUIRED: Array of mock definitions
 Optional fields:
 - `name`: Mock configuration name
 - `description`: Description
-- `config.outputMatching`: Defaults to "partial" if not specified
 
 ## MOCK TYPES
 
@@ -82,7 +81,6 @@ Optional fields:
 3. **MUST NOT have 'stateMachine:'** field - that's for test files
 4. State names MUST match exactly with the ASL definition
 5. Lambda tasks MUST use Payload wrapper in responses
-6. Use 'outputMatching: "partial"' in config section
 
 ## FORBIDDEN IN MOCK FILES
 

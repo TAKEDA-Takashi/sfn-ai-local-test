@@ -24,8 +24,6 @@ version: "1.0"
 ✅ CORRECT OUTPUT EXAMPLE:
 ```
 version: "1.0"
-config:
-  outputMatching: "partial"
 mocks:
   - state: "StateName"
     type: "fixed"
@@ -39,9 +37,9 @@ I'll create a mock configuration for your state machine.
 
 ```yaml
 version: "1.0"
-config:
-  outputMatching: "partial"
-...
+mocks:
+  - state: "StateName"
+    ...
 ```
 
 This mock provides comprehensive coverage...
@@ -93,8 +91,6 @@ testCases:
 ### MANDATORY STRUCTURE
 ```yaml
 version: "1.0"
-config:
-  outputMatching: "partial"  # ALWAYS partial
 mocks:
   - state: "ExactStateName"  # Must match ASL state name
     type: "fixed|conditional|stateful|error"

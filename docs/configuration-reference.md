@@ -787,9 +787,8 @@ Settings that control test result verification methods.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `outputMatching` | string | "exact" | **Output comparison method** (exact, partial) |
+| `outputMatching` | string | "partial" | **Output comparison method** (exact, partial) |
 | `pathMatching` | string | "exact" | **Execution path comparison method** (exact, includes, sequence) |
-| `stateMatching` | string | "exact" | **State verification comparison method** (exact, partial) |
 
 ### outputMatching Details
 

@@ -17,11 +17,19 @@ interface CoverageData {
 }
 
 export interface CoverageReport {
-  states: {
+  topLevel: {
     total: number
     covered: number
     percentage: number
     uncovered: string[]
+  }
+  nested: {
+    [parentState: string]: {
+      total: number
+      covered: number
+      percentage: number
+      uncovered: string[]
+    }
   }
   branches: {
     total: number
@@ -32,14 +40,6 @@ export interface CoverageReport {
   paths: {
     total: number
     unique: number
-  }
-  nestedCoverage?: {
-    [parentState: string]: {
-      total: number
-      covered: number
-      percentage: number
-      uncovered: string[]
-    }
   }
 }
 
@@ -70,7 +70,7 @@ export class NestedCoverageTracker {
   }
 
   /**
-   * Count all states including those nested in Map/Parallel states
+   * Count only top-level states (hierarchical approach)
    */
   private countAllStates(): { totalStates: number; totalBranches: number } {
     let totalStates = 0
@@ -78,61 +78,62 @@ export class NestedCoverageTracker {
 
     const states = this.stateMachine.States || { SingleState: this.stateMachine }
 
-    const countStatesRecursively = (stateMap: Record<string, State>, _parentPath = ''): void => {
-      for (const [stateName, stateData] of Object.entries(stateMap)) {
-        totalStates++
-        // const fullPath = parentPath ? `${parentPath}.${stateName}` : stateName
+    // Count only top-level states
+    for (const [stateName, stateData] of Object.entries(states)) {
+      totalStates++
+      const state = stateData as State
 
-        const state = stateData as State
+      // Count branches for Choice states
+      if (state.isChoice()) {
+        totalBranches += (state.Choices?.length || 0) + (state.Default ? 1 : 0)
+      }
 
-        // Count branches for Choice states
-        if (state.isChoice()) {
-          totalBranches += (state.Choices?.length || 0) + (state.Default ? 1 : 0)
-        }
-
-        // Handle Map states with ItemProcessor or Iterator
-        if (state.isMap()) {
-          const processor = state.ItemProcessor
-          if (processor?.States) {
+      // Handle Map states with ItemProcessor or Iterator
+      if (state.isMap()) {
+        const processor = state.ItemProcessor
+        if (processor?.States) {
+          // Store nested state machine for later tracking
+          this.nestedStateMachines.set(stateName, processor as StateMachine)
+          // Initialize nested coverage tracking
+          this.coverage.nestedStates.set(stateName, new Set())
+        } else if ('Iterator' in state && state.Iterator) {
+          const iterator = (state as MapState & { Iterator?: StateMachine }).Iterator
+          if (iterator?.States) {
             // Store nested state machine for later tracking
-            this.nestedStateMachines.set(stateName, processor as StateMachine)
+            this.nestedStateMachines.set(stateName, iterator)
             // Initialize nested coverage tracking
             this.coverage.nestedStates.set(stateName, new Set())
-            // Count nested states
-            countStatesRecursively(processor.States as Record<string, State>, stateName)
-          } else if ('Iterator' in state && state.Iterator) {
-            const iterator = (state as MapState & { Iterator?: StateMachine }).Iterator
-            if (iterator?.States) {
-              // Store nested state machine for later tracking
-              this.nestedStateMachines.set(stateName, iterator)
-              // Initialize nested coverage tracking
-              this.coverage.nestedStates.set(stateName, new Set())
-              // Count nested states
-              countStatesRecursively(iterator.States as Record<string, State>, stateName)
-            }
           }
         }
+      }
 
-        // Handle Parallel states with branches
-        if (state.isParallel()) {
-          if (state.Branches) {
-            for (let i = 0; i < state.Branches.length; i++) {
-              const branch = state.Branches[i]
-              if (branch?.States) {
-                // Store nested state machine
-                const branchName = `${stateName}[${i}]`
-                this.nestedStateMachines.set(branchName, branch)
-                this.coverage.nestedStates.set(branchName, new Set())
-                // Count nested states
-                countStatesRecursively(branch.States as Record<string, State>, branchName)
-              }
+      // Handle DistributedMap states
+      if (state.isDistributedMap()) {
+        const processor = state.ItemProcessor
+        if (processor?.States) {
+          this.nestedStateMachines.set(stateName, processor as StateMachine)
+          this.coverage.nestedStates.set(stateName, new Set())
+        }
+      }
+
+      // Handle Parallel states
+      if (state.isParallel()) {
+        const branches = state.Branches
+        if (branches) {
+          // Initialize nested coverage for each branch
+          this.coverage.nestedStates.set(stateName, new Set())
+          // Store branches as nested state machines
+          for (let i = 0; i < branches.length; i++) {
+            const branch = branches[i]
+            if (branch?.States) {
+              const branchKey = `${stateName}[${i}]`
+              this.nestedStateMachines.set(branchKey, branch as StateMachine)
+              this.coverage.nestedStates.set(branchKey, new Set())
             }
           }
         }
       }
     }
-
-    countStatesRecursively(states as Record<string, State>)
 
     return { totalStates, totalBranches }
   }
@@ -163,8 +164,8 @@ export class NestedCoverageTracker {
           for (const path of paths) {
             for (const nestedStateName of path) {
               nestedCoverage.add(nestedStateName)
-              // Also add to overall covered states with qualified name
-              this.coverage.coveredStates.add(`${parentState}.${nestedStateName}`)
+              // Don't add nested states to overall covered states
+              // They are tracked separately in nestedStates
             }
           }
         }
@@ -189,8 +190,8 @@ export class NestedCoverageTracker {
         for (const path of mapExec.iterationPaths) {
           for (const stateName of path) {
             nestedCoverage.add(stateName)
-            // Add with qualified name
-            this.coverage.coveredStates.add(`${mapExec.state}.${stateName}`)
+            // Don't add nested states to overall covered states
+            // They are tracked separately in nestedStates
 
             // Track Choice branches in nested states
             const nestedStateMachine = this.nestedStateMachines.get(mapExec.state)
@@ -232,8 +233,8 @@ export class NestedCoverageTracker {
         if (nestedCoverage) {
           for (const stateName of branchPath) {
             nestedCoverage.add(stateName)
-            // Add with qualified name
-            this.coverage.coveredStates.add(`${branchKey}.${stateName}`)
+            // Don't add nested states to overall covered states
+            // They are tracked separately in nestedStates
 
             // Track Choice branches in nested states
             const nestedStateMachine = this.nestedStateMachines.get(branchKey)
@@ -275,17 +276,19 @@ export class NestedCoverageTracker {
     const statesCoverage = (this.coverage.coveredStates.size / this.coverage.totalStates) * 100
 
     // Get uncovered branches to calculate correct coverage
-    const uncoveredBranches = this.getUncoveredBranches()
-    const actualCoveredBranches = this.coverage.totalBranches - uncoveredBranches.length
+    const uncoveredTopLevelBranches = this.getUncoveredTopLevelBranches()
+    const uncoveredAllBranches = this.getUncoveredBranches()
+    const actualCoveredBranches = this.coverage.totalBranches - uncoveredTopLevelBranches.length
 
     // Debug: Log the values to understand the issue
     if (process.env.DEBUG_COVERAGE) {
       console.log('DEBUG Coverage calculation:')
       console.log('  totalBranches:', this.coverage.totalBranches)
       console.log('  coveredBranches.size:', this.coverage.coveredBranches.size)
-      console.log('  uncoveredBranches.length:', uncoveredBranches.length)
+      console.log('  uncoveredTopLevelBranches.length:', uncoveredTopLevelBranches.length)
+      console.log('  uncoveredAllBranches.length:', uncoveredAllBranches.length)
       console.log('  actualCoveredBranches:', actualCoveredBranches)
-      console.log('  uncoveredBranches:', uncoveredBranches)
+      console.log('  uncoveredTopLevelBranches:', uncoveredTopLevelBranches)
     }
 
     const branchesCoverage =
@@ -293,8 +296,8 @@ export class NestedCoverageTracker {
         ? (actualCoveredBranches / this.coverage.totalBranches) * 100
         : 100
 
-    // Build nested coverage report
-    const nestedCoverage: CoverageReport['nestedCoverage'] = {}
+    // Build nested coverage report (hierarchical)
+    const nested: CoverageReport['nested'] = {}
 
     for (const [parentState, nestedStates] of this.coverage.nestedStates.entries()) {
       const nestedStateMachine = this.nestedStateMachines.get(parentState)
@@ -305,7 +308,7 @@ export class NestedCoverageTracker {
           (s) => !nestedStates.has(s),
         )
 
-        nestedCoverage[parentState] = {
+        nested[parentState] = {
           total: totalNested,
           covered: coveredNested,
           percentage:
@@ -316,23 +319,23 @@ export class NestedCoverageTracker {
     }
 
     return {
-      states: {
+      topLevel: {
         total: this.coverage.totalStates,
         covered: this.coverage.coveredStates.size,
         percentage: Math.round(statesCoverage * 100) / 100,
         uncovered: this.getUncoveredStates(),
       },
+      nested,
       branches: {
         total: this.coverage.totalBranches,
         covered: actualCoveredBranches,
         percentage: Math.round(branchesCoverage * 100) / 100,
-        uncovered: uncoveredBranches,
+        uncovered: uncoveredTopLevelBranches,
       },
       paths: {
         total: this.coverage.executionPaths.length,
         unique: this.getUniquePaths().length,
       },
-      nestedCoverage: Object.keys(nestedCoverage).length > 0 ? nestedCoverage : undefined,
     }
   }
 
@@ -350,11 +353,10 @@ export class NestedCoverageTracker {
     // Check nested states
     for (const [parentState, nestedStateMachine] of this.nestedStateMachines.entries()) {
       if (nestedStateMachine?.States) {
-        // const nestedCoverage = this.coverage.nestedStates.get(parentState) || new Set()
+        const nestedCoverage = this.coverage.nestedStates.get(parentState) || new Set()
         for (const nestedStateName of Object.keys(nestedStateMachine.States)) {
-          const qualifiedName = `${parentState}.${nestedStateName}`
-          if (!this.coverage.coveredStates.has(qualifiedName)) {
-            uncovered.push(qualifiedName)
+          if (!nestedCoverage.has(nestedStateName)) {
+            uncovered.push(`${parentState}.${nestedStateName}`)
           }
         }
       }
@@ -364,9 +366,13 @@ export class NestedCoverageTracker {
   }
 
   private getUncoveredBranches(): string[] {
+    return this.getUncoveredTopLevelBranches().concat(this.getUncoveredNestedBranches())
+  }
+
+  private getUncoveredTopLevelBranches(): string[] {
     const uncovered: string[] = []
 
-    // Check top-level choice branches
+    // Check top-level choice branches only
     const states = this.stateMachine.States || {}
     for (const [stateName, state] of Object.entries(states)) {
       if (state.isChoice()) {
@@ -389,6 +395,12 @@ export class NestedCoverageTracker {
         }
       }
     }
+
+    return uncovered
+  }
+
+  private getUncoveredNestedBranches(): string[] {
+    const uncovered: string[] = []
 
     // Check nested choice branches
     for (const [parentState, nestedStateMachine] of this.nestedStateMachines.entries()) {

@@ -71,7 +71,7 @@ name: "Test Suite"
 stateMachine: "${tempStateMachinePath}"
 testCases:
   - name: "test"
-    # Missing required input field`
+    # Missing required input field - this will cause validation error`
 
       writeFileSync(tempTestSuitePath, invalidSuite)
 

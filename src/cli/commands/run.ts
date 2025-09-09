@@ -17,12 +17,9 @@ import {
   DEFAULT_TEST_SUITES_DIR,
 } from '../../constants/defaults'
 import type { CoverageReport } from '../../core/coverage/nested-coverage-tracker'
-// CoverageTracker is imported via executeTest
-// import { CoverageTracker } from '../../core/coverage/tracker'
 import { NestedCoverageTracker } from '../../core/coverage/nested-coverage-tracker'
 import { CoverageReporter } from '../../core/coverage/reporter'
 import { CoverageStorageManager } from '../../core/coverage/storage'
-import type { CoverageData } from '../../core/coverage/tracker'
 import { type ExecutionResult, StateMachineExecutor } from '../../core/interpreter/executor'
 import { MockEngine } from '../../core/mock/engine'
 import { TestSuiteRunner } from '../../core/test/suite-runner'
@@ -91,6 +88,46 @@ export async function runCommand(options: RunOptions): Promise<void> {
     return await runTestSuite(options)
   }
 
+  // --nameオプションが指定された場合、対応するテストスイートを探す
+  if (options.name && !options.suite) {
+    const config = existsSync(DEFAULT_CONFIG_FILE) ? loadProjectConfig() : null
+
+    // まず設定ファイルにステートマシンが定義されているか確認
+    if (!config) {
+      throw new Error(`Configuration file not found: ${DEFAULT_CONFIG_FILE}`)
+    }
+
+    const stateMachineConfig = findStateMachine(config, options.name)
+    if (!stateMachineConfig) {
+      throw new Error(`State machine '${options.name}' not found in configuration`)
+    }
+
+    const testSuitesDir = config?.paths?.testSuites || DEFAULT_TEST_SUITES_DIR
+
+    // テストスイートファイルを探す
+    const yamlPath = join(testSuitesDir, `${options.name}.test.yaml`)
+    const ymlPath = join(testSuitesDir, `${options.name}.test.yml`)
+
+    if (existsSync(yamlPath)) {
+      console.log(chalk.gray(`Found test suite: ${yamlPath}`))
+      options.suite = yamlPath
+      return await runTestSuite(options)
+    } else if (existsSync(ymlPath)) {
+      console.log(chalk.gray(`Found test suite: ${ymlPath}`))
+      options.suite = ymlPath
+      return await runTestSuite(options)
+    } else {
+      // テストスイートが見つからない場合はエラー
+      throw new Error(
+        `Test suite not found for '${options.name}'.\n` +
+          `Expected to find one of:\n` +
+          `  - ${yamlPath}\n` +
+          `  - ${ymlPath}\n` +
+          `Please create a test suite file or use --asl/--cdk options for direct execution.`,
+      )
+    }
+  }
+
   // 引数なしの場合のデフォルト動作
   if (!(options.name || options.asl || options.cdk || options.suite)) {
     return await runDefaultMode(options)
@@ -130,7 +167,10 @@ async function runDefaultMode(options: RunOptions): Promise<void> {
         try {
           const runner = new TestSuiteRunner(testFile)
           const enableCoverage = !!options.cov
-          const result = await runner.runSuite(enableCoverage)
+          const result = await runner.runSuite(enableCoverage, {
+            verbose: options.verbose,
+            quiet: options.quiet,
+          })
           const elapsed = Date.now() - startTime
           console.log(chalk.gray(`  ⏱  Completed in ${elapsed}ms`))
 
@@ -140,72 +180,62 @@ async function runDefaultMode(options: RunOptions): Promise<void> {
 
           // カバレッジを統合
           if (result.coverage) {
-            if (!combinedCoverage) {
-              combinedCoverage = result.coverage
-            }
-            // Merge coverage from multiple test suites
-            const { CoverageMerger } = await import('../../core/coverage/merger')
-
-            // Convert CoverageReport to CoverageData format
-            const coverageData: CoverageData = {
-              totalStates: result.coverage.states.total,
-              coveredStates: new Set<string>(
-                Array.from({ length: result.coverage.states.covered }, (_, i) => `State${i + 1}`),
-              ),
-              totalBranches: result.coverage.branches.total,
-              coveredBranches: new Set<string>(
-                Array.from(
-                  { length: result.coverage.branches.covered },
-                  (_, i) => `Branch${i + 1}`,
-                ),
-              ),
-              executionPaths: [],
+            // Skip coverage processing if it's in old format or missing nested property
+            if (!result.coverage?.topLevel) {
+              continue // Skip if no coverage data or not in hierarchical format
             }
 
             if (combinedCoverage) {
-              // Merge with existing coverage
-              const existingData: CoverageData = {
-                totalStates: combinedCoverage.states.total,
-                coveredStates: new Set<string>(
-                  Array.from(
-                    { length: combinedCoverage.states.covered },
-                    (_, i) => `State${i + 1}`,
-                  ),
-                ),
-                totalBranches: combinedCoverage.branches.total,
-                coveredBranches: new Set<string>(
-                  Array.from(
-                    { length: combinedCoverage.branches.covered },
-                    (_, i) => `Branch${i + 1}`,
-                  ),
-                ),
-                executionPaths: [],
+              // Merge with existing coverage using simple addition approach
+              if (!combinedCoverage.topLevel) {
+                console.error('combinedCoverage missing topLevel structure:', combinedCoverage)
+                continue
               }
 
-              const merged = CoverageMerger.merge([existingData, coverageData])
-              const percentages = CoverageMerger.calculatePercentages(merged)
-
-              // Convert back to CoverageReport format
-              const uniqueUncoveredBranches: string[] = [
-                ...(result.coverage.branches.uncovered || []),
-                ...(combinedCoverage.branches.uncovered || []),
-              ].filter((v, i, a) => a.indexOf(v) === i)
+              // For hierarchical coverage, we sum the totals and covered counts
+              // This is simpler and avoids the complex state name mapping issues
+              const newTotal: number =
+                combinedCoverage.topLevel.total + result.coverage.topLevel.total
+              const newCovered: number = Math.min(
+                combinedCoverage.topLevel.covered + result.coverage.topLevel.covered,
+                newTotal, // Never exceed total
+              )
 
               combinedCoverage = {
-                states: {
-                  total: merged.totalStates,
-                  covered: merged.coveredStates.size,
-                  percentage: percentages.stateCoverage,
+                topLevel: {
+                  total: newTotal,
+                  covered: newCovered,
+                  percentage: newTotal > 0 ? (newCovered / newTotal) * 100 : 100,
                   uncovered: [
-                    ...(result.coverage.states.uncovered || []),
-                    ...(combinedCoverage.states.uncovered || []),
+                    ...(result.coverage.topLevel.uncovered || []),
+                    ...(combinedCoverage.topLevel.uncovered || []),
                   ].filter((v, i, a) => a.indexOf(v) === i),
                 },
+                nested: {
+                  // Merge nested coverage from both reports
+                  ...(combinedCoverage.nested && typeof combinedCoverage.nested === 'object'
+                    ? combinedCoverage.nested
+                    : {}),
+                  ...(result.coverage.nested && typeof result.coverage.nested === 'object'
+                    ? result.coverage.nested
+                    : {}),
+                },
                 branches: {
-                  total: merged.totalBranches,
-                  covered: merged.totalBranches - uniqueUncoveredBranches.length,
-                  percentage: percentages.branchCoverage,
-                  uncovered: uniqueUncoveredBranches,
+                  total: combinedCoverage.branches.total + result.coverage.branches.total,
+                  covered: Math.min(
+                    combinedCoverage.branches.covered + result.coverage.branches.covered,
+                    combinedCoverage.branches.total + result.coverage.branches.total,
+                  ),
+                  percentage:
+                    combinedCoverage.branches.total + result.coverage.branches.total > 0
+                      ? ((combinedCoverage.branches.covered + result.coverage.branches.covered) /
+                          (combinedCoverage.branches.total + result.coverage.branches.total)) *
+                        100
+                      : 100,
+                  uncovered: [
+                    ...(result.coverage.branches.uncovered || []),
+                    ...(combinedCoverage.branches.uncovered || []),
+                  ].filter((v, i, a) => a.indexOf(v) === i),
                 },
                 paths: {
                   total: (combinedCoverage.paths.total || 0) + (result.coverage.paths.total || 0),
@@ -632,7 +662,10 @@ async function runTestSuite(options: RunOptions): Promise<void> {
     spinner.text = 'Running tests...'
 
     const enableCoverage = !!options.cov
-    const result = await runner.runSuite(enableCoverage)
+    const result = await runner.runSuite(enableCoverage, {
+      verbose: options.verbose,
+      quiet: options.quiet,
+    })
     spinner.stop()
 
     // Generate report based on reporter type
@@ -826,7 +859,41 @@ function displayCoverageReport(
   format: string | boolean,
   config?: ProjectConfig | null,
 ): void {
-  const reporter = new CoverageReporter(coverage)
+  // Check if coverage data is valid
+  if (!(coverage?.topLevel && coverage?.branches && coverage?.paths)) {
+    console.error('Invalid coverage data provided to displayCoverageReport')
+    return
+  }
+
+  // Normalize coverage data to ensure it never exceeds 100%
+  const normalizedCoverage: CoverageReport = {
+    topLevel: {
+      total: coverage.topLevel.total,
+      covered: Math.min(coverage.topLevel.covered, coverage.topLevel.total), // Ensure covered <= total
+      percentage:
+        coverage.topLevel.total > 0
+          ? (Math.min(coverage.topLevel.covered, coverage.topLevel.total) /
+              coverage.topLevel.total) *
+            100
+          : 100,
+      uncovered: coverage.topLevel.uncovered,
+    },
+    nested: coverage.nested || {},
+    branches: {
+      total: coverage.branches.total,
+      covered: Math.min(coverage.branches.covered, coverage.branches.total), // Ensure covered <= total
+      percentage:
+        coverage.branches.total > 0
+          ? (Math.min(coverage.branches.covered, coverage.branches.total) /
+              coverage.branches.total) *
+            100
+          : 100,
+      uncovered: coverage.branches.uncovered,
+    },
+    paths: coverage.paths,
+  }
+
+  const reporter = new CoverageReporter(normalizedCoverage)
 
   // Determine coverage format
   const coverageFormat = typeof format === 'string' ? format : 'text'

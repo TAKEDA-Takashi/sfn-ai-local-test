@@ -31,7 +31,7 @@ Optional fields per test case:
 2. **stateMachine field is OPTIONAL** (auto-inferred from filename if omitted)
 3. Each test case MUST have 'name' and 'input'
 4. Use 'state' NOT 'stateName' in stateExpectations
-5. ALWAYS use 'outputMatching: "partial"' in stateExpectations
+5. outputMatching defaults to "partial" - only specify when using "exact"
 6. Variables go in stateExpectations.variables, NOT in output
 
 ## TEST-SPECIFIC FIELDS
@@ -52,7 +52,7 @@ testCases:
 ```yaml
 stateExpectations:
   - state: "ProcessPayment"     # Exact state name
-    outputMatching: "partial"   # ALWAYS partial
+    # outputMatching: "partial" # Default is partial, can omit
     output:
       paymentId: "test-id"
     variables:                   # Test Variables separately
@@ -98,4 +98,4 @@ Before outputting, verify:
 3. Does NOT contain top-level `mocks:` array
 4. Each test has 'name' and 'input'
 5. stateExpectations use 'state' not 'stateName'
-6. All outputMatching set to "partial"
+6. outputMatching defaults to "partial" (can be omitted)

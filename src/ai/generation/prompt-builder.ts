@@ -20,6 +20,7 @@ import {
   type MapOutputSpec,
   type PassVariableFlow,
 } from '../analysis/data-flow-analyzer'
+import { detectDynamicFields } from '../analysis/dynamic-field-detector'
 import {
   detectOutputTransformation,
   getOutputTransformationDetails,
@@ -197,7 +198,7 @@ export class PromptBuilder {
   /**
    * Build test generation prompt
    */
-  buildTestPrompt(stateMachine: StateMachine, mockContent?: string, verbose = false): string {
+  buildTestPrompt(stateMachine: StateMachine, mockContent?: string): string {
     const sections: string[] = []
     const hierarchy = this.analyzer.analyzeHierarchy(stateMachine)
 
@@ -217,11 +218,13 @@ export class PromptBuilder {
     const hasOutputTransformation = detectOutputTransformation(stateMachine)
     if (hasOutputTransformation) {
       const transformationDetails = getOutputTransformationDetails(stateMachine)
-      console.log('🔧 Output transformation detected:', transformationDetails.length, 'states')
-      if (verbose) {
-        console.log('Details:', JSON.stringify(transformationDetails, null, 2))
-      }
       sections.push(this.getOutputTransformationGuidance(transformationDetails))
+    }
+
+    // Dynamic field detection
+    const dynamicFields = detectDynamicFields(stateMachine)
+    if (dynamicFields.length > 0) {
+      sections.push(this.getDynamicFieldGuidance(dynamicFields))
     }
 
     // Structure analysis
@@ -337,8 +340,6 @@ The output MUST:
 
 ## EXAMPLE OF CORRECT MOCK FILE:
 version: "1.0"
-config:
-  outputMatching: "partial"
 mocks:
   - state: "StateName"
     type: "fixed"
@@ -381,8 +382,6 @@ testCases:  # NOT "tests"
 
   private getCriticalRules(): string {
     return `# CRITICAL RULES FOR MOCK GENERATION
-
-⚠️⚠️⚠️ RULE #1: ALWAYS USE outputMatching: "partial" ⚠️⚠️⚠️
 
 ## Mock Structure Rules
 1. Use the exact state names from the state machine
@@ -1464,5 +1463,63 @@ Transformation changes the shape and content of the output - your tests must ref
 `
 
     return guidance
+  }
+
+  /**
+   * Generate guidance for states with dynamic fields
+   */
+  private getDynamicFieldGuidance(
+    dynamicFields: Array<{ stateName: string; dynamicPaths: string[]; reason: string }>,
+  ): string {
+    const stateList = dynamicFields
+      .map(
+        (d) => `- **${d.stateName}**: ${d.reason}\n  Dynamic fields: ${d.dynamicPaths.join(', ')}`,
+      )
+      .join('\n')
+
+    return `## ⏰ CRITICAL: Dynamic Fields Detected
+
+# ⚠️ DYNAMIC VALUES DETECTED IN THESE STATES ⚠️
+
+The following states contain dynamic fields that change on every execution:
+
+${stateList}
+
+### ℹ️ Note: Partial Matching is Default
+
+Since outputMatching defaults to "partial", these dynamic fields will be handled correctly.
+However, if you need exact matching for other reasons, you must explicitly set outputMatching: "exact"
+and exclude dynamic fields from your expectations.
+
+Dynamic fields include:
+- Timestamps (EnteredTime, StartTime)
+- Execution IDs
+- UUIDs
+- Random values
+- Other context-dependent values
+
+**EXAMPLE:**
+\`\`\`yaml
+stateExpectations:
+  - state: "${dynamicFields[0]?.stateName || 'StateWithDynamicFields'}"
+    outputMatching: "partial"  # ⚠️ REQUIRED due to dynamic fields
+    output:
+      # Only include stable fields
+      userId: "12345"
+      status: "success"
+      # DO NOT include: timestamp, executionId, uuid, etc.
+\`\`\`
+
+### 🔴 RULE: Omit Dynamic Fields from Expectations 🔴
+
+**NEVER include these in test expectations:**
+- Any timestamp fields
+- Execution IDs or names
+- UUIDs or random values
+- State tokens
+- Map item indices (when dynamic)
+
+**Why?** These values are different every time the test runs, causing false failures.
+`
   }
 }

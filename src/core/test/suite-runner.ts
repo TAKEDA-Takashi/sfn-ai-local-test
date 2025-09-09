@@ -265,8 +265,11 @@ export class TestSuiteRunner {
     return resolvedPath
   }
 
-  runSuite(enableCoverage = false): Promise<TestSuiteResult> {
-    return this.executor.runSuite(enableCoverage)
+  runSuite(
+    enableCoverage = false,
+    options?: { verbose?: boolean; quiet?: boolean },
+  ): Promise<TestSuiteResult> {
+    return this.executor.runSuite(enableCoverage, options)
   }
 
   // Expose convertMockOverrides for testing (private method access)

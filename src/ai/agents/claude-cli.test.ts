@@ -235,11 +235,7 @@ describe('claude-cli', () => {
       )
 
       expect(result).toBe('version: "1.0"\ntestCases: []')
-      expect(mockPromptBuilder.buildTestPrompt).toHaveBeenCalledWith(
-        mockStateMachine,
-        mockContent,
-        false,
-      )
+      expect(mockPromptBuilder.buildTestPrompt).toHaveBeenCalledWith(mockStateMachine, mockContent)
       expect(mockStateMachineValidator.validateTestContent).toHaveBeenCalled()
       expect(mockStateMachineValidator.autoFix).toHaveBeenCalled()
     })
@@ -413,44 +409,44 @@ stateMachine: "./wrong.asl.json"`
   })
 
   describe('hasNameBasedConfig', () => {
-    it('should return true when state machine exists in config', async () => {
+    it('should return true when state machine exists in config', () => {
       mockLoadProjectConfig.mockReturnValue({
         stateMachines: [{ name: 'workflow-a' }, { name: 'workflow-b' }],
       })
 
-      const result = await hasNameBasedConfig('workflow-a')
+      const result = hasNameBasedConfig('workflow-a')
       expect(result).toBe(true)
     })
 
-    it('should return false when state machine does not exist in config', async () => {
+    it('should return false when state machine does not exist in config', () => {
       mockLoadProjectConfig.mockReturnValue({
         stateMachines: [{ name: 'workflow-a' }],
       })
 
-      const result = await hasNameBasedConfig('workflow-b')
+      const result = hasNameBasedConfig('workflow-b')
       expect(result).toBe(false)
     })
 
-    it('should return false when config has no stateMachines', async () => {
+    it('should return false when config has no stateMachines', () => {
       mockLoadProjectConfig.mockReturnValue({})
 
-      const result = await hasNameBasedConfig('workflow-a')
+      const result = hasNameBasedConfig('workflow-a')
       expect(result).toBe(false)
     })
 
-    it('should return false when config loading throws error', async () => {
+    it('should return false when config loading throws error', () => {
       mockLoadProjectConfig.mockImplementation(() => {
         throw new Error('Config not found')
       })
 
-      const result = await hasNameBasedConfig('workflow-a')
+      const result = hasNameBasedConfig('workflow-a')
       expect(result).toBe(false)
     })
 
-    it('should return false when config is null', async () => {
+    it('should return false when config is null', () => {
       mockLoadProjectConfig.mockReturnValue(null)
 
-      const result = await hasNameBasedConfig('workflow-a')
+      const result = hasNameBasedConfig('workflow-a')
       expect(result).toBe(false)
     })
   })

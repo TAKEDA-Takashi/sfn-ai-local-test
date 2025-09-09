@@ -122,7 +122,7 @@ testCases:
     expect(result).not.toContain('baseMock: "./order-processing-workflow.mock.yaml"')
   })
 
-  it('should detect when config has name-based setup vs path-based setup', async () => {
+  it('should detect when config has name-based setup vs path-based setup', () => {
     // Mock the config to return a named state machine
     vi.mocked(loadProjectConfig).mockImplementation(
       () =>
@@ -141,7 +141,7 @@ testCases:
         }) satisfies ProjectConfig,
     )
 
-    const result = await hasNameBasedConfig('order-processing-workflow')
+    const result = hasNameBasedConfig('order-processing-workflow')
     expect(result).toBe(true)
   })
 })

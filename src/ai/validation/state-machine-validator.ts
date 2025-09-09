@@ -361,7 +361,9 @@ export class StateMachineValidator {
 
     // Add state-aware validations for test content
     issues.push(...this.validateTestStateReferences(content, stateMachine))
-    issues.push(...this.validateLambdaJSONataOutputExpectations(content, stateMachine))
+    // Note: JSONata Output validation removed - static analysis cannot accurately
+    // determine what JSONata expressions will return. Use TestExecutionValidator
+    // for dynamic validation instead.
 
     return issues
   }
@@ -862,71 +864,5 @@ The 'Payload' wrapper is REQUIRED for Lambda invoke tasks.`
     }
 
     return report
-  }
-
-  /**
-   * Validate Lambda invoke states with JSONata Output expectations
-   * Note: This performs static validation only. For actual transformation result validation,
-   * use TestExecutionValidator which executes tests and corrects expectations.
-   */
-  private validateLambdaJSONataOutputExpectations(
-    content: string,
-    stateMachine: StateMachine,
-  ): ValidationIssue[] {
-    const issues: ValidationIssue[] = []
-
-    try {
-      const parsed = yaml.load(content)
-      if (!isJsonObject(parsed)) return issues
-
-      if (!(parsed.testCases && isJsonArray(parsed.testCases))) {
-        return issues
-      }
-
-      for (const testCase of parsed.testCases) {
-        if (!isJsonObject(testCase)) continue
-        if (!(testCase.stateExpectations && isJsonArray(testCase.stateExpectations))) continue
-
-        for (const stateExpectation of testCase.stateExpectations) {
-          if (!isJsonObject(stateExpectation)) continue
-          if (typeof stateExpectation.state !== 'string') continue
-          if (!stateExpectation.output) continue
-
-          const stateName = stateExpectation.state
-          const state = this.findStateByPath(stateName, stateMachine.States)
-
-          // Check if this is a Lambda invoke state with JSONata Output
-          if (
-            state?.isTask() &&
-            state.Resource === 'arn:aws:states:::lambda:invoke' &&
-            state.isJSONataState() &&
-            state.Output &&
-            typeof state.Output === 'string' &&
-            state.Output.includes('$states.result.Payload')
-          ) {
-            const expectedOutput = stateExpectation.output
-
-            // If the expected output has Payload wrapper, it's wrong
-            if (
-              isJsonObject(expectedOutput) &&
-              (expectedOutput.Payload ||
-                expectedOutput.StatusCode ||
-                expectedOutput.ExecutedVersion)
-            ) {
-              issues.push({
-                level: 'error',
-                message: `State "${stateName}" has JSONata Output that extracts Payload, but test expects full Lambda response`,
-                suggestion:
-                  'Remove Payload wrapper from expected output. JSONata Output "{% $states.result.Payload %}" returns only the Payload content.',
-              })
-            }
-          }
-        }
-      }
-    } catch (_error) {
-      // Ignore parsing errors - handled elsewhere
-    }
-
-    return issues
   }
 }

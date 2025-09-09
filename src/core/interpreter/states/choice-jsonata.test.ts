@@ -266,4 +266,99 @@ describe('Choice State - JSONata Mode', () => {
       expect(result.nextState).toBe('HighInputState')
     })
   })
+
+  describe('JSONata mode Choice with Execution.Input reference', () => {
+    it('should evaluate conditions using $states.context.Execution.Input', async () => {
+      const state = StateFactory.createState({
+        Type: 'Choice',
+        QueryLanguage: 'JSONata',
+        Choices: [
+          {
+            Condition:
+              '{% $exists($states.context.Execution.Input.sendmail) and $boolean($states.context.Execution.Input.sendmail) %}',
+            Next: 'SendmailTask',
+          },
+        ],
+        Default: 'FinishState',
+      }) as ChoiceState
+
+      const executor = new ChoiceStateExecutor(state, mockEngine)
+
+      // Test with sendmail = true
+      const contextTrue: ExecutionContext = {
+        input: { test: 'data' },
+        currentState: 'TestChoice',
+        executionPath: [],
+        variables: {},
+        originalInput: { sendmail: true },
+      }
+
+      const resultTrue = await executor.execute(contextTrue)
+      expect(resultTrue.nextState).toBe('SendmailTask')
+
+      // Test with sendmail = false
+      const contextFalse: ExecutionContext = {
+        input: { test: 'data' },
+        currentState: 'TestChoice',
+        executionPath: [],
+        variables: {},
+        originalInput: { sendmail: false },
+      }
+
+      const resultFalse = await executor.execute(contextFalse)
+      expect(resultFalse.nextState).toBe('FinishState')
+
+      // Test with sendmail missing
+      const contextMissing: ExecutionContext = {
+        input: { test: 'data' },
+        currentState: 'TestChoice',
+        executionPath: [],
+        variables: {},
+        originalInput: { other: 'value' },
+      }
+
+      const resultMissing = await executor.execute(contextMissing)
+      expect(resultMissing.nextState).toBe('FinishState')
+    })
+
+    it('should handle simpler boolean check for Execution.Input', async () => {
+      const state = StateFactory.createState({
+        Type: 'Choice',
+        QueryLanguage: 'JSONata',
+        Choices: [
+          {
+            Condition: '{% $states.context.Execution.Input.enabled %}',
+            Next: 'EnabledState',
+          },
+        ],
+        Default: 'DisabledState',
+      }) as ChoiceState
+
+      const executor = new ChoiceStateExecutor(state, mockEngine)
+
+      // Test with enabled = true
+      const contextEnabled: ExecutionContext = {
+        input: { current: 'data' },
+        currentState: 'TestChoice',
+        executionPath: [],
+        variables: {},
+        originalInput: { enabled: true },
+      }
+
+      const resultEnabled = await executor.execute(contextEnabled)
+      expect(resultEnabled.nextState).toBe('EnabledState')
+
+      // Test with enabled = false
+      const contextDisabled: ExecutionContext = {
+        input: { current: 'data' },
+        currentState: 'TestChoice',
+        executionPath: [],
+        variables: {},
+        originalInput: { enabled: false },
+      }
+
+      const resultDisabled = await executor.execute(contextDisabled)
+      expect(resultDisabled.nextState).toBe('DisabledState')
+    })
+  })
 })

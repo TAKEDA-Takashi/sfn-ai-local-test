@@ -11,9 +11,14 @@ import type {
 import type { ExecutionResult } from '../interpreter/executor'
 
 export class TestAssertions {
-  static performAssertions(testCase: TestCase, result: ExecutionResult): AssertionResult[] {
+  static performAssertions(
+    testCase: TestCase,
+    result: ExecutionResult,
+    suiteSettings?: AssertionSettings,
+  ): AssertionResult[] {
     const assertions: AssertionResult[] = []
-    const settings: AssertionSettings = testCase.settings || {}
+    // Merge suite-level and test-level settings (test-level takes precedence)
+    const settings: AssertionSettings = { ...suiteSettings, ...testCase.settings }
 
     // Output assertion
     if (testCase.expectedOutput !== undefined) {
@@ -277,11 +282,13 @@ export class TestAssertions {
       if (expectation.variables) {
         const variablesAfter = execution.variablesAfter || {}
         for (const [key, value] of Object.entries(expectation.variables)) {
-          const varMatch = TestAssertions.compareValues(
-            value,
-            variablesAfter[key],
-            expectation.outputMatching || settings.outputMatching || 'partial',
-          )
+          const matchingMode = expectation.outputMatching || settings.outputMatching || 'partial'
+          if (process.env.DEBUG_ASSERTIONS) {
+            console.log(
+              `Variable comparison for ${key}: mode=${matchingMode}, settings.outputMatching=${settings.outputMatching}`,
+            )
+          }
+          const varMatch = TestAssertions.compareValues(value, variablesAfter[key], matchingMode)
           assertions.push({
             type: 'state',
             passed: varMatch,

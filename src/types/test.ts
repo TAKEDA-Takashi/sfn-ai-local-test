@@ -147,6 +147,6 @@ export interface TestSuiteResult {
     slowestTest?: TestResult
     fastestTest?: TestResult
   }
-  coverage?: import('../core/coverage/tracker').CoverageReport
+  coverage?: import('../core/coverage/nested-coverage-tracker').CoverageReport
   suite?: TestSuite // Reference to the original test suite
 }

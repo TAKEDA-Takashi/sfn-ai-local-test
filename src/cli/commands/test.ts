@@ -1,8 +1,8 @@
 import { writeFileSync } from 'node:fs'
 import chalk from 'chalk'
 import ora from 'ora'
+import type { CoverageReport } from '../../core/coverage/nested-coverage-tracker'
 import { CoverageReporter } from '../../core/coverage/reporter'
-import type { CoverageReport } from '../../core/coverage/tracker'
 import { TestSuiteRunner } from '../../core/test/suite-runner'
 import type { TestSuiteResult } from '../../types/test'
 

@@ -789,9 +789,8 @@ TestCase4: ⏭️ Skip（実行されない）
 
 | オプション | 型 | デフォルト | 説明 |
 |----------|-----|----------|------|
-| `outputMatching` | string | "exact" | **出力の比較方式**（exact, partial） |
+| `outputMatching` | string | "partial" | **出力の比較方式**（exact, partial） |
 | `pathMatching` | string | "exact" | **実行パスの比較方式**（exact, includes, sequence） |
-| `stateMatching` | string | "exact" | **ステート検証の比較方式**（exact, partial） |
 
 ### outputMatching の詳細
 

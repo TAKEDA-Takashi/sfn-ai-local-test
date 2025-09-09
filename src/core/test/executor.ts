@@ -18,6 +18,7 @@ export class TestSuiteExecutor {
   private stateMachine: StateMachine
   private mockEngine?: MockEngine
   private coverageTracker?: NestedCoverageTracker
+  private options?: { verbose?: boolean; quiet?: boolean }
 
   constructor(suite: TestSuite, stateMachine: StateMachine, mockEngine?: MockEngine) {
     this.suite = suite
@@ -25,7 +26,11 @@ export class TestSuiteExecutor {
     this.mockEngine = mockEngine
   }
 
-  async runSuite(enableCoverage = false): Promise<TestSuiteResult> {
+  async runSuite(
+    enableCoverage = false,
+    options?: { verbose?: boolean; quiet?: boolean },
+  ): Promise<TestSuiteResult> {
+    this.options = options
     const startTime = Date.now()
     const testCases = this.getTestCasesToRun()
     const results: TestResult[] = []
@@ -82,7 +87,7 @@ export class TestSuiteExecutor {
       })
 
       // Let StateMachineExecutor handle context creation for proper tracking
-      const executionPromise = executor.execute(testCase.input)
+      const executionPromise = executor.execute(testCase.input, this.options)
 
       let result: ExecutionResult
       try {
@@ -124,7 +129,7 @@ export class TestSuiteExecutor {
         }
       }
 
-      const assertions = TestAssertions.performAssertions(testCase, result)
+      const assertions = TestAssertions.performAssertions(testCase, result, this.suite.assertions)
       const failedAssertions = assertions.filter((a) => !a.passed)
 
       const duration = Date.now() - startTime

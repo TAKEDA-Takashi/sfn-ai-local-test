@@ -1,3 +1,4 @@
+import * as yaml from 'js-yaml'
 import type { JsonObject, StateMachine } from '../../types/asl'
 import type { MockConfig } from '../../types/mock'
 import type { TestSuite } from '../../types/test'
@@ -79,7 +80,6 @@ export class TestGenerationPipeline {
     if (enableExecutionValidation) {
       try {
         // Parse generated YAML to TestSuite
-        const yaml = await import('js-yaml')
         const testSuite = yaml.load(generationResult.content) as TestSuite
 
         // Validate test suite format before execution

@@ -283,7 +283,6 @@ export async function generateTestWithAI(
   mockPath?: string,
   aslPath?: string,
   outputPath?: string,
-  verbose = false,
 ): Promise<string> {
   // Claude CLI\u304c\u5229\u7528\u53ef\u80fd\u306a\u5834\u5408\u306f\u512a\u5148\u4f7f\u7528
   if (await isClaudeCLIAvailable()) {
@@ -295,7 +294,6 @@ export async function generateTestWithAI(
       mockPath,
       aslPath,
       outputPath,
-      verbose,
     )
   }
 

@@ -1,0 +1,106 @@
+{
+  "Comment": "Example of conditional branching using Choice state",
+  "StartAt": "GetUserAge",
+  "States": {
+    "GetUserAge": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "GetUserAgeFunction",
+        "Payload": {
+          "userId.$": "$.userId"
+        }
+      },
+      "ResultSelector": {
+        "age.$": "$.Payload.age",
+        "name.$": "$.Payload.name",
+        "memberType.$": "$.Payload.memberType"
+      },
+      "ResultPath": "$.userData",
+      "Next": "CheckAge"
+    },
+    "CheckAge": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.userData.age",
+              "NumericGreaterThanEquals": 65
+            },
+            {
+              "Variable": "$.userData.memberType",
+              "StringEquals": "premium"
+            }
+          ],
+          "Next": "PremiumSeniorProcess"
+        },
+        {
+          "Variable": "$.userData.age",
+          "NumericGreaterThanEquals": 65,
+          "Next": "SeniorProcess"
+        },
+        {
+          "Variable": "$.userData.age",
+          "NumericGreaterThanEquals": 20,
+          "Next": "AdultProcess"
+        },
+        {
+          "Variable": "$.userData.age",
+          "NumericLessThan": 20,
+          "Next": "ChildProcess"
+        }
+      ],
+      "Default": "UnknownAge"
+    },
+    "PremiumSeniorProcess": {
+      "Type": "Pass",
+      "Parameters": {
+        "category": "premium-senior",
+        "discount": "50%",
+        "userName.$": "$.userData.name",
+        "benefits": ["free-shipping", "priority-support", "extra-discount"]
+      },
+      "End": true
+    },
+    "SeniorProcess": {
+      "Type": "Pass",
+      "Parameters": {
+        "category": "senior",
+        "discount": "30%",
+        "userName.$": "$.userData.name",
+        "benefits": ["senior-discount"]
+      },
+      "End": true
+    },
+    "AdultProcess": {
+      "Type": "Pass",
+      "Parameters": {
+        "category": "adult",
+        "discount": "0%",
+        "userName.$": "$.userData.name",
+        "benefits": []
+      },
+      "End": true
+    },
+    "ChildProcess": {
+      "Type": "Pass",
+      "Parameters": {
+        "category": "child",
+        "discount": "50%",
+        "userName.$": "$.userData.name",
+        "benefits": ["child-discount", "parental-controls"]
+      },
+      "End": true
+    },
+    "UnknownAge": {
+      "Type": "Pass",
+      "Parameters": {
+        "category": "unknown",
+        "error": "Age data not found",
+        "userName.$": "$.userData.name"
+      },
+      "End": true
+    }
+  }
+}

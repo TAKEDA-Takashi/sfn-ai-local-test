@@ -1,0 +1,37 @@
+version: "1.0"
+name: "simple-workflow-test"
+description: "Test suite for simple workflow"
+
+stateMachine: "./workflow.asl.json"
+baseMock: "./mock.yaml"
+
+testCases:
+  - name: "Workflow integration test"
+    description: "Validates Task → Pass → Succeed execution flow and state input/output"
+    input:
+      userId: "123"
+    expectedOutput:
+      message: "John Smith"
+    expectedPath:
+      - "GetUserInfo"
+      - "FormatOutput"
+      - "Complete"
+    stateExpectations:
+      - state: "GetUserInfo"
+        input:
+          userId: "123"
+      - state: "FormatOutput"
+        input:
+          userId: "123"
+          user:
+            id: "user-123"
+            name: "John Smith"
+            email: "john@example.com"
+        # Validate output with partial matching (timestamp is dynamic)
+        outputMatching: "partial"
+        output:
+          message: "John Smith"
+
+assertions:
+  outputMatching: "partial"  # Use partial matching because of timestamp
+  pathMatching: "exact"

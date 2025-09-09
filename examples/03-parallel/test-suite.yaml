@@ -1,0 +1,114 @@
+version: "1.0"
+name: "parallel-workflow-test"
+description: "Parallel state concurrent processing test"
+
+stateMachine: "./workflow.asl.json"
+baseMock: "./mock.yaml"
+
+testCases:
+  - name: "Comprehensive normal flow validation"
+    description: "Validates all aspects of parallel processing for a $20.00 product: output, paths, states, and branches"
+    input:
+      orderId: "order-001"
+      items:
+        - productId: "item-001"
+          quantity: 2
+      customer:
+        id: "customer-123"
+        name: "John Smith"
+    expectedOutput:
+      orderId: "order-001"
+      validation:
+        valid: true
+        message: "Order validation successful"
+        timestamp: "2024-01-01T12:00:00Z"
+      pricing:
+        originalPrice: 2000
+        discountedPrice: 1800
+        discountRate: 0.9
+      inventory:
+        available: true
+        message: "All items in stock"
+        items:
+          - productId: "item-001"
+            stock: 100
+      status: "processed"
+    expectedPath:
+      - "PrepareData"
+      - "ProcessInParallel"
+      - "AggregateResults"
+    parallelExpectations:
+      - state: "ProcessInParallel"
+        branchCount: 3
+        branchPaths:
+          0: ["ValidateOrder"]                    # Branch 0: Validation only
+          1: ["CalculatePrice", "ApplyDiscount"]  # Branch 1: Calculation → Discount
+          2: ["CheckInventory"]                   # Branch 2: Inventory check only
+    stateExpectations:
+      - state: "PrepareData"
+        output:
+          orderId: "order-001"
+          items:
+            - productId: "item-001"
+              quantity: 2
+          customer:
+            id: "customer-123"
+            name: "John Smith"
+      
+      - state: "ProcessInParallel"
+        output:
+          orderId: "order-001"
+          items:
+            - productId: "item-001"
+              quantity: 2
+          customer:
+            id: "customer-123"
+            name: "John Smith"
+          parallelResults:
+            # Index 0: ValidateOrder (Payload extracted by ResultSelector)
+            - valid: true
+              message: "Order validation successful"
+              timestamp: "2024-01-01T12:00:00Z"
+            # Index 1: CalculatePrice → ApplyDiscount (Payload extracted by ResultSelector)
+            - originalPrice: 2000
+              discountedPrice: 1800
+              discountRate: 0.9
+            # Index 2: CheckInventory (Payload extracted by ResultSelector)
+            - available: true
+              message: "All items in stock"
+              items:
+                - productId: "item-001"
+                  stock: 100
+
+  - name: "Out of stock scenario"
+    description: "Returns out of stock from inventory check branch"
+    input:
+      orderId: "order-fail"
+      items:
+        - productId: "item-003"
+          quantity: 10
+      customer:
+        id: "customer-789"
+    expectedOutput:
+      orderId: "order-fail"
+      validation:
+        valid: true
+        message: "Order validation successful"
+        timestamp: "2024-01-01T12:00:00Z"
+      pricing:
+        originalPrice: 1000
+        discountedPrice: 900
+        discountRate: 0.9
+      inventory:
+        available: false
+        message: "Out of stock"
+        items: []
+      status: "processed"
+
+
+settings:
+  verbose: false
+  
+assertions:
+  outputMatching: "exact"
+  pathMatching: "exact"

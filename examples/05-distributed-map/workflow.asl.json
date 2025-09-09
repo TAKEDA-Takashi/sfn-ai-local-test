@@ -1,0 +1,144 @@
+{
+  "Comment": "Example of large-scale processing using Distributed Map state",
+  "StartAt": "PrepareDataSource",
+  "States": {
+    "PrepareDataSource": {
+      "Type": "Pass",
+      "Parameters": {
+        "dataSource.$": "$.dataSource"
+      },
+      "Next": "ProcessLargeDataset"
+    },
+    "ProcessLargeDataset": {
+      "Type": "Map",
+      "ItemReader": {
+        "Resource": "arn:aws:states:::s3:getObject",
+        "ReaderConfig": {
+          "InputType": "JSON"
+        },
+        "Parameters": {
+          "Bucket.$": "$.dataSource.bucket",
+          "Key.$": "$.dataSource.key"
+        }
+      },
+      "MaxConcurrency": 1000,
+      "ToleratedFailurePercentage": 5,
+      "ItemBatcher": {
+        "MaxItemsPerBatch": 10,
+        "BatchInput": {
+          "batchMetadata": {
+            "processingType": "distributed",
+            "timestamp.$": "$$.State.EnteredTime"
+          }
+        }
+      },
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "DISTRIBUTED",
+          "ExecutionType": "EXPRESS"
+        },
+        "StartAt": "ProcessBatch",
+        "States": {
+          "ProcessBatch": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "ProcessBatchFunction",
+              "Payload": {
+                "items.$": "$.Items",
+                "batchInfo.$": "$.batchMetadata"
+              }
+            },
+            "ResultSelector": {
+              "processedCount.$": "$.Payload.processedCount",
+              "successfulItems.$": "$.Payload.successfulItems",
+              "failedItems.$": "$.Payload.failedItems"
+            },
+            "Retry": [
+              {
+                "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2.0
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "Next": "HandleBatchError",
+                "ResultPath": "$.error"
+              }
+            ],
+            "Next": "ValidateResults"
+          },
+          "ValidateResults": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.processedCount",
+                "NumericGreaterThan": 0,
+                "Next": "LogSuccess"
+              }
+            ],
+            "Default": "LogEmptyBatch"
+          },
+          "LogSuccess": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:cloudwatchlogs:putLogEvents",
+            "Parameters": {
+              "logGroupName": "/aws/stepfunctions/distributed-map",
+              "logStreamName.$": "$$.Execution.Name",
+              "logEvents": [
+                {
+                  "timestamp.$": "$$.State.EnteredTime",
+                  "message.$": "States.Format('Batch processed successfully: {} items', $.processedCount)"
+                }
+              ]
+            },
+            "ResultPath": "$.logging",
+            "End": true
+          },
+          "LogEmptyBatch": {
+            "Type": "Pass",
+            "Parameters": {
+              "message": "Empty batch processed",
+              "processedCount": 0,
+              "successfulItems": [],
+              "failedItems": []
+            },
+            "End": true
+          },
+          "HandleBatchError": {
+            "Type": "Pass",
+            "Parameters": {
+              "error.$": "$.error",
+              "message": "Batch processing failed",
+              "processedCount": 0,
+              "successfulItems": [],
+              "failedItems.$": "$.Items"
+            },
+            "End": true
+          }
+        }
+      },
+      "ResultWriter": {
+        "Resource": "arn:aws:states:::s3:putObject",
+        "Parameters": {
+          "Bucket": "my-results-bucket",
+          "Key.$": "States.Format('results/{}.json', $$.Execution.Name)"
+        }
+      },
+      "Next": "SummarizeResults"
+    },
+    "SummarizeResults": {
+      "Type": "Pass",
+      "Parameters": {
+        "executionArn.$": "$$.Execution.Name",
+        "totalBatches.$": "States.ArrayLength($.MapRunArn)",
+        "completionTime.$": "$$.State.EnteredTime",
+        "status": "completed"
+      },
+      "End": true
+    }
+  }
+}

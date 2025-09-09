@@ -1,0 +1,17 @@
+version: '1.0'
+
+# ディレクトリパス設定（任意、デフォルト値を使用）
+# paths:
+#   mocks: './sfn-test/mocks'
+#   testSuites: './sfn-test/test-suites'
+#   testData: './sfn-test/test-data'
+#   extracted: './.sfn-test/extracted'
+#   coverage: './.sfn-test/coverage'
+
+# ステートマシン定義
+stateMachines:
+  - name: order-processing-workflow
+    source:
+      type: cdk
+      path: ./cdk.out/OrderProcessingStack.template.json
+      stateMachineName: OrderProcessingStateMachineD268D63F

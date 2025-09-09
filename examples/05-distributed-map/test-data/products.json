@@ -1,0 +1,62 @@
+[
+  {
+    "id": "item-001",
+    "name": "Product A",
+    "category": "electronics",
+    "price": 299.99
+  },
+  {
+    "id": "item-002",
+    "name": "Product B",
+    "category": "electronics",
+    "price": 199.99
+  },
+  {
+    "id": "item-003",
+    "name": "Product C",
+    "category": "books",
+    "price": 29.99
+  },
+  {
+    "id": "item-004",
+    "name": "Product D",
+    "category": "electronics",
+    "price": 399.99
+  },
+  {
+    "id": "item-005",
+    "name": "Product E",
+    "category": "books",
+    "price": 19.99
+  },
+  {
+    "id": "item-006",
+    "name": "Product F",
+    "category": "clothing",
+    "price": 79.99
+  },
+  {
+    "id": "item-007",
+    "name": "Product G",
+    "category": "electronics",
+    "price": 599.99
+  },
+  {
+    "id": "item-008",
+    "name": "Product H",
+    "category": "books",
+    "price": 39.99
+  },
+  {
+    "id": "item-009",
+    "name": "Product I",
+    "category": "clothing",
+    "price": 89.99
+  },
+  {
+    "id": "item-010",
+    "name": "Product J",
+    "category": "electronics",
+    "price": 799.99
+  }
+]

@@ -1,0 +1,99 @@
+version: "1.0"
+name: "choice-workflow-mock"
+description: "Mock configuration for Choice state testing"
+
+mocks:
+  - state: "GetUserAge"
+    type: "conditional"
+    conditions:
+      # Premium senior member
+      - when:
+          input:
+            Payload:
+              userId: "senior-premium-001"
+        response:
+          Payload:
+            age: 70
+            name: "Emily Davis"
+            memberType: "premium"
+          StatusCode: 200
+      
+      # Regular senior
+      - when:
+          input:
+            Payload:
+              userId: "senior-001"
+        response:
+          Payload:
+            age: 68
+            name: "Robert Johnson"
+            memberType: "standard"
+          StatusCode: 200
+      
+      # Adult
+      - when:
+          input:
+            Payload:
+              userId: "adult-001"
+        response:
+          Payload:
+            age: 35
+            name: "Michael Brown"
+            memberType: "standard"
+          StatusCode: 200
+      
+      # Child
+      - when:
+          input:
+            Payload:
+              userId: "child-001"
+        response:
+          Payload:
+            age: 10
+            name: "Sarah Wilson"
+            memberType: "family"
+          StatusCode: 200
+      
+      # Boundary test: exactly 65 years old
+      - when:
+          input:
+            Payload:
+              userId: "boundary-65"
+        response:
+          Payload:
+            age: 65
+            name: "Border User"
+            memberType: "standard"
+          StatusCode: 200
+      
+      # Boundary test: exactly 20 years old
+      - when:
+          input:
+            Payload:
+              userId: "boundary-20"
+        response:
+          Payload:
+            age: 20
+            name: "Adult User"
+            memberType: "standard"
+          StatusCode: 200
+      
+      # Boundary test: 19 years old
+      - when:
+          input:
+            Payload:
+              userId: "boundary-19"
+        response:
+          Payload:
+            age: 19
+            name: "Minor User"
+            memberType: "family"
+          StatusCode: 200
+      
+      # Default (no age data)
+      - default:
+          Payload:
+            age: null
+            name: "Unknown"
+            memberType: "unknown"
+          StatusCode: 200

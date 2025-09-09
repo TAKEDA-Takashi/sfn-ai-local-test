@@ -1,0 +1,126 @@
+{
+  "Comment": "Demonstrates Step Functions Variables usage with Assign field",
+  "StartAt": "InitializeUser",
+  "States": {
+    "InitializeUser": {
+      "Type": "Pass",
+      "Parameters": {
+        "userId.$": "$.userId",
+        "name.$": "$.name",
+        "userType.$": "$.userType",
+        "initialBalance.$": "$.balance"
+      },
+      "Assign": {
+        "userCreated.$": "$$.State.EnteredTime",
+        "processingStatus": "initialized",
+        "transactionCount": 0
+      },
+      "Next": "CalculateDiscount"
+    },
+    "CalculateDiscount": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "CalculateDiscountFunction",
+        "Payload": {
+          "userId.$": "$.userId",
+          "userType.$": "$.userType",
+          "balance.$": "$.initialBalance"
+        }
+      },
+      "ResultSelector": {
+        "discountRate.$": "$.Payload.discountRate",
+        "discountAmount.$": "$.Payload.discountAmount",
+        "eligibleForBonus.$": "$.Payload.eligibleForBonus"
+      },
+      "Assign": {
+        "discountCalculated.$": "$$.State.EnteredTime",
+        "processingStatus": "discount_calculated",
+        "calculationStep": 1,
+        "discountAmount.$": "$.discountAmount"
+      },
+      "Next": "CheckEligibility"
+    },
+    "CheckEligibility": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.eligibleForBonus",
+          "BooleanEquals": true,
+          "Next": "ProcessBonus"
+        }
+      ],
+      "Default": "ProcessRegular"
+    },
+    "ProcessBonus": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "ProcessBonusFunction",
+        "Payload": {
+          "userId.$": "$.userId",
+          "discountAmount.$": "$.discountAmount",
+          "originalBalance.$": "$.initialBalance"
+        }
+      },
+      "ResultSelector": {
+        "bonusAmount.$": "$.Payload.bonusAmount",
+        "newBalance.$": "$.Payload.newBalance"
+      },
+      "Assign": {
+        "bonusProcessed.$": "$$.State.EnteredTime",
+        "processingStatus": "bonus_applied",
+        "bonusAmount.$": "$.bonusAmount",
+        "transactionCount.$": "States.MathAdd($transactionCount, 1)",
+        "totalSavings.$": "States.MathAdd($discountAmount, $.bonusAmount)"
+      },
+      "Next": "GenerateReport"
+    },
+    "ProcessRegular": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "ProcessRegularFunction",
+        "Payload": {
+          "userId.$": "$.userId",
+          "discountAmount.$": "$.discountAmount",
+          "originalBalance.$": "$.initialBalance"
+        }
+      },
+      "ResultSelector": {
+        "newBalance.$": "$.Payload.newBalance"
+      },
+      "Assign": {
+        "regularProcessed.$": "$$.State.EnteredTime",
+        "processingStatus": "regular_applied",
+        "transactionCount.$": "States.MathAdd($transactionCount, 1)",
+        "totalSavings.$": "$discountAmount"
+      },
+      "Next": "GenerateReport"
+    },
+    "GenerateReport": {
+      "Type": "Pass",
+      "Parameters": {
+        "report": {
+          "userId.$": "$.userId",
+          "userName.$": "$.name",
+          "originalBalance.$": "$.initialBalance",
+          "finalBalance.$": "$.newBalance",
+          "totalSavings.$": "$totalSavings",
+          "processingStatus.$": "$processingStatus",
+          "transactionCount.$": "$transactionCount",
+          "timestamps": {
+            "userCreated.$": "$userCreated",
+            "discountCalculated.$": "$discountCalculated",
+            "finalProcessed.$": "$$.State.EnteredTime"
+          }
+        }
+      },
+      "Assign": {
+        "reportGenerated.$": "$$.State.EnteredTime",
+        "processingStatus": "completed"
+      },
+      "End": true
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "Comment": "The simplest state machine example",
+  "StartAt": "GetUserInfo",
+  "States": {
+    "GetUserInfo": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "GetUserFunction",
+        "Payload.$": "$"
+      },
+      "ResultSelector": {
+        "id.$": "$.Payload.id",
+        "name.$": "$.Payload.name",
+        "email.$": "$.Payload.email"
+      },
+      "ResultPath": "$.user",
+      "Next": "FormatOutput"
+    },
+    "FormatOutput": {
+      "Type": "Pass",
+      "Parameters": {
+        "message.$": "$.user.name",
+        "timestamp.$": "$$.State.EnteredTime"
+      },
+      "Next": "Complete"
+    },
+    "Complete": {
+      "Type": "Succeed"
+    }
+  }
+}

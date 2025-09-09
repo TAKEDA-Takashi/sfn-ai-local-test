@@ -1,0 +1,110 @@
+version: "1.0"
+name: "parallel-workflow-mock"
+description: "Mock configuration for Parallel state testing"
+
+# Common response templates
+templates:
+  price_2000: &price_2000
+    Payload:
+      totalPrice: 2000
+      breakdown:
+        subtotal: 2000
+        tax: 200
+    StatusCode: 200
+  
+  price_1000: &price_1000
+    Payload:
+      totalPrice: 1000
+      breakdown:
+        subtotal: 1000
+        tax: 100
+    StatusCode: 200
+
+  discount_2000: &discount_2000
+    Payload:
+      originalPrice: 2000
+      discountedPrice: 1800
+      discountRate: 0.9
+    StatusCode: 200
+
+mocks:
+  # Branch 1: Order validation
+  - state: "ValidateOrder"
+    type: "fixed"
+    response:
+      Payload:
+        valid: true
+        message: "Order validation successful"
+        timestamp: "2024-01-01T12:00:00Z"
+      StatusCode: 200
+
+  # Branch 2: Price calculation
+  - state: "CalculatePrice"
+    type: "conditional"
+    conditions:
+      # Lambda integration format (with Payload wrapper) condition matching
+      - when:
+          input:
+            Payload:
+              orderId: "order-001"
+        response: *price_2000
+      - when:
+          input:
+            Payload:
+              orderId: "order-fail"
+        response: *price_1000
+      # Also try partial matching (specific fields within Payload)
+      - when:
+          input:
+            Payload:
+              items:
+                - productId: "item-001"
+                  quantity: 2
+        response: *price_2000
+      - when:
+          input:
+            Payload:
+              customer:
+                id: "customer-123"
+        response: *price_2000
+      - default: *price_1000
+
+  # Branch 3: Inventory check
+  - state: "CheckInventory"
+    type: "conditional"
+    conditions:
+      - when:
+          input:
+            Payload:
+              orderId: "order-fail"
+        response:
+          Payload:
+            available: false
+            message: "Out of stock"
+            items: []
+          StatusCode: 200
+      
+      - default:
+          Payload:
+            available: true
+            message: "All items in stock"
+            items:
+              - productId: "item-001"
+                stock: 100
+          StatusCode: 200
+
+  # Discount calculation Lambda
+  - state: "ApplyDiscount"
+    type: "conditional"
+    conditions:
+      - when:
+          input:
+            Payload:
+              originalPrice: 2000
+        response: *discount_2000
+      - default:
+          Payload:
+            originalPrice: 1000
+            discountedPrice: 900
+            discountRate: 0.9
+          StatusCode: 200

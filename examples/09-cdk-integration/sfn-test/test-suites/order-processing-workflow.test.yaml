@@ -1,0 +1,169 @@
+version: "1.0"
+name: "Order Processing Workflow Tests"
+description: "Comprehensive test suite for order processing state machine"
+stateMachine: "order-processing-workflow"
+baseMock: "order-processing-workflow"
+assertions:
+  outputMatching: "partial"
+  pathMatching: "exact"
+testCases:
+  - name: "Process standard order"
+    description: "Test order processing without discount"
+    input:
+      orderId: "order-001"
+      customerId: "customer-456"
+      items:
+        - itemId: "item-1"
+          quantity: 2
+          price: 1500
+        - itemId: "item-2"
+          quantity: 1
+          price: 2000
+      totalAmount: 5000
+    expectedPath:
+      - "PrepareOrder"
+      - "ValidateOrder"
+      - "CheckOrderAmount"
+      - "ProcessItems"
+      - "WaitForProcessing"
+      - "ParallelProcessing"
+      - "OrderComplete"
+    # Verify ProcessItem state execution within Map
+    mapExpectations:
+      - state: "ProcessItems"
+        iterationCount: 2  # Process 2 items
+        iterationPaths:
+          all: ["ProcessItem"]  # Execute ProcessItem in all iterations
+    # Verify branch execution within Parallel
+    parallelExpectations:
+      - state: "ParallelProcessing"
+        branchCount: 2
+        branchPaths:
+          0: ["ProcessOrder"]
+          1: ["SendOrderEmail"]
+    timeout: 10000
+
+  - name: "Process high-value order with discount"
+    description: "Test order processing with discount calculation"
+    input:
+      orderId: "order-002"
+      customerId: "customer-789"
+      items:
+        - itemId: "item-3"
+          quantity: 3
+          price: 2000
+      totalAmount: 6000
+    expectedPath:
+      - "PrepareOrder"
+      - "ValidateOrder"
+      - "CheckOrderAmount"
+      - "CalculateDiscount"
+      - "ProcessItems"
+      - "WaitForProcessing"
+      - "ParallelProcessing"
+      - "OrderComplete"
+    # Verify ProcessItem state execution within Map
+    mapExpectations:
+      - state: "ProcessItems"
+        iterationCount: 1  # Process 1 item
+        iterationPaths:
+          all: ["ProcessItem"]
+    # Verify branch execution within Parallel
+    parallelExpectations:
+      - state: "ParallelProcessing"
+        branchCount: 2
+        branchPaths:
+          0: ["ProcessOrder"]
+          1: ["SendOrderEmail"]
+
+  # Additional test cases to cover all states
+  - name: "Complete order flow with wait and parallel"
+    description: "Test complete flow including wait and parallel states"
+    input:
+      orderId: "order-004"
+      customerId: "customer-111"
+      items:
+        - itemId: "item-4"
+          quantity: 1
+          price: 3000
+      totalAmount: 3000
+    expectedPath:
+      - "PrepareOrder"
+      - "ValidateOrder"
+      - "CheckOrderAmount"
+      - "ProcessItems"
+      - "WaitForProcessing"
+      - "ParallelProcessing"
+      - "OrderComplete"
+    mapExpectations:
+      - state: "ProcessItems"
+        iterationCount: 1
+        iterationPaths:
+          all: ["ProcessItem"]
+    parallelExpectations:
+      - state: "ParallelProcessing"
+        branchCount: 2
+        branchPaths:
+          0: ["ProcessOrder"]
+          1: ["SendOrderEmail"]
+    timeout: 10000
+  
+  - name: "High value order with complete flow"
+    description: "Test high value order with discount and complete flow"
+    input:
+      orderId: "order-005"
+      customerId: "customer-222"
+      items:
+        - itemId: "item-5"
+          quantity: 2
+          price: 3000
+      totalAmount: 6000
+    expectedPath:
+      - "PrepareOrder"
+      - "ValidateOrder"
+      - "CheckOrderAmount"
+      - "CalculateDiscount"
+      - "ProcessItems"
+      - "WaitForProcessing"
+      - "ParallelProcessing"
+      - "OrderComplete"
+    mapExpectations:
+      - state: "ProcessItems"
+        iterationCount: 1
+        iterationPaths:
+          all: ["ProcessItem"]
+    parallelExpectations:
+      - state: "ParallelProcessing"
+        branchCount: 2
+        branchPaths:
+          0: ["ProcessOrder"]
+          1: ["SendOrderEmail"]
+    timeout: 10000
+  
+  - name: "Handle validation failure"
+    description: "Test error handling when validation fails"
+    input:
+      orderId: "order-003"
+      customerId: "customer-999"
+      items:
+        - itemId: "invalid-item"
+          quantity: 0
+          price: 0
+      totalAmount: 0
+    expectedPath:
+      - "PrepareOrder"
+      - "ValidateOrder"
+      - "OrderFailed"
+    expectedError: "OrderProcessingError"
+    mockOverrides:
+      - state: "ValidateOrder"
+        type: "error"
+        error:
+          type: "ValidationError"
+          cause: "Invalid order data"
+
+settings:
+  timeout: 60000
+  parallel: false
+  stopOnFailure: false
+  verbose: false

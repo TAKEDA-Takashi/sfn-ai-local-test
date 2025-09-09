@@ -1,0 +1,225 @@
+version: "1.0"
+name: "JSONata Comprehensive Workflow Test Suite"
+description: "High-precision test suite for comprehensive JSONata workflow with variable system validation"
+stateMachine: "./workflow.asl.json"
+baseMock: "./mock.yaml"
+assertions:
+  outputMatching: "partial"
+  pathMatching: "exact"
+  
+testCases:
+  - name: "High value order processing"
+    description: "Test high-value order path (orderTotal > 1000) with complete variable validation"
+    input:
+      customer:
+        id: "cust-001"
+        firstName: "John"
+        lastName: "Doe"
+      items:
+        - id: "prod-001"
+          name: "Laptop"
+          price: 1200
+          quantity: 1
+        - id: "prod-002"
+          name: "Mouse"
+          price: 50
+          quantity: 2
+      source: "web"
+    expectedPath: ["CalculateOrderTotal", "ProcessOrder", "CheckOrderValue", "ProcessHighValueOrder", "FormatFinalOutput"]
+    expectedOutput:
+      summary:
+        customerName: "John Doe"
+        orderStatus: "high-value"
+        originalAmount: 1300
+        discount: 0.15
+        finalAmount: 1105
+        savings: 195
+      benefits: ["free-shipping", "priority-support", "loyalty-points"]
+      statistics:
+        itemCount: 2
+        averageItemPrice: 650
+    stateExpectations:
+      - state: "CalculateOrderTotal"
+        variables:
+          orderTotal: 1300
+          itemCount: 2
+          customerFullName: "John Doe"
+      - state: "ProcessOrder"
+        variables:
+          orderTotal: 1300
+          itemCount: 2
+          customerFullName: "John Doe"
+      - state: "CheckOrderValue"
+        variables:
+          orderTotal: 1300
+          itemCount: 2
+          customerFullName: "John Doe"
+
+  - name: "Standard value order processing"
+    description: "Test standard-value order path (100 < orderTotal <= 1000)"
+    input:
+      customer:
+        id: "cust-002"
+        firstName: "Jane"
+        lastName: "Smith"
+      items:
+        - id: "prod-003"
+          name: "Keyboard"
+          price: 150
+          quantity: 1
+        - id: "prod-004"
+          name: "Monitor"
+          price: 200
+          quantity: 1
+      source: "mobile"
+    expectedPath: ["CalculateOrderTotal", "ProcessOrder", "CheckOrderValue", "ProcessStandardOrder", "FormatFinalOutput"]
+    expectedOutput:
+      summary:
+        customerName: "Jane Smith"
+        orderStatus: "standard"
+        originalAmount: 350
+        discount: 0.05
+        finalAmount: 332.5
+        savings: 17.5
+      benefits: ["standard-shipping"]
+      statistics:
+        itemCount: 2
+        averageItemPrice: 175
+    stateExpectations:
+      - state: "CalculateOrderTotal"
+        variables:
+          orderTotal: 350
+          itemCount: 2
+          customerFullName: "Jane Smith"
+
+  - name: "Low value order processing"
+    description: "Test low-value order path (orderTotal <= 100)"
+    input:
+      customer:
+        id: "cust-003"
+        firstName: "Bob"
+        lastName: "Wilson"
+      items:
+        - id: "prod-005"
+          name: "Cable"
+          price: 25
+          quantity: 2
+      source: "api"
+    expectedPath: ["CalculateOrderTotal", "ProcessOrder", "CheckOrderValue", "ProcessLowValueOrder", "FormatFinalOutput"]
+    expectedOutput:
+      summary:
+        customerName: "Bob Wilson"
+        orderStatus: "low-value"
+        originalAmount: 50
+        discount: 0
+        finalAmount: 50
+        savings: 0
+      benefits: []
+      statistics:
+        itemCount: 1
+        averageItemPrice: 50
+    stateExpectations:
+      - state: "CalculateOrderTotal"
+        variables:
+          orderTotal: 50
+          itemCount: 1
+          customerFullName: "Bob Wilson"
+
+  - name: "Edge case: Single high-price item"
+    description: "Test with single expensive item exceeding high-value threshold"
+    input:
+      customer:
+        id: "cust-004"
+        firstName: "Alice"
+        lastName: "Johnson"
+      items:
+        - id: "prod-006"
+          name: "Premium Monitor"
+          price: 1500
+          quantity: 1
+      source: "partner"
+    expectedPath: ["CalculateOrderTotal", "ProcessOrder", "CheckOrderValue", "ProcessHighValueOrder", "FormatFinalOutput"]
+    expectedOutput:
+      summary:
+        customerName: "Alice Johnson"
+        orderStatus: "high-value"
+        originalAmount: 1500
+        discount: 0.15
+        finalAmount: 1275
+        savings: 225
+      benefits: ["free-shipping", "priority-support", "loyalty-points"]
+      statistics:
+        itemCount: 1
+        averageItemPrice: 1500
+    stateExpectations:
+      - state: "CalculateOrderTotal"
+        variables:
+          orderTotal: 1500
+          itemCount: 1
+          customerFullName: "Alice Johnson"
+
+  - name: "Boundary case: Exactly $1000"
+    description: "Test boundary condition - exactly $1000 should be standard (not high-value)"
+    input:
+      customer:
+        id: "cust-005"
+        firstName: "Michael"
+        lastName: "Brown"
+      items:
+        - id: "prod-007"
+          name: "Workstation"
+          price: 1000
+          quantity: 1
+      source: "web"
+    expectedPath: ["CalculateOrderTotal", "ProcessOrder", "CheckOrderValue", "ProcessStandardOrder", "FormatFinalOutput"]
+    expectedOutput:
+      summary:
+        customerName: "Michael Brown"
+        orderStatus: "standard"
+        originalAmount: 1000
+        discount: 0.05
+        finalAmount: 950
+        savings: 50
+      benefits: ["standard-shipping"]
+      statistics:
+        itemCount: 1
+        averageItemPrice: 1000
+    stateExpectations:
+      - state: "CalculateOrderTotal"
+        variables:
+          orderTotal: 1000
+          itemCount: 1
+          customerFullName: "Michael Brown"
+
+  - name: "Boundary case: Exactly $100"
+    description: "Test boundary condition - exactly $100 should be low-value (not standard)"
+    input:
+      customer:
+        id: "cust-006"
+        firstName: "Sarah"
+        lastName: "Davis"
+      items:
+        - id: "prod-008"
+          name: "Headphones"
+          price: 100
+          quantity: 1
+      source: "mobile"
+    expectedPath: ["CalculateOrderTotal", "ProcessOrder", "CheckOrderValue", "ProcessLowValueOrder", "FormatFinalOutput"]
+    expectedOutput:
+      summary:
+        customerName: "Sarah Davis"
+        orderStatus: "low-value"
+        originalAmount: 100
+        discount: 0
+        finalAmount: 100
+        savings: 0
+      benefits: []
+      statistics:
+        itemCount: 1
+        averageItemPrice: 100
+    stateExpectations:
+      - state: "CalculateOrderTotal"
+        variables:
+          orderTotal: 100
+          itemCount: 1
+          customerFullName: "Sarah Davis"

@@ -1,0 +1,87 @@
+version: "1.0"
+name: "map-workflow-test"
+description: "Map state iterative processing test"
+
+stateMachine: "./workflow.asl.json"
+baseMock: "./mock.yaml"
+
+testCases:
+  - name: "Electronics processing"
+    description: "Process electronics items with successful validation"
+    input:
+      category: "electronics"
+    expectedPath:
+      - "GetItemList"
+      - "ProcessItems"
+      - "SummarizeResults"
+    mapExpectations:
+      - state: "ProcessItems"
+        iterationCount: 3
+        iterationPaths:
+          pathMatching: "exact"
+          all: ["ValidateItem", "CheckValidation", "ProcessValidItem"]
+    mockOverrides:
+      - state: "ValidateItem"
+        type: "fixed"
+        response:
+          Payload:
+            isValid: true
+            reason: null
+          StatusCode: 200
+
+  - name: "Mixed valid and invalid items"
+    description: "Process items with both valid and invalid items to test error handling"
+    input:
+      category: "mixed"
+    expectedPath:
+      - "GetItemList"
+      - "ProcessItems"
+      - "SummarizeResults"
+    mapExpectations:
+      - state: "ProcessItems"
+        iterationCount: 3
+        iterationPaths:
+          samples:
+            0: ["ValidateItem", "CheckValidation", "HandleInvalidItem"]
+            1: ["ValidateItem", "CheckValidation", "ProcessValidItem"]
+            2: ["ValidateItem", "CheckValidation", "ProcessValidItem"]
+    mockOverrides:
+      - state: "ValidateItem"
+        type: "stateful"
+        responses:
+          - Payload:
+              isValid: false
+              reason: "Invalid product detected"
+            StatusCode: 200
+          - Payload:
+              isValid: true
+              reason: null
+            StatusCode: 200
+          - Payload:
+              isValid: true
+              reason: null
+            StatusCode: 200
+
+  - name: "Empty category"
+    description: "Process unknown category returning empty list"
+    input:
+      category: "unknown"
+    expectedOutput:
+      totalItems: 0
+      results: []
+      category: "unknown"
+      summary: "Processing complete"
+    expectedPath:
+      - "GetItemList"
+      - "ProcessItems"
+      - "SummarizeResults"
+    mapExpectations:
+      - state: "ProcessItems"
+        iterationCount: 0
+
+settings:
+  verbose: false
+
+assertions:
+  outputMatching: "partial"  # Allow additional fields in map results
+  pathMatching: "exact"

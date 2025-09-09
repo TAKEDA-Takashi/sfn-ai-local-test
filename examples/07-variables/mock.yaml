@@ -1,0 +1,49 @@
+version: "1.0"
+name: "variables-demo-mock"
+description: "Mock configuration for Variables/Assign demonstration with complete test coverage"
+mocks:
+  - state: "CalculateDiscount"
+    type: "conditional"
+    conditions:
+      - when:
+          input:
+            Payload:
+              userType: "premium"
+        response:
+          Payload:
+            discountRate: 0.2
+            discountAmount: 50
+            eligibleForBonus: true
+          StatusCode: 200
+      - when:
+          input:
+            Payload:
+              userType: "standard"
+        response:
+          Payload:
+            discountRate: 0.1
+            discountAmount: 20
+            eligibleForBonus: false
+          StatusCode: 200
+      - default:
+        response:
+          Payload:
+            discountRate: 0.05
+            discountAmount: 10
+            eligibleForBonus: false
+          StatusCode: 200
+  
+  - state: "ProcessBonus"
+    type: "fixed"
+    response:
+      Payload:
+        bonusAmount: 25
+        newBalance: 575
+      StatusCode: 200
+  
+  - state: "ProcessRegular"
+    type: "fixed"
+    response:
+      Payload:
+        newBalance: 480
+      StatusCode: 200

@@ -1,0 +1,87 @@
+{
+  "Comment": "Example of iterative processing using Map state",
+  "StartAt": "GetItemList",
+  "States": {
+    "GetItemList": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "GetItemListFunction",
+        "Payload": {
+          "category.$": "$.category"
+        }
+      },
+      "ResultPath": "$.itemList",
+      "Next": "ProcessItems"
+    },
+    "ProcessItems": {
+      "Type": "Map",
+      "ItemsPath": "$.itemList.Payload.items",
+      "MaxConcurrency": 2,
+      "ItemSelector": {
+        "item.$": "$$.Map.Item.Value",
+        "index.$": "$$.Map.Item.Index",
+        "category.$": "$.category"
+      },
+      "ItemProcessor": {
+        "StartAt": "ValidateItem",
+        "States": {
+          "ValidateItem": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "ValidateItemFunction",
+              "Payload.$": "$"
+            },
+            "ResultPath": "$.validation",
+            "Next": "CheckValidation"
+          },
+          "CheckValidation": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.validation.Payload.isValid",
+                "BooleanEquals": true,
+                "Next": "ProcessValidItem"
+              }
+            ],
+            "Default": "HandleInvalidItem"
+          },
+          "ProcessValidItem": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "ProcessItemFunction",
+              "Payload": {
+                "item.$": "$.item",
+                "action": "process"
+              }
+            },
+            "End": true
+          },
+          "HandleInvalidItem": {
+            "Type": "Pass",
+            "Parameters": {
+              "item.$": "$.item",
+              "status": "rejected",
+              "reason.$": "$.validation.Payload.reason"
+            },
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.processedItems",
+      "Next": "SummarizeResults"
+    },
+    "SummarizeResults": {
+      "Type": "Pass",
+      "Parameters": {
+        "totalItems.$": "States.ArrayLength($.processedItems)",
+        "results.$": "$.processedItems",
+        "category.$": "$.category",
+        "summary": "Processing complete"
+      },
+      "End": true
+    }
+  }
+}

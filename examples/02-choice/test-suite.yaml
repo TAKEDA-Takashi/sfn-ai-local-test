@@ -1,0 +1,122 @@
+version: "1.0"
+name: "choice-workflow-test"
+description: "Conditional branching test for Choice state"
+
+stateMachine: "./workflow.asl.json"
+baseMock: "./mock.yaml"
+
+testCases:
+  - name: "Premium senior classification (age >= 65 AND premium)"
+    description: "Test compound condition (And)"
+    input:
+      userId: "senior-premium-001"
+    expectedOutput:
+      category: "premium-senior"
+      discount: "50%"
+      userName: "Emily Davis"
+      benefits: ["free-shipping", "priority-support", "extra-discount"]
+    expectedPath:
+      - "GetUserAge"
+      - "CheckAge"
+      - "PremiumSeniorProcess"
+
+  - name: "Regular senior classification (age >= 65, standard member)"
+    input:
+      userId: "senior-001"
+    expectedOutput:
+      category: "senior"
+      discount: "30%"
+      userName: "Robert Johnson"
+      benefits: ["senior-discount"]
+    expectedPath:
+      - "GetUserAge"
+      - "CheckAge"
+      - "SeniorProcess"
+      
+  - name: "Adult classification (age >= 20, < 65)"
+    input:
+      userId: "adult-001"
+    expectedOutput:
+      category: "adult"
+      discount: "0%"
+      userName: "Michael Brown"
+      benefits: []
+    expectedPath:
+      - "GetUserAge"
+      - "CheckAge"
+      - "AdultProcess"
+      
+  - name: "Child classification (age < 20)"
+    input:
+      userId: "child-001"
+    expectedOutput:
+      category: "child"
+      discount: "50%"
+      userName: "Sarah Wilson"
+      benefits: ["child-discount", "parental-controls"]
+    expectedPath:
+      - "GetUserAge"
+      - "CheckAge"
+      - "ChildProcess"
+      
+  - name: "Boundary test: exactly 65 years old (senior)"
+    description: "Boundary value for NumericGreaterThanEquals 65, checking Choice condition priority"
+    input:
+      userId: "boundary-65"
+    expectedOutput:
+      category: "senior"
+      discount: "30%"
+      userName: "Border User"
+      benefits: ["senior-discount"]
+    expectedPath:
+      - "GetUserAge"
+      - "CheckAge"
+      - "SeniorProcess"
+      
+  - name: "Boundary test: exactly 20 years old (adult)"
+    description: "Boundary value for NumericGreaterThanEquals 20"
+    input:
+      userId: "boundary-20"
+    expectedOutput:
+      category: "adult"
+      discount: "0%"
+      userName: "Adult User"
+      benefits: []
+    expectedPath:
+      - "GetUserAge"
+      - "CheckAge"
+      - "AdultProcess"
+      
+  - name: "Boundary test: 19 years old (child)"
+    description: "Boundary value for NumericLessThan 20"
+    input:
+      userId: "boundary-19"
+    expectedOutput:
+      category: "child"
+      discount: "50%"
+      userName: "Minor User"
+      benefits: ["child-discount", "parental-controls"]
+    expectedPath:
+      - "GetUserAge"
+      - "CheckAge"
+      - "ChildProcess"
+      
+  - name: "Default processing (no age data)"
+    description: "Default processing when no conditions match"
+    input:
+      userId: "unknown-user"
+    expectedOutput:
+      category: "unknown"
+      error: "Age data not found"
+      userName: "Unknown"
+    expectedPath:
+      - "GetUserAge"
+      - "CheckAge"
+      - "UnknownAge"
+
+settings:
+  verbose: false
+  
+assertions:
+  outputMatching: "exact"
+  pathMatching: "exact"

@@ -1,0 +1,91 @@
+version: "1.0"
+name: "distributed-map-mock"
+description: "Mock configuration for Distributed Map state testing"
+
+# Common response templates
+templates:
+  batch_success: &batch_success
+    Payload:
+      processedCount: 5
+      successfulItems:
+        - id: "item-001"
+          status: "processed"
+          processedAt: "2024-01-01T12:00:00Z"
+        - id: "item-002"
+          status: "processed"
+          processedAt: "2024-01-01T12:00:01Z"
+        - id: "item-003"
+          status: "processed"
+          processedAt: "2024-01-01T12:00:02Z"
+        - id: "item-004"
+          status: "processed"
+          processedAt: "2024-01-01T12:00:03Z"
+        - id: "item-005"
+          status: "processed"
+          processedAt: "2024-01-01T12:00:04Z"
+      failedItems: []
+    StatusCode: 200
+
+  batch_partial_failure: &batch_partial_failure
+    Payload:
+      processedCount: 3
+      successfulItems:
+        - id: "item-001"
+          status: "processed"
+          processedAt: "2024-01-01T12:00:00Z"
+        - id: "item-002"
+          status: "processed"
+          processedAt: "2024-01-01T12:00:01Z"
+        - id: "item-003"
+          status: "processed"
+          processedAt: "2024-01-01T12:00:02Z"
+      failedItems:
+        - id: "item-004"
+          error: "Validation failed"
+        - id: "item-005"
+          error: "Processing timeout"
+    StatusCode: 200
+
+mocks:
+  # S3 data source (ItemReader mock)
+  - state: "ProcessLargeDataset"
+    type: "itemReader"
+    dataFile: "./test-data/products.json"  # External file for large dataset
+    # Optional: inline data can still be used for simple cases
+    # data: [...]
+
+  # Batch processing Lambda
+  - state: "ProcessBatch"
+    type: "conditional"
+    conditions:
+      # Normal processing scenario
+      - when:
+          input:
+            Payload:
+              batchInfo:
+                processingType: "distributed"
+        response: *batch_success
+      
+      # Partial failure scenario (for error handling testing)
+      - when:
+          input:
+            Payload:
+              items:
+                - id: "item-004"
+        response: *batch_partial_failure
+      
+      # Default success
+      - default: *batch_success
+
+  # CloudWatch Logs (AWS SDK integration mock)
+  - state: "LogSuccess"
+    type: "fixed"
+    response:
+      nextSequenceToken: "12345678901234567890123456789012345678901234567890123456"
+
+  # S3 ResultWriter (mock for putObject)
+  - state: "ProcessLargeDataset"
+    type: "fixed"
+    response:
+      ETag: "\"d41d8cd98f00b204e9800998ecf8427e\""
+      VersionId: "null"

@@ -1,0 +1,68 @@
+version: "1.0"
+name: "map-workflow-mock"
+description: "Mock configuration for Map state testing"
+
+mocks:
+  # Item list retrieval
+  - state: "GetItemList"
+    type: "conditional"
+    conditions:
+      - when:
+          input:
+            Payload:
+              category: "electronics"
+        response:
+          Payload:
+            items:
+              - id: "item-001"
+                name: "Smartphone"
+                price: 50000
+              - id: "item-002"
+                name: "Tablet"
+                price: 30000
+              - id: "item-003"
+                name: "Headphones"
+                price: 5000
+          StatusCode: 200
+      
+      - when:
+          input:
+            Payload:
+              category: "mixed"
+        response:
+          Payload:
+            items:
+              - id: "valid-001"
+                name: "Valid Product 1"
+                price: 1000
+              - id: "invalid-001" 
+                name: "Invalid Product"
+                price: -100
+              - id: "valid-002"
+                name: "Valid Product 2"
+                price: 2000
+          StatusCode: 200
+              
+      - default:
+          Payload:
+            items: []
+          StatusCode: 200
+
+  # Item validation (executed for each item within Map)
+  - state: "ValidateItem"
+    type: "fixed"
+    response:
+      Payload:
+        isValid: true
+        reason: null
+      StatusCode: 200
+
+  # Valid item processing
+  - state: "ProcessValidItem"
+    type: "fixed"
+    response:
+      Payload:
+        status: "processed"
+        processedAt: "2024-01-01T12:00:00Z"
+        result: "success"
+      StatusCode: 200

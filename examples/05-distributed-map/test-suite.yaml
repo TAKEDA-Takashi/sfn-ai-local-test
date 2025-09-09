@@ -1,0 +1,233 @@
+version: "1.0"
+name: "distributed-map-test"
+description: "Distributed Map state large-scale processing test"
+
+stateMachine: "./workflow.asl.json"
+baseMock: "./mock.yaml"
+
+testCases:
+  # Test with different data sources using mockOverrides
+  - name: "Large dataset processing"
+    description: "Process large dataset using Distributed Map with batching"
+    input:
+      dataSource:
+        bucket: "my-data-bucket"
+        key: "datasets/large-product-catalog.json"
+    expectedPath:
+      - "PrepareDataSource"
+      - "ProcessLargeDataset"
+      - "SummarizeResults"
+    mapExpectations:
+      - state: "ProcessLargeDataset"
+        iterationCount: 1  # 10 items in 1 batch (MaxItemsPerBatch: 10)
+        # Also verify internal ItemProcessor paths
+        iterationPaths:
+          - ["ProcessBatch", "ValidateResults", "LogSuccess"]  # Path when processedCount > 0
+    stateExpectations:
+      - state: "PrepareDataSource"
+        output:
+          dataSource:
+            bucket: "my-data-bucket"
+            key: "datasets/large-product-catalog.json"
+
+  - name: "Small dataset processing"
+    description: "Process smaller dataset to verify basic functionality (default 10 items)"
+    input:
+      dataSource:
+        bucket: "my-data-bucket"
+        key: "datasets/small-sample.json"
+    expectedOutput:
+      status: "completed"
+    expectedPath:
+      - "PrepareDataSource"
+      - "ProcessLargeDataset"
+      - "SummarizeResults"
+    mapExpectations:
+      - state: "ProcessLargeDataset"
+        iterationCount: 1  # 10 items in 1 batch (MaxItemsPerBatch: 10)
+
+  - name: "Medium dataset with multiple batches"
+    description: "Process 25 items to test multiple batch iterations"
+    input:
+      dataSource:
+        bucket: "my-data-bucket"
+        key: "datasets/medium-catalog.json"
+    mockOverrides:
+      - state: "ProcessLargeDataset"
+        type: "itemReader"
+        dataFile: "./test-data/products-25.json"  # Override to use 25 items
+    expectedPath:
+      - "PrepareDataSource"
+      - "ProcessLargeDataset"
+      - "SummarizeResults"
+    mapExpectations:
+      - state: "ProcessLargeDataset"
+        iterationCount: 3  # 25 items -> 3 batches (10 + 10 + 5 items per batch)
+
+  - name: "Batch processing with different responses"
+    description: "Simulate different batch processing patterns through mock responses"
+    input:
+      dataSource:
+        bucket: "my-data-bucket"
+        key: "datasets/products.json"
+    mockOverrides:
+      - state: "ProcessLargeDataset"
+        type: "itemReader"
+        dataFile: "./test-data/products.json"
+      # Override batch processing to simulate multiple smaller batches
+      - state: "ProcessBatch"
+        type: "stateful"
+        responses:
+          - Payload:
+              processedCount: 5
+              batchId: "batch-001"
+              successfulItems: ["item-001", "item-002", "item-003", "item-004", "item-005"]
+            StatusCode: 200
+          - Payload:
+              processedCount: 5
+              batchId: "batch-002"
+              successfulItems: ["item-006", "item-007", "item-008", "item-009", "item-010"]
+            StatusCode: 200
+    expectedPath:
+      - "PrepareDataSource"
+      - "ProcessLargeDataset"
+      - "SummarizeResults"
+    mapExpectations:
+      - state: "ProcessLargeDataset"
+        iterationCount: 1  # 10 items in 1 batch (MaxItemsPerBatch: 10)
+
+  - name: "Error handling in batch processing"
+    description: "Test error handling with partial batch failures"
+    input:
+      dataSource:
+        bucket: "my-data-bucket"
+        key: "datasets/mixed-quality.json"
+    mockOverrides:
+      - state: "ProcessBatch"
+        type: "conditional"
+        conditions:
+          # First batch succeeds
+          - when:
+              input:
+                Payload:
+                  batchInfo:
+                    batchSize: 10
+            response:
+              Payload:
+                processedCount: 8
+                successfulItems: ["item-001", "item-002", "item-003", "item-004", "item-005", "item-006", "item-007", "item-008"]
+                failedItems: ["item-009", "item-010"]
+              StatusCode: 200
+          # Simulate error for specific conditions
+          - when:
+              input:
+                Payload:
+                  items:
+                    - id: "invalid-item"
+            response:
+              FunctionError: "Unhandled"
+              Payload:
+                errorType: "ValidationError"
+                errorMessage: "Invalid item format"
+              StatusCode: 200
+          # Default response
+          - default:
+              Payload:
+                processedCount: 5
+                successfulItems: ["item-001", "item-002", "item-003", "item-004", "item-005"]
+                failedItems: []
+              StatusCode: 200
+    expectedPath:
+      - "PrepareDataSource"
+      - "ProcessLargeDataset"
+      - "SummarizeResults"
+    mapExpectations:
+      - state: "ProcessLargeDataset"
+        iterationCount: 1
+        # Verify path when error occurs (first condition has processedCount: 8 > 0, so goes to LogSuccess)
+        iterationPaths:
+          - ["ProcessBatch", "ValidateResults", "LogSuccess"]
+    # Test that the system handles errors gracefully
+    expectedOutput:
+      status: "completed"  # Should still complete even with some failures
+
+  - name: "Empty dataset handling"
+    description: "Test behavior with empty data source"
+    input:
+      dataSource:
+        bucket: "my-data-bucket"
+        key: "datasets/empty.json"
+    mockOverrides:
+      - state: "ProcessLargeDataset"
+        type: "itemReader"
+        data: []  # Empty array
+    expectedPath:
+      - "PrepareDataSource"
+      - "ProcessLargeDataset"
+      - "SummarizeResults"
+    # Empty dataset should result in 0 iterations (AWS behavior)
+    mapExpectations:
+      - state: "ProcessLargeDataset"
+        iterationCount: 0  # No iterations for empty dataset
+    expectedOutput:
+      status: "completed"
+
+  - name: "Empty batch processing path"
+    description: "Test LogEmptyBatch path when processedCount is 0"
+    input:
+      dataSource:
+        bucket: "my-data-bucket"
+        key: "datasets/sample.json"
+    mockOverrides:
+      - state: "ProcessBatch"
+        type: "fixed"
+        response:
+          Payload:
+            processedCount: 0  # This triggers LogEmptyBatch path
+            successfulItems: []
+            failedItems: []
+          StatusCode: 200
+    expectedPath:
+      - "PrepareDataSource"
+      - "ProcessLargeDataset"
+      - "SummarizeResults"
+    mapExpectations:
+      - state: "ProcessLargeDataset"
+        iterationCount: 1
+        # Verify path when processedCount: 0
+        iterationPaths:
+          - ["ProcessBatch", "ValidateResults", "LogEmptyBatch"]
+    expectedOutput:
+      status: "completed"
+
+  - name: "Batch error handling path"
+    description: "Test HandleBatchError path when Lambda function fails"
+    input:
+      dataSource:
+        bucket: "my-data-bucket"
+        key: "datasets/error-test.json"
+    mockOverrides:
+      - state: "ProcessBatch"
+        type: "error"
+        error:
+          type: "States.TaskFailed"
+          cause: "Lambda function execution failed"
+    expectedPath:
+      - "PrepareDataSource"
+      - "ProcessLargeDataset"
+      - "SummarizeResults"
+    mapExpectations:
+      - state: "ProcessLargeDataset"
+        iterationCount: 1
+        # Error is caught and transitions to HandleBatchError
+        iterationPaths:
+          - ["ProcessBatch", "HandleBatchError"]
+    expectedOutput:
+      status: "completed"
+
+settings:
+  verbose: false
+
+assertions:
+  outputMatching: "partial"  # Allow dynamic fields like executionArn, timestamps
+  pathMatching: "exact"

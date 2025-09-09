@@ -1,0 +1,13 @@
+version: "1.0"
+name: "simple-workflow-mock"
+description: "Mock configuration for simple workflow"
+
+mocks:
+  - state: "GetUserInfo"
+    type: "fixed"
+    response:
+      Payload:
+        id: "user-123"
+        name: "John Smith"
+        email: "john@example.com"
+      StatusCode: 200

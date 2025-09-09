@@ -1,0 +1,35 @@
+{
+  "name": "cdk-sfn-test-example",
+  "version": "1.0.0",
+  "description": "CDK Step Functions example with sfn-test integration",
+  "bin": {
+    "app": "bin/app.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "extract-asl": "./extract-asl.sh",
+    "test:sfn": "sfn-test test --suite test-suites/payment-test-suite.yaml",
+    "test:sfn:verbose": "sfn-test test --suite test-suites/payment-test-suite.yaml --verbose",
+    "test:all": "npm test && npm run test:sfn",
+    "clean": "rm -rf cdk.out extracted-asl test-results"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "20.11.30",
+    "aws-cdk": "2.133.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.4.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.133.0",
+    "constructs": "^10.3.0",
+    "source-map-support": "^0.5.21"
+  }
+}

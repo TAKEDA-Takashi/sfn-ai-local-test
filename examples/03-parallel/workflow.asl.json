@@ -1,0 +1,106 @@
+{
+  "Comment": "Example of parallel processing using Parallel state",
+  "StartAt": "PrepareData",
+  "States": {
+    "PrepareData": {
+      "Type": "Pass",
+      "Parameters": {
+        "orderId.$": "$.orderId",
+        "items.$": "$.items",
+        "customer.$": "$.customer"
+      },
+      "Next": "ProcessInParallel"
+    },
+    "ProcessInParallel": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "ValidateOrder",
+          "States": {
+            "ValidateOrder": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "ValidateOrderFunction",
+                "Payload.$": "$"
+              },
+              "ResultSelector": {
+                "valid.$": "$.Payload.valid",
+                "message.$": "$.Payload.message",
+                "timestamp.$": "$.Payload.timestamp"
+              },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "CalculatePrice",
+          "States": {
+            "CalculatePrice": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "CalculatePriceFunction",
+                "Payload.$": "$"
+              },
+              "ResultSelector": {
+                "totalPrice.$": "$.Payload.totalPrice",
+                "breakdown.$": "$.Payload.breakdown"
+              },
+              "Next": "ApplyDiscount"
+            },
+            "ApplyDiscount": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "ApplyDiscountFunction",
+                "Payload": {
+                  "originalPrice.$": "$.totalPrice",
+                  "discountRate": 0.9
+                }
+              },
+              "ResultSelector": {
+                "originalPrice.$": "$.Payload.originalPrice",
+                "discountedPrice.$": "$.Payload.discountedPrice",
+                "discountRate.$": "$.Payload.discountRate"
+              },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "CheckInventory",
+          "States": {
+            "CheckInventory": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "CheckInventoryFunction",
+                "Payload.$": "$"
+              },
+              "ResultSelector": {
+                "available.$": "$.Payload.available",
+                "message.$": "$.Payload.message",
+                "items.$": "$.Payload.items"
+              },
+              "End": true
+            }
+          }
+        }
+      ],
+      "ResultPath": "$.parallelResults",
+      "Next": "AggregateResults"
+    },
+    "AggregateResults": {
+      "Type": "Pass",
+      "Parameters": {
+        "orderId.$": "$.orderId",
+        "validation.$": "$.parallelResults[0]",
+        "pricing.$": "$.parallelResults[1]",
+        "inventory.$": "$.parallelResults[2]",
+        "status": "processed"
+      },
+      "End": true
+    }
+  }
+}

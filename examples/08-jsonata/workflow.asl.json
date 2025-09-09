@@ -1,0 +1,81 @@
+{
+  "Comment": "Comprehensive JSONata demonstration workflow",
+  "StartAt": "CalculateOrderTotal",
+  "QueryLanguage": "JSONata",
+  "States": {
+    "CalculateOrderTotal": {
+      "Type": "Pass",
+      "Comment": "JSONata Pass state with Assign for variable storage",
+      "Assign": {
+        "orderTotal": "{% $sum($states.input.items.(price * quantity)) %}",
+        "itemCount": "{% $count($states.input.items) %}",
+        "customerFullName": "{% $states.input.customer.firstName & ' ' & $states.input.customer.lastName %}"
+      },
+      "Output": "{% $merge([$states.input, {'calculatedTotal': $orderTotal, 'totalItems': $itemCount}]) %}",
+      "Next": "ProcessOrder"
+    },
+    "ProcessOrder": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Comment": "Task state with JSONata Arguments transformation",
+      "Arguments": {
+        "FunctionName": "ProcessOrderFunction",
+        "Payload": {
+          "orderId": "{% $uuid() %}",
+          "customerId": "{% $states.input.customer.id %}",
+          "customerName": "{% $customerFullName %}",
+          "orderTotal": "{% $orderTotal %}",
+          "itemCount": "{% $itemCount %}",
+          "items": "{% $states.input.items ~> |$|{'productId': $.id, 'productName': $.name, 'unitPrice': $.price, 'quantity': $.quantity, 'subtotal': $.price * $.quantity}| %}",
+          "orderDate": "{% $now() %}",
+          "metadata": {
+            "source": "{% $states.input.source %}",
+            "sessionId": "{% $hash($states.input.customer.id & $string($now())) %}",
+            "processingNode": "{% $states.context.Execution.Name %}"
+          }
+        }
+      },
+      "Output": "{% $states.result.Payload %}",
+      "Next": "CheckOrderValue"
+    },
+    "CheckOrderValue": {
+      "Type": "Choice",
+      "Comment": "Choice state with JSONata Condition",
+      "Choices": [
+        {
+          "Condition": "{% $orderTotal > 1000 %}",
+          "Next": "ProcessHighValueOrder"
+        },
+        {
+          "Condition": "{% $orderTotal > 100 %}",
+          "Next": "ProcessStandardOrder"
+        }
+      ],
+      "Default": "ProcessLowValueOrder"
+    },
+    "ProcessHighValueOrder": {
+      "Type": "Pass",
+      "Comment": "Process high-value orders with special benefits",
+      "Output": "{% { 'orderId': $states.input.orderId, 'status': 'high-value', 'benefits': ['free-shipping', 'priority-support', 'loyalty-points'], 'discount': 0.15, 'finalAmount': $round($orderTotal * 0.85, 2), 'estimatedDelivery': $fromMillis($millis() + 86400000, '[Y0001]-[M01]-[D01]') } %}",
+      "Next": "FormatFinalOutput"
+    },
+    "ProcessStandardOrder": {
+      "Type": "Pass",
+      "Comment": "Process standard orders",
+      "Output": "{% { 'orderId': $states.input.orderId, 'status': 'standard', 'benefits': ['standard-shipping'], 'discount': 0.05, 'finalAmount': $round($orderTotal * 0.95, 2), 'estimatedDelivery': $fromMillis($millis() + 259200000, '[Y0001]-[M01]-[D01]') } %}",
+      "Next": "FormatFinalOutput"
+    },
+    "ProcessLowValueOrder": {
+      "Type": "Pass",
+      "Comment": "Process low-value orders",
+      "Output": "{% { 'orderId': $states.input.orderId, 'status': 'low-value', 'benefits': [], 'discount': 0, 'finalAmount': $orderTotal, 'estimatedDelivery': $fromMillis($millis() + 432000000, '[Y0001]-[M01]-[D01]') } %}",
+      "Next": "FormatFinalOutput"
+    },
+    "FormatFinalOutput": {
+      "Type": "Pass",
+      "Comment": "Format the final output using various JSONata functions",
+      "Output": "{% { 'summary': { 'customerName': $customerFullName, 'orderStatus': $states.input.status, 'originalAmount': $orderTotal, 'discount': $states.input.discount, 'finalAmount': $states.input.finalAmount, 'savings': $round($orderTotal - $states.input.finalAmount, 2) }, 'benefits': $states.input.benefits, 'statistics': { 'itemCount': $itemCount, 'averageItemPrice': $round($orderTotal / $itemCount, 2) } } %}",
+      "End": true
+    }
+  }
+}

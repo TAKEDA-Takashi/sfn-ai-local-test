@@ -1,0 +1,132 @@
+version: "1.0"
+name: "order-processing-mock"
+description: "Mock configuration for complete test coverage"
+mocks:
+  # ValidateOrder response - wrapped in Payload for Lambda integration
+  - state: "ValidateOrder"
+    type: "conditional"
+    conditions:
+      - when:
+          input:
+            Payload:
+              orderId: "order-001"
+        response:
+          Payload:
+            orderId: "order-001"
+            customerId: "customer-456"
+            items:
+              - itemId: "item-1"
+                quantity: 2
+                price: 1500
+              - itemId: "item-2"
+                quantity: 1
+                price: 2000
+            totalAmount: 5000
+            isValid: true
+          StatusCode: 200
+      - when:
+          input:
+            Payload:
+              orderId: "order-002"
+        response:
+          Payload:
+            orderId: "order-002"
+            customerId: "customer-789"
+            items:
+              - itemId: "item-3"
+                quantity: 3
+                price: 2000
+            totalAmount: 6000
+            isValid: true
+          StatusCode: 200
+      - when:
+          input:
+            Payload:
+              orderId: "order-004"
+        response:
+          Payload:
+            orderId: "order-004"
+            customerId: "customer-111"
+            items:
+              - itemId: "item-4"
+                quantity: 1
+                price: 3000
+            totalAmount: 3000
+            isValid: true
+          StatusCode: 200
+      - when:
+          input:
+            Payload:
+              orderId: "order-005"
+        response:
+          Payload:
+            orderId: "order-005"
+            customerId: "customer-222"
+            items:
+              - itemId: "item-5"
+                quantity: 2
+                price: 3000
+            totalAmount: 6000
+            isValid: true
+          StatusCode: 200
+      - default:
+          Payload:
+            orderId: "test-order"
+            customerId: "test-customer"
+            items:
+              - itemId: "test-item"
+                quantity: 1
+                price: 100
+            totalAmount: 100
+            isValid: true
+          StatusCode: 200
+  
+  - state: "CalculateDiscount"
+    type: "conditional"
+    conditions:
+      - when:
+          input:
+            Payload:
+              totalAmount: 6000
+        response:
+          Payload:
+            discountAmount: 600
+            discountRate: 0.1
+            finalAmount: 5400
+            originalAmount: 6000
+          StatusCode: 200
+      - default:
+          Payload:
+            discountAmount: 0
+            discountRate: 0
+            finalAmount: 5000
+            originalAmount: 5000
+          StatusCode: 200
+  
+  - state: "ProcessOrder"
+    type: "fixed"
+    response:
+      Payload:
+        orderId: "order-123"
+        status: "processed"
+        processedAt: "2024-01-01T12:00:00Z"
+        trackingNumber: "TRACK-789"
+      StatusCode: 200
+  
+  - state: "SendOrderEmail"
+    type: "fixed"
+    response:
+      Payload:
+        emailId: "email-abc-123"
+        status: "sent"
+        sentAt: "2024-01-01T12:00:05Z"
+      StatusCode: 200
+  
+  # Mock for ProcessItem state inside Map
+  - state: "ProcessItem"
+    type: "fixed"
+    response:
+      itemId: "processed-item"
+      quantity: 1
+      price: 1000
+      status: "completed"

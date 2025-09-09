@@ -1,0 +1,99 @@
+version: "1.0"
+name: "error-handling-test"
+description: "Demonstrates key Step Functions error handling patterns"
+
+stateMachine: "./workflow.asl.json"
+baseMock: "./mock.yaml"
+
+testCases:
+  # 1. Happy Path - No errors
+  - name: "Successful transaction"
+    description: "Test normal transaction processing without any errors"
+    input:
+      transactionId: "tx-success-001"
+      amount: 100
+      type: "transfer"
+    expectedPath:
+      - "ProcessTransaction"
+      - "NotifySuccess"
+    expectedOutput:
+      status: "success"
+      message: "Transaction completed successfully"
+
+  # 2. Specific Error Handling - InsufficientFunds
+  - name: "Insufficient funds error"
+    description: "Test specific error handling for insufficient funds"
+    input:
+      transactionId: "tx-insufficient-001"
+      amount: 10000
+      type: "insufficient_funds"  # Matches conditional mock condition
+    expectedPath:
+      - "ProcessTransaction"
+      - "HandleInsufficientFunds"
+    expectedOutput:
+      status: "failed"
+      errorType: "InsufficientFunds"
+
+  # 3. Different Specific Error - Validation
+  - name: "Validation error"
+    description: "Test validation error handling"
+    input:
+      transactionId: "tx-invalid-001"
+      amount: -50
+      type: "invalid"  # Matches ValidationError condition
+    expectedPath:
+      - "ProcessTransaction"
+      - "HandleValidationError"
+    expectedOutput:
+      status: "failed"
+      errorType: "Validation"
+
+  # 4. Catch-All Error Handling
+  - name: "Unexpected error"
+    description: "Test catch-all error handling for unknown errors"
+    input:
+      transactionId: "tx-unknown-001"
+      amount: 75
+      type: "system_error"  # Matches States.TaskFailed condition
+    expectedPath:
+      - "ProcessTransaction"
+      - "HandleGeneralError"
+    expectedOutput:
+      status: "failed"
+      errorType: "General"
+
+  # 5. Retry Mechanism - Shows automatic retry before success
+  - name: "Temporary failure with retry"
+    description: "Test automatic retry mechanism for recoverable errors"
+    input:
+      transactionId: "tx-retry-001"
+      amount: 200
+      type: "transfer"  # Uses default case, but overridden by mockOverrides
+    mockOverrides:
+      - state: "ProcessTransaction"
+        type: "stateful"
+        responses:
+          # First call fails with retryable error
+          - error:
+              type: "States.TaskFailed"
+              cause: "Temporary network timeout"
+          # Second call (retry) succeeds
+          - Payload:
+              status: "completed"
+              transactionId: "tx-retry-001"
+              processedAt: "2024-01-01T12:00:30Z"
+              retryCount: 1
+            StatusCode: 200
+    expectedPath:
+      - "ProcessTransaction"
+      - "NotifySuccess"
+    expectedOutput:
+      status: "success"
+      message: "Transaction completed successfully"
+
+settings:
+  verbose: false
+
+assertions:
+  outputMatching: "partial"
+  pathMatching: "exact"

@@ -1,0 +1,64 @@
+version: "1.0"
+name: "variables-workflow-test-suite"
+description: "Test suite for Variables/Assign demonstration with complete coverage"
+stateMachine: "./workflow.asl.json"
+baseMock: "./mock.yaml"
+testCases:
+  - name: "Premium user with bonus path"
+    description: "Tests premium user flow through bonus processing branch"
+    input:
+      userId: "user-001"
+      name: "Alice Johnson"
+      userType: "premium"
+      balance: 500
+    expectedPath:
+      - "InitializeUser"
+      - "CalculateDiscount"
+      - "CheckEligibility"
+      - "ProcessBonus"
+      - "GenerateReport"
+    stateExpectations:
+      - state: "InitializeUser"
+        variables:
+          processingStatus: "initialized"
+          transactionCount: 0
+      - state: "CalculateDiscount"
+        variables:
+          processingStatus: "discount_calculated"
+          calculationStep: 1
+          discountAmount: 50
+      - state: "ProcessBonus"
+        variables:
+          processingStatus: "bonus_applied"
+          bonusAmount: 25
+          transactionCount: 1
+          totalSavings: 75
+
+  - name: "Standard user with regular path"
+    description: "Tests standard user flow through regular processing branch"
+    input:
+      userId: "user-002"
+      name: "Bob Smith"
+      userType: "standard"
+      balance: 500
+    expectedPath:
+      - "InitializeUser"
+      - "CalculateDiscount"
+      - "CheckEligibility"
+      - "ProcessRegular"
+      - "GenerateReport"
+    stateExpectations:
+      - state: "InitializeUser"
+        variables:
+          processingStatus: "initialized"
+          transactionCount: 0
+      - state: "CalculateDiscount"
+        variables:
+          processingStatus: "discount_calculated"
+          calculationStep: 1
+          discountAmount: 20
+      - state: "ProcessRegular"
+        variables:
+          processingStatus: "regular_applied"
+          transactionCount: 1
+          totalSavings: 20

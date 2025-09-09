@@ -1,0 +1,43 @@
+version: "1.0"
+name: "error-handling-mock"
+description: "Simple mock configuration demonstrating error handling patterns"
+
+mocks:
+  # Conditional mock to test all error handling paths
+  - state: "ProcessTransaction"
+    type: "conditional"
+    conditions:
+      # Test InsufficientFundsError
+      - when:
+          input:
+            Payload:
+              type: "insufficient_funds"
+        error:
+          type: "InsufficientFundsError"
+          cause: "Account balance is insufficient for transaction"
+      
+      # Test ValidationError
+      - when:
+          input:
+            Payload:
+              type: "invalid"
+        error:
+          type: "ValidationError"
+          cause: "Transaction validation failed"
+      
+      # Test generic error (States.TaskFailed)
+      - when:
+          input:
+            Payload:
+              type: "system_error"
+        error:
+          type: "States.TaskFailed"
+          cause: "System processing error"
+      
+      # Default successful case
+      - default:
+          Payload:
+            status: "completed"
+            transactionId: "tx-12345"
+            processedAt: "2024-01-01T12:00:00Z"
+          StatusCode: 200

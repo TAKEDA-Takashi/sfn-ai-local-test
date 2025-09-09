@@ -1,0 +1,23 @@
+# Include sfn-test config (override parent gitignore)
+!sfn-test.config.yaml
+
+# sfn-test work directory (except extracted ASL)
+.sfn-test/*
+!.sfn-test/extracted/
+.sfn-test/extracted/*
+!.sfn-test/extracted/order-processing-workflow.asl.json
+
+# CDK output (except specific template)
+cdk.out/*
+!cdk.out/OrderProcessingStack.template.json
+
+# Environment variables
+.env
+
+# Node modules
+node_modules/
+
+# Build outputs
+*.js
+*.d.ts
+*.js.map

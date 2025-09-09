@@ -1,0 +1,14 @@
+version: "1.0"
+name: "jsonata-optimized-mock"
+description: "Data flow analysis optimized mock configuration"
+mocks:
+  - state: "ProcessOrder"
+    type: "fixed"
+    description: "Fixed mock for ProcessOrder (output not used in subsequent logic)"
+    response:
+      Payload:
+        id: "enhanced-generated-id"
+        status: "processed"
+        timestamp: "2025-01-29T13:20:00.000Z"
+      StatusCode: 200
+      ExecutedVersion: "$LATEST"

@@ -80,16 +80,17 @@ describe('Parallel State Coverage Bug', () => {
 
     const coverage = coverageTracker.getCoverage()
 
-    // All states should be covered
-    expect(coverage.states.covered).toBe(3) // ParallelState + Branch1Task + Branch2Task
-    expect(coverage.states.percentage).toBe(100)
+    // Top level: 1 state (ParallelState only)
+    expect(coverage.topLevel.total).toBe(1)
+    expect(coverage.topLevel.covered).toBe(1)
+    expect(coverage.topLevel.percentage).toBe(100)
 
-    // Check nested coverage
-    expect(coverage.nestedCoverage).toBeDefined()
-    expect(coverage.nestedCoverage?.['ParallelState[0]']).toBeDefined()
-    expect(coverage.nestedCoverage?.['ParallelState[0]'].covered).toBe(1)
-    expect(coverage.nestedCoverage?.['ParallelState[1]']).toBeDefined()
-    expect(coverage.nestedCoverage?.['ParallelState[1]'].covered).toBe(1)
+    // Check nested coverage for parallel branches
+    expect(coverage.nested).toBeDefined()
+    expect(coverage.nested['ParallelState[0]']).toBeDefined()
+    expect(coverage.nested['ParallelState[0]'].covered).toBe(1)
+    expect(coverage.nested['ParallelState[1]']).toBeDefined()
+    expect(coverage.nested['ParallelState[1]'].covered).toBe(1)
   })
 
   it('should debug actual branch execution', async () => {

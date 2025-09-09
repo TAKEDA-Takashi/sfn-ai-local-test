@@ -57,7 +57,6 @@ function createTestGeneratorAdapter(
       options?.mockFile as string | undefined,
       options?.aslFile as string | undefined,
       options?.outputPath as string | undefined,
-      options?.verbose as boolean | undefined,
     )
   }
 }
@@ -272,7 +271,6 @@ export async function generateCommand(
                     mockPath,
                     aslPath,
                     currentDefaultOutputPath,
-                    options.verbose,
                   )
                 }
                 break
@@ -513,7 +511,6 @@ export async function generateCommand(
             mockPath,
             aslPath,
             outputPath,
-            options.verbose,
           )
         }
         break

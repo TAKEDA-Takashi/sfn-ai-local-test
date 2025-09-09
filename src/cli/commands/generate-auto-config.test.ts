@@ -125,7 +125,6 @@ describe('generateCommand - auto config resolution', () => {
         'my-workflow.mock.yaml', // mockPathはフルパスではなくファイル名のみ
         'my-workflow.asl.json',
         './tests/my-workflow.test.yaml',
-        undefined, // verbose
       )
       expect(mockedWriteFileSync).toHaveBeenCalledWith(
         './tests/my-workflow.test.yaml',

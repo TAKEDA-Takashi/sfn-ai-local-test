@@ -78,7 +78,7 @@ testCases:
     )
 
     // Test hasNameBasedConfig directly
-    const hasConfig = await hasNameBasedConfig('order-processing-workflow')
+    const hasConfig = hasNameBasedConfig('order-processing-workflow')
     expect(hasConfig).toBe(true)
 
     // Should convert to name-based references

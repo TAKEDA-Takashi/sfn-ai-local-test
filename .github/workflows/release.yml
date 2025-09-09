@@ -60,7 +60,7 @@ jobs:
         if: steps.version.outputs.bump != 'none'
         id: bump
         run: |
-          npm version ${{ steps.version.outputs.bump }} -m "chore: release %s [skip ci]"
+          npm version ${{ steps.version.outputs.bump }} -m "chore: release %s"
           VERSION="v$(node -p "require('./package.json').version")"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           

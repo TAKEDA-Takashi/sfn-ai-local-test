@@ -171,3 +171,7 @@ Issues and Pull Requests are welcome!
 ## 📄 License
 
 MIT
+
+---
+
+*Initial release v1.0.0*

@@ -1,0 +1,108 @@
+/**
+ * Generates test data files for ItemReader mocks
+ */
+
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import * as yaml from 'js-yaml'
+import type { MapState, StateMachine } from '../../types/asl'
+import type { MockConfig } from '../../types/mock'
+import { analyzeItemReaders, generateSampleData, type ItemReaderInfo } from './item-reader-analyzer'
+import { findStates } from './state-traversal'
+
+export interface TestDataFile {
+  filename: string
+  path: string
+  content: string
+  format: string
+}
+
+/**
+ * Generates test data files for DistributedMap ItemReaders
+ */
+export function generateTestDataFiles(
+  stateMachine: StateMachine,
+  mockYaml: string,
+): TestDataFile[] {
+  const generatedFiles: TestDataFile[] = []
+
+  // Analyze ItemReaders in the state machine
+  const itemReaders = analyzeItemReaders(stateMachine)
+  if (itemReaders.length === 0) {
+    return generatedFiles
+  }
+
+  // Parse the mock YAML to check if ItemReader mocks are using dataFile
+  let mockConfig: {
+    mocks?: Array<{ state: string; type: string; dataFile?: string; dataFormat?: string }>
+  }
+  try {
+    mockConfig = yaml.load(mockYaml) as MockConfig
+    if (!mockConfig || typeof mockConfig !== 'object') {
+      return generatedFiles
+    }
+  } catch {
+    return generatedFiles
+  }
+
+  // Ensure test-data directory exists
+  const testDataDir = './sfn-test/test-data'
+  if (!existsSync(testDataDir)) {
+    mkdirSync(testDataDir, { recursive: true })
+  }
+
+  // Process each ItemReader
+  for (const reader of itemReaders) {
+    // Check if this state has an itemReader mock in the YAML
+    const mockForState = mockConfig?.mocks?.find(
+      (m) => m.state === reader.stateName && m.type === 'itemReader',
+    )
+
+    // Generate file if ItemReader mock exists and uses dataFile
+    if (mockForState?.dataFile) {
+      // Find the corresponding MapState for ItemProcessor analysis
+      const mapState = findMapState(stateMachine, reader.stateName)
+
+      // Generate test data based on the format and ItemProcessor requirements
+      const itemCount = reader.estimatedItemCount || 10
+      const format = (mockForState.dataFormat || reader.format) as ItemReaderInfo['format']
+      const sampleData = generateSampleData(format, itemCount, mapState || undefined)
+
+      // Use the filename from the mock (handle relative paths)
+      const filename = mockForState.dataFile
+      // If the filename contains a directory, create it
+      const filepath = filename.includes('/') ? filename : join(testDataDir, filename)
+
+      // Ensure the directory exists
+      const dir = dirname(filepath)
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true })
+      }
+
+      // Write the file
+      writeFileSync(filepath, sampleData)
+
+      generatedFiles.push({
+        filename,
+        path: filepath,
+        content: sampleData,
+        format: reader.format,
+      })
+
+      // Logging is handled by the caller
+    }
+  }
+
+  return generatedFiles
+}
+
+/**
+ * Finds a MapState by name in the state machine
+ */
+function findMapState(stateMachine: StateMachine, stateName: string): MapState | null {
+  const mapStates = findStates(stateMachine, (name, state, _context) => {
+    return name === stateName && state.isMap()
+  })
+
+  return mapStates.length > 0 ? (mapStates[0]?.state as MapState) : null
+}

@@ -16,7 +16,7 @@ AWS Step Functionsのステートマシンをローカルで実行・テスト�
 ## 📦 インストール
 
 ```bash
-npm install -g sfn-ai-local-test
+npm install -g sfn-test
 ```
 
 ## 🚀 クイックスタート
@@ -64,7 +64,7 @@ npm install -g sfn-ai-local-test
 | `sfn-test generate test --max-attempts 3` | 再試行回数を指定してテスト生成 |
 | `sfn-test run` | 全テストスイート実行 |
 | `sfn-test run --name <name>` | 単一ステートマシン実行 |
-| `sfn-test run --suite <name>` | 特定テストスイート実行 |
+| `sfn-test run --suite <path>` | 特定テストスイートファイル実行 |
 | `sfn-test run --cov` | カバレッジ計測付き実行 |
 
 ## 📚 ドキュメント

@@ -96,10 +96,7 @@ export class StateFactory {
    */
   static createStateMachine(stateMachineDefinition: JsonObject): StateMachine {
     // Ensure we have required fields
-    if (
-      !('States' in stateMachineDefinition) ||
-      typeof stateMachineDefinition.States !== 'object'
-    ) {
+    if (!('States' in stateMachineDefinition && isJsonObject(stateMachineDefinition.States))) {
       throw new Error('StateMachine must have a States field')
     }
 
@@ -115,10 +112,7 @@ export class StateFactory {
       stateMachineDefinition.QueryLanguage === 'JSONata' ? 'JSONata' : 'JSONPath'
 
     // Convert all states recursively
-    const states = StateFactory.createStates(
-      stateMachineDefinition.States as JsonObject,
-      queryLanguage,
-    )
+    const states = StateFactory.createStates(stateMachineDefinition.States, queryLanguage)
 
     // Return complete StateMachine with converted states
     // Preserve QueryLanguage only if it was explicitly provided

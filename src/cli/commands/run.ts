@@ -27,6 +27,7 @@ import type { JsonObject, StateMachine } from '../../types/asl'
 import type { MockConfig } from '../../types/mock'
 import { StateFactory } from '../../types/state-factory'
 import type { TestSuiteResult } from '../../types/test'
+import { isJsonObject } from '../../types/type-guards'
 
 interface RunOptions {
   // テストスイート実行用
@@ -594,9 +595,9 @@ function extractStateMachineFromCDK(
 
   // すべてのステートマシンを収集
   for (const [logicalId, resource] of Object.entries(resources)) {
-    const res = resource as JsonObject
-    if (res.Type === 'AWS::StepFunctions::StateMachine') {
-      stateMachines[logicalId] = res
+    if (!isJsonObject(resource)) continue
+    if (resource.Type === 'AWS::StepFunctions::StateMachine') {
+      stateMachines[logicalId] = resource
     }
   }
 
@@ -613,14 +614,13 @@ function extractStateMachineFromCDK(
       const availableNames = Object.keys(stateMachines).join(', ')
       throw new Error(`State machine '${stateMachineName}' not found. Available: ${availableNames}`)
     }
-    const resourceProps = resource as JsonObject
-    const properties = resourceProps.Properties as JsonObject | undefined
+    const properties = isJsonObject(resource.Properties) ? resource.Properties : undefined
     const definition = properties?.Definition || properties?.DefinitionString
     if (typeof definition === 'string') {
       return JSON.parse(definition)
     }
-    if (definition && typeof definition === 'object') {
-      return definition as JsonObject
+    if (isJsonObject(definition)) {
+      return definition
     }
     throw new Error(`Invalid state machine definition in resource '${stateMachineName}'`)
   }
@@ -633,14 +633,13 @@ function extractStateMachineFromCDK(
     }
     const [logicalId, resource] = entry
     console.log(chalk.gray(`  Auto-selected state machine: ${logicalId}`))
-    const resourceProps = resource as JsonObject
-    const properties = resourceProps.Properties as JsonObject | undefined
+    const properties = isJsonObject(resource.Properties) ? resource.Properties : undefined
     const definition = properties?.Definition || properties?.DefinitionString
     if (typeof definition === 'string') {
       return JSON.parse(definition)
     }
-    if (definition && typeof definition === 'object') {
-      return definition as JsonObject
+    if (isJsonObject(definition)) {
+      return definition
     }
     throw new Error(`Invalid state machine definition in resource '${logicalId}'`)
   }

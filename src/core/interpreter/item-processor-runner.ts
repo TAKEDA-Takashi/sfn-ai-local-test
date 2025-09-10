@@ -1,5 +1,4 @@
-import type { ExecutionContext, ItemProcessor, JsonObject, JsonValue } from '../../types/asl'
-import { StateFactory } from '../../types/asl'
+import type { ExecutionContext, ItemProcessor, JsonValue } from '../../types/asl'
 import type { MockEngine } from '../mock/engine'
 import { StateExecutorFactory } from './states/state-executor-factory'
 
@@ -71,8 +70,8 @@ export class ItemProcessorRunner {
 
         executionContext.executionPath.push(executionContext.currentState)
 
-        // Create StateClass instance for proper type checking
-        const state = StateFactory.createState({ ...stateData } as unknown as JsonObject)
+        // stateData is already a State instance from itemProcessor.States
+        const state = stateData
 
         // Use the StateExecutorFactory directly
         // No stateMachine parameter for ItemProcessor execution

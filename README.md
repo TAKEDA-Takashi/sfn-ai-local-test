@@ -16,7 +16,7 @@ A powerful tool for locally executing and testing AWS Step Functions state machi
 ## 📦 Installation
 
 ```bash
-npm install -g sfn-ai-local-test
+npm install -g sfn-test
 ```
 
 ## 🚀 Quick Start
@@ -64,7 +64,7 @@ npm install -g sfn-ai-local-test
 | `sfn-test generate test --max-attempts 3` | Generate test with retry count |
 | `sfn-test run` | Run all test suites |
 | `sfn-test run --name <name>` | Run single state machine |
-| `sfn-test run --suite <name>` | Run specific test suite |
+| `sfn-test run --suite <path>` | Run specific test suite file |
 | `sfn-test run --cov` | Run with coverage measurement |
 
 ## 📚 Documentation

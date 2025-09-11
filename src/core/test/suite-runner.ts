@@ -11,13 +11,15 @@ import {
   DEFAULT_MOCKS_DIR,
   DEFAULT_TEST_DATA_DIR,
 } from '../../constants/defaults'
+import { mockConfigSchema } from '../../schemas/mock-schema'
+import type { TestSuite } from '../../schemas/test-schema'
 import type { JsonObject, StateMachine } from '../../types/asl'
-import type { MockConfig } from '../../types/mock'
 import { StateFactory } from '../../types/state-factory'
-import type { TestSuite, TestSuiteResult } from '../../types/test'
+import type { TestSuiteResult } from '../../types/test'
 import { extractStateMachineFromCDK } from '../../utils/cdk-extractor'
 import { MockEngine } from '../mock/engine'
 import { TestSuiteExecutor } from './executor'
+import type { ValidationError } from './validator'
 import { TestSuiteValidator } from './validator'
 
 export class TestSuiteRunner {
@@ -58,34 +60,33 @@ export class TestSuiteRunner {
 
   private loadAndValidateTestSuite(suitePath: string): TestSuite {
     const suiteContent = readFileSync(suitePath, 'utf-8')
-    const suite = load(suiteContent) as TestSuite
+    const suite = load(suiteContent)
 
     // Validate test suite
     const validator = new TestSuiteValidator()
-    const validationResult = validator.validate(suite)
+    let validationResult: { warnings: ValidationError[]; validatedSuite: TestSuite }
+    try {
+      validationResult = validator.validate(suite)
+    } catch (error) {
+      // Format validation error (Zod parse error)
+      console.error('\n❌ Test Suite Format Error:')
+      console.error(`  ${error instanceof Error ? error.message : String(error)}`)
+      throw new Error('Test suite format validation failed')
+    }
+
     const warnings = validationResult.warnings || []
-    const errors = validationResult.errors || []
 
     // Display warnings
     if (warnings.length > 0) {
       console.warn('\n⚠️  Test Suite Validation Warnings:')
       for (const warning of warnings) {
-        console.warn(`  ${warning}`)
+        const warningMessage =
+          typeof warning === 'string' ? warning : JSON.stringify(warning, null, 2)
+        console.warn(`  ${warningMessage}`)
       }
     }
 
-    // Fail on errors
-    if (errors.length > 0) {
-      console.error('\n❌ Test Suite Validation Errors:')
-      for (const error of errors) {
-        // Handle both string and object errors
-        const errorMessage = typeof error === 'string' ? error : JSON.stringify(error, null, 2)
-        console.error(`  ${errorMessage}`)
-      }
-      throw new Error('Test suite validation failed. Please fix the errors above.')
-    }
-
-    return suite
+    return validationResult.validatedSuite
   }
 
   private loadStateMachine(): { stateMachine: unknown; stateMachineName?: string } {
@@ -183,7 +184,8 @@ export class TestSuiteRunner {
 
       if (existsSync(mockPath)) {
         const mockContent = readFileSync(mockPath, 'utf-8')
-        const mockConfig = load(mockContent) as MockConfig
+        const rawConfig = load(mockContent)
+        const mockConfig = mockConfigSchema.parse(rawConfig)
 
         // Load project config to get test data path
         const config = existsSync(DEFAULT_CONFIG_FILE) ? loadProjectConfig() : null

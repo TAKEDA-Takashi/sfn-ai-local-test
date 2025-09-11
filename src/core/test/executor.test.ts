@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { TestCase, TestSuite } from '../../schemas/test-schema'
 import type { StateMachine } from '../../types/asl'
 import { StateFactory } from '../../types/asl'
-import type { TestCase, TestSuite } from '../../types/test'
 import { NestedCoverageTracker } from '../coverage/nested-coverage-tracker'
 import { StateMachineExecutor } from '../interpreter/executor'
 import { MockEngine } from '../mock/engine'

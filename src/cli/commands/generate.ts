@@ -21,8 +21,8 @@ import {
   DEFAULT_TEST_DATA_DIR,
   DEFAULT_TEST_FILENAME,
 } from '../../constants/defaults'
+import { type MockConfig, mockConfigSchema } from '../../schemas/mock-schema'
 import { type JsonObject, type JsonValue, StateFactory, type StateMachine } from '../../types/asl'
-import type { MockConfig } from '../../types/mock'
 import { isError, processInParallel } from '../../utils/parallel'
 
 /**
@@ -210,7 +210,8 @@ export async function generateCommand(
                 if (existsSync(autoMockPath)) {
                   try {
                     mockContent = readFileSync(autoMockPath, 'utf-8')
-                    mockConfig = yaml.load(mockContent) as MockConfig
+                    const rawConfig = yaml.load(mockContent)
+                    mockConfig = mockConfigSchema.parse(rawConfig)
                     mockFileName = autoMockPath
                   } catch (_err) {
                     // エラーの場合は静かに無視（モックなしで続行）
@@ -402,7 +403,8 @@ export async function generateCommand(
         if (options.mock) {
           try {
             mockContent = readFileSync(options.mock, 'utf-8')
-            mockConfig = yaml.load(mockContent) as MockConfig
+            const rawConfig = yaml.load(mockContent)
+            mockConfig = mockConfigSchema.parse(rawConfig)
             // Keep the full path for correct relative path calculation
             mockFileName = options.mock
             spinner.text = 'Generating test cases with AI using provided mock...'
@@ -424,7 +426,8 @@ export async function generateCommand(
             if (existsSync(autoMockPath)) {
               try {
                 mockContent = readFileSync(autoMockPath, 'utf-8')
-                mockConfig = yaml.load(mockContent) as MockConfig
+                const rawConfig = yaml.load(mockContent)
+                mockConfig = mockConfigSchema.parse(rawConfig)
                 mockFileName = autoMockPath
                 spinner.text = `Generating test cases with AI using auto-detected mock: ${autoMockPath}...`
                 if (options.verbose) {

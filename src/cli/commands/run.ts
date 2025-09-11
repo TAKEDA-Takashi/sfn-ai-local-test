@@ -23,8 +23,8 @@ import { CoverageStorageManager } from '../../core/coverage/storage'
 import { type ExecutionResult, StateMachineExecutor } from '../../core/interpreter/executor'
 import { MockEngine } from '../../core/mock/engine'
 import { TestSuiteRunner } from '../../core/test/suite-runner'
+import { mockConfigSchema } from '../../schemas/mock-schema'
 import type { JsonObject, StateMachine } from '../../types/asl'
-import type { MockConfig } from '../../types/mock'
 import { StateFactory } from '../../types/state-factory'
 import type { TestSuiteResult } from '../../types/test'
 import { isJsonObject } from '../../types/type-guards'
@@ -334,7 +334,8 @@ async function executeStateMachine(
   let mockEngine: MockEngine | undefined
   if (mockPath) {
     const mockContent = readFileSync(mockPath, 'utf-8')
-    const mockConfig = load(mockContent) as MockConfig
+    const rawConfig = load(mockContent)
+    const mockConfig = mockConfigSchema.parse(rawConfig)
     mockEngine = new MockEngine(mockConfig, { basePath: testDataPath })
   }
 

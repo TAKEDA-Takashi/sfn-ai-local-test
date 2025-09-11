@@ -70,39 +70,39 @@ testCases: []`,
 name: "Test Suite"
 stateMachine: "${tempStateMachinePath}"
 testCases:
-  - name: "test"
-    # Missing required input field - this will cause validation error`
+  - name: "test"` // Missing required input field - this should cause validation error
 
       writeFileSync(tempTestSuitePath, invalidSuite)
 
-      expect(() => new TestSuiteRunner(tempTestSuitePath)).toThrow('Test suite validation failed')
+      expect(() => new TestSuiteRunner(tempTestSuitePath)).toThrow(
+        'Test suite format validation failed',
+      )
     })
 
     it('should display validation warnings', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-      // Create a suite that will trigger warnings (e.g., deprecated fields or unusual values)
+      // Create a suite that will trigger warnings (itemReader without data or dataFile)
       const suiteWithWarnings = `version: "1.0"
 name: "Test Suite"
 stateMachine: "${tempStateMachinePath}"
 testCases:
-  - name: "test with very long timeout"
+  - name: "test with itemReader"
     input: {}
     expectedOutput: {}
-    skip: "deprecated"` // Using string instead of boolean might trigger a warning
+    mockOverrides:
+      - state: "MapState"
+        type: "itemReader"` // itemReader without data or dataFile triggers a warning
 
       writeFileSync(tempTestSuitePath, suiteWithWarnings)
 
       new TestSuiteRunner(tempTestSuitePath)
 
-      // If no warnings are actually triggered, we can just verify the spy was set up
-      // This test may need adjustment based on actual validation logic
-      if (warnSpy.mock.calls.length > 0) {
-        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Warning'))
-      } else {
-        // No warnings triggered is also valid
-        expect(warnSpy).not.toHaveBeenCalled()
-      }
+      // Should have triggered a warning about missing data/dataFile
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Test Suite Validation Warnings'),
+      )
+
       warnSpy.mockRestore()
     })
   })

@@ -1,7 +1,7 @@
 import { load } from 'js-yaml'
 import { describe, expect, it } from 'vitest'
+import type { MockConfig } from '../../schemas/mock-schema'
 import type { StateMachine } from '../../types/asl'
-import type { MockConfig } from '../../types/mock'
 import { StateFactory } from '../../types/state-factory'
 import { generateMockWithAI } from './index'
 

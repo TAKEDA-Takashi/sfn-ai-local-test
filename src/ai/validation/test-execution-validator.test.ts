@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import type { TestSuite } from '../../schemas/test-schema'
 import { StateFactory } from '../../types/state-factory'
-import type { TestSuite } from '../../types/test'
 import { InvalidInputError } from './errors'
 import { TestExecutionValidator } from './test-execution-validator'
 

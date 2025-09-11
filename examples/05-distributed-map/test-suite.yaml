@@ -22,7 +22,8 @@ testCases:
         iterationCount: 1  # 10 items in 1 batch (MaxItemsPerBatch: 10)
         # Also verify internal ItemProcessor paths
         iterationPaths:
-          - ["ProcessBatch", "ValidateResults", "LogSuccess"]  # Path when processedCount > 0
+          samples:
+            0: ["ProcessBatch", "ValidateResults", "LogSuccess"]  # Path when processedCount > 0
     stateExpectations:
       - state: "PrepareDataSource"
         output:
@@ -146,7 +147,8 @@ testCases:
         iterationCount: 1
         # Verify path when error occurs (first condition has processedCount: 8 > 0, so goes to LogSuccess)
         iterationPaths:
-          - ["ProcessBatch", "ValidateResults", "LogSuccess"]
+          samples:
+            0: ["ProcessBatch", "ValidateResults", "LogSuccess"]
     # Test that the system handles errors gracefully
     expectedOutput:
       status: "completed"  # Should still complete even with some failures
@@ -196,7 +198,8 @@ testCases:
         iterationCount: 1
         # Verify path when processedCount: 0
         iterationPaths:
-          - ["ProcessBatch", "ValidateResults", "LogEmptyBatch"]
+          samples:
+            0: ["ProcessBatch", "ValidateResults", "LogEmptyBatch"]
     expectedOutput:
       status: "completed"
 
@@ -221,7 +224,8 @@ testCases:
         iterationCount: 1
         # Error is caught and transitions to HandleBatchError
         iterationPaths:
-          - ["ProcessBatch", "HandleBatchError"]
+          samples:
+            0: ["ProcessBatch", "HandleBatchError"]
     expectedOutput:
       status: "completed"
 

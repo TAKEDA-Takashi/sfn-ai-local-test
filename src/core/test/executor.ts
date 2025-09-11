@@ -1,13 +1,8 @@
 import { DEFAULT_TEST_TIMEOUT_MS } from '../../constants/defaults'
+import type { MockDefinition } from '../../schemas/mock-schema'
+import type { MockOverride, TestCase, TestSuite } from '../../schemas/test-schema'
 import type { JsonObject, JsonValue, StateMachine } from '../../types/asl'
-import type { MockDefinition } from '../../types/mock'
-import type {
-  MockOverride,
-  TestCase,
-  TestResult,
-  TestSuite,
-  TestSuiteResult,
-} from '../../types/test'
+import type { TestResult, TestSuiteResult } from '../../types/test'
 import { NestedCoverageTracker } from '../coverage/nested-coverage-tracker'
 import { type ExecutionResult, StateMachineExecutor } from '../interpreter/executor'
 import type { MockEngine } from '../mock/engine'
@@ -196,7 +191,6 @@ export class TestSuiteExecutor {
           data: override.data,
           dataFile: override.dataFile,
           dataFormat: override.dataFormat,
-          description: override.description,
         }) as MockDefinition,
     )
   }

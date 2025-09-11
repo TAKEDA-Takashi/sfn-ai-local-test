@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TestCase } from '../../types/test'
+import type { TestCase } from '../../schemas/test-schema'
 import type { ExecutionResult } from '../interpreter/executor'
 import { TestAssertions } from './assertions'
 

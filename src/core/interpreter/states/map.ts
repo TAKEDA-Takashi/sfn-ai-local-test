@@ -167,8 +167,14 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
         variables: context.variables,
       }
     } catch (error) {
+      console.error(`Map state error in ${context.currentState}:`, error)
       // BaseStateExecutorのhandleErrorを使用
-      return this.handleError(error, context)
+      const errorResult = this.handleError(error, context)
+      // MapステートにNextがある場合、それを保持する
+      if (!errorResult.nextState && this.state.Next) {
+        errorResult.nextState = this.state.Next
+      }
+      return errorResult
     }
   }
 

@@ -99,12 +99,31 @@ describe('DistributedMap Child States Execution', () => {
     // Should successfully execute the entire state machine
     expect(result.success).toBe(true)
 
-    // Should include execution paths for child states
+    // Top-level execution path should only contain the Map state itself
     const executionPath = result.executionPath
     expect(executionPath).toContain('ProcessItems')
+    expect(executionPath).toHaveLength(1) // Only the Map state
 
-    // THIS IS THE FAILING PART: Child states should be included in execution path
-    expect(executionPath).toContain('RandomWait')
-    expect(executionPath).toContain('ProcessItem')
+    // Map internal states should NOT be in the top-level execution path
+    expect(executionPath).not.toContain('RandomWait')
+    expect(executionPath).not.toContain('ProcessItem')
+
+    // Map internal states should be tracked in mapExecutions metadata
+    expect(result.mapExecutions).toBeDefined()
+    expect(result.mapExecutions).toHaveLength(1)
+    expect(result.mapExecutions?.[0].state).toBe('ProcessItems')
+    expect(result.mapExecutions?.[0].iterationPaths).toBeDefined()
+
+    // Check that internal states were executed within the Map iterations
+    const iterationPaths = result.mapExecutions?.[0].iterationPaths || []
+    expect(iterationPaths).toHaveLength(2) // Two items processed
+
+    // Each iteration should have executed RandomWait and ProcessItem
+    if (Array.isArray(iterationPaths)) {
+      for (const path of iterationPaths) {
+        expect(path).toContain('RandomWait')
+        expect(path).toContain('ProcessItem')
+      }
+    }
   })
 })

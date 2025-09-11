@@ -18,7 +18,6 @@ import type {
   JsonArray,
   JsonObject,
   JsonValue,
-  State,
   StateMachine,
 } from './asl.js'
 import {
@@ -40,6 +39,7 @@ import {
   JSONPathSucceedState,
   JSONPathTaskState,
   JSONPathWaitState,
+  type State,
 } from './state-classes.js'
 import { isJsonObject } from './type-guards.js'
 
@@ -119,6 +119,7 @@ export class StateFactory {
     if ('QueryLanguage' in stateMachineDefinition) {
       return {
         ...stateMachineDefinition,
+        StartAt: stateMachineDefinition.StartAt,
         States: states,
         QueryLanguage: stateMachineDefinition.QueryLanguage,
       } as StateMachine
@@ -127,6 +128,7 @@ export class StateFactory {
     // Don't add QueryLanguage if it wasn't in the original
     return {
       ...stateMachineDefinition,
+      StartAt: stateMachineDefinition.StartAt,
       States: states,
     } as StateMachine
   }
@@ -311,15 +313,37 @@ export class StateFactory {
         // Convert nested States in each branch to State class instances
         // Note: Branches inherit QueryLanguage from the state machine level, not from the Parallel state
         const branches = aslState.Branches.map((branch) => {
-          if (isBranch(branch)) {
+          // Validate that branch is an object
+          if (!isJsonObject(branch)) {
+            throw new Error('Each branch must be an object')
+          }
+
+          // Check if it has States to convert
+          if (hasStates(branch)) {
             // Parallel branches inherit from StateMachine, not from Parallel state
             const states = StateFactory.createStates(branch.States, stateMachineQueryLanguage)
-            return {
+            // Ensure branch has StartAt field for StateMachine compliance
+            const branchWithStates = {
               ...branch,
               States: states,
             }
+            // Ensure StartAt is present
+            if (!('StartAt' in branchWithStates) || typeof branchWithStates.StartAt !== 'string') {
+              throw new Error('Branch must have a StartAt field')
+            }
+            return branchWithStates as StateMachine
           }
-          return branch
+
+          // If no States to convert, ensure it's still a valid StateMachine
+          if (!('StartAt' in branch) || typeof branch.StartAt !== 'string') {
+            throw new Error('Branch must have a StartAt field')
+          }
+          if (!('States' in branch && isJsonObject(branch.States))) {
+            throw new Error('Branch must have a States field')
+          }
+          // Branch has StartAt and States, so it's a valid StateMachine structure
+          const validBranch = branch as JsonObject & { StartAt: string; States: JsonObject }
+          return validBranch as unknown as StateMachine
         })
 
         // Include QueryLanguage in config for validation
@@ -327,14 +351,14 @@ export class StateFactory {
           const config = {
             ...aslState,
             QueryLanguage: 'JSONata' as const,
-            Branches: branches as StateMachine[],
+            Branches: branches,
           }
           return new JSONataParallelState(config)
         } else {
           const config = {
             ...aslState,
             QueryLanguage: 'JSONPath' as const,
-            Branches: branches as StateMachine[],
+            Branches: branches,
           }
           return new JSONPathParallelState(config)
         }

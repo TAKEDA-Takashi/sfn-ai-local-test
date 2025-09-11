@@ -55,17 +55,19 @@ export class ItemProcessorRunner {
       while (executionContext.currentState && steps < maxSteps) {
         steps++
 
-        let stateData = this.itemProcessor.States[executionContext.currentState]
+        const stateData = this.itemProcessor.States[executionContext.currentState]
         if (!stateData) {
           throw new Error(`State "${executionContext.currentState}" not found in ItemProcessor`)
         }
 
         // Inherit QueryLanguage from ItemProcessor if not specified on the state
+        // IMPORTANT: Don't use spread operator as it removes class methods
         const queryLanguage = (
           this.itemProcessor as ItemProcessor & { QueryLanguage?: 'JSONPath' | 'JSONata' }
         ).QueryLanguage
         if (queryLanguage && !stateData.QueryLanguage) {
-          stateData = { ...stateData, QueryLanguage: queryLanguage as 'JSONPath' | 'JSONata' }
+          // Directly mutate the state object to preserve class methods
+          stateData.QueryLanguage = queryLanguage as 'JSONPath' | 'JSONata'
         }
 
         executionContext.executionPath.push(executionContext.currentState)

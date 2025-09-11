@@ -1,5 +1,6 @@
 import type { ExecutionContext, JsonObject, JsonValue, StateMachine } from '../../types/asl'
 import type { StateExecution } from '../../types/test'
+import { isJsonObject } from '../../types/type-guards'
 import { deepClone } from '../../utils/deep-clone'
 import type { MockEngine } from '../mock/engine'
 import type { StateExecutionResult } from './states/base'
@@ -90,7 +91,7 @@ export class StateMachineExecutor {
         // JSONata用のExecutionコンテキストを追加
         Execution: {
           Id: `execution-${Date.now()}`,
-          Input: input as JsonObject,
+          Input: isJsonObject(input) ? input : {},
           Name: `execution-${Date.now()}`,
           RoleArn: 'arn:aws:iam::123456789012:role/StepFunctionsRole',
           StartTime: new Date().toISOString(),

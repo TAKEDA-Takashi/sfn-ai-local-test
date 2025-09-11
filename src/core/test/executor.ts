@@ -1,7 +1,7 @@
 import { DEFAULT_TEST_TIMEOUT_MS } from '../../constants/defaults'
 import type { MockDefinition } from '../../schemas/mock-schema'
 import type { MockOverride, TestCase, TestSuite } from '../../schemas/test-schema'
-import type { JsonObject, JsonValue, StateMachine } from '../../types/asl'
+import type { JsonValue, StateMachine } from '../../types/asl'
 import type { TestResult, TestSuiteResult } from '../../types/test'
 import { NestedCoverageTracker } from '../coverage/nested-coverage-tracker'
 import { type ExecutionResult, StateMachineExecutor } from '../interpreter/executor'
@@ -100,10 +100,22 @@ export class TestSuiteExecutor {
         if (result.mapExecutions) {
           this.coverageTracker.trackMapExecutions(
             result.mapExecutions.map((exec) => {
-              const execObj = exec as JsonObject
+              if (typeof exec !== 'object' || exec === null || Array.isArray(exec)) {
+                throw new Error('Invalid map execution data')
+              }
+              const execObj = exec
+              // iterationPathsを安全に取得して型を保証
+              let iterationPaths: string[][] = []
+              if (Array.isArray(execObj.iterationPaths)) {
+                // string[][]として安全に変換
+                iterationPaths = execObj.iterationPaths.filter(
+                  (path): path is string[] =>
+                    Array.isArray(path) && path.every((p) => typeof p === 'string'),
+                )
+              }
               return {
-                state: execObj.state as string,
-                iterationPaths: execObj.iterationPaths as string[][],
+                state: typeof execObj.state === 'string' ? execObj.state : '',
+                iterationPaths,
               }
             }),
           )
@@ -112,12 +124,24 @@ export class TestSuiteExecutor {
         if (result.parallelExecutions) {
           this.coverageTracker.trackParallelExecutions(
             result.parallelExecutions.map((exec) => {
-              const execObj = exec as JsonObject
+              if (typeof exec !== 'object' || exec === null || Array.isArray(exec)) {
+                throw new Error('Invalid parallel execution data')
+              }
+              const execObj = exec
+              // branchPathsを安全に取得して型を保証
+              let branchPaths: string[][] = []
+              if (Array.isArray(execObj.branchPaths)) {
+                // string[][]として安全に変換
+                branchPaths = execObj.branchPaths.filter(
+                  (path): path is string[] =>
+                    Array.isArray(path) && path.every((p) => typeof p === 'string'),
+                )
+              }
               return {
-                type: execObj.type as string,
-                state: execObj.state as string,
-                branchCount: execObj.branchCount as number,
-                branchPaths: execObj.branchPaths as string[][],
+                type: typeof execObj.type === 'string' ? execObj.type : '',
+                state: typeof execObj.state === 'string' ? execObj.state : '',
+                branchCount: typeof execObj.branchCount === 'number' ? execObj.branchCount : 0,
+                branchPaths,
               }
             }),
           )

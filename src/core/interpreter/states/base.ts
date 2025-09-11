@@ -5,6 +5,7 @@ import type {
   State,
   StateMachine,
 } from '../../../types/asl'
+import { isJsonObject } from '../../../types/type-guards'
 
 import type { MockEngine } from '../../mock/engine'
 import { JSONataStrategy } from '../strategies/jsonata-strategy'
@@ -139,7 +140,9 @@ export abstract class BaseStateExecutor<TState extends State = State> {
           const errorInfo = {
             Error:
               error instanceof Error
-                ? (error as Error & { type?: string }).type || error.name
+                ? 'type' in error && typeof error.type === 'string'
+                  ? error.type
+                  : error.name
                 : 'Error',
             Cause: error instanceof Error ? error.message : String(error),
           }
@@ -148,18 +151,24 @@ export abstract class BaseStateExecutor<TState extends State = State> {
             errorOutput = errorInfo
           } else {
             // 簡易的なResultPath処理（$.path形式）
-            const resultPath = matchedCatch.ResultPath as string
-            const path = resultPath.replace('$.', '')
-            errorOutput = {
-              ...(context.input as JsonObject),
-              [path]: errorInfo,
-            } as JsonValue
+            const resultPath = matchedCatch.ResultPath
+            if (typeof resultPath === 'string') {
+              const path = resultPath.replace('$.', '')
+              // Ensure context.input is an object before spreading
+              const baseOutput = isJsonObject(context.input) ? context.input : {}
+              errorOutput = {
+                ...baseOutput,
+                [path]: errorInfo,
+              }
+            } else {
+              errorOutput = errorInfo
+            }
           }
         }
 
         return {
           output: errorOutput,
-          nextState: matchedCatch.Next as string,
+          nextState: typeof matchedCatch.Next === 'string' ? matchedCatch.Next : undefined,
           executionPath: [],
           success: false,
           error: errorMessage,
@@ -187,7 +196,7 @@ export abstract class BaseStateExecutor<TState extends State = State> {
     // エラータイプの特定: MockEngineが設定した error.type を優先、なければ error.name を使用
     let errorType = 'Error'
     if (error instanceof Error) {
-      errorType = (error as Error & { type?: string }).type || error.name
+      errorType = 'type' in error && typeof error.type === 'string' ? error.type : error.name
     }
 
     for (const catchRule of this.state.Catch) {

@@ -62,12 +62,17 @@ export class ItemProcessorRunner {
 
         // Inherit QueryLanguage from ItemProcessor if not specified on the state
         // IMPORTANT: Don't use spread operator as it removes class methods
-        const queryLanguage = (
-          this.itemProcessor as ItemProcessor & { QueryLanguage?: 'JSONPath' | 'JSONata' }
-        ).QueryLanguage
-        if (queryLanguage && !stateData.QueryLanguage) {
-          // Directly mutate the state object to preserve class methods
-          stateData.QueryLanguage = queryLanguage as 'JSONPath' | 'JSONata'
+        const processor = this.itemProcessor
+        if ('QueryLanguage' in processor) {
+          const queryLanguage = processor.QueryLanguage
+          if (
+            queryLanguage &&
+            (queryLanguage === 'JSONPath' || queryLanguage === 'JSONata') &&
+            !stateData.QueryLanguage
+          ) {
+            // Directly mutate the state object to preserve class methods
+            stateData.QueryLanguage = queryLanguage
+          }
         }
 
         executionContext.executionPath.push(executionContext.currentState)

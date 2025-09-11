@@ -180,20 +180,33 @@ export class TestAssertions {
     if (expected === null || actual === null) return expected === actual
 
     if (typeof expected === 'object' && typeof actual === 'object' && actual !== null) {
-      for (const key in expected) {
-        if (
-          !(
-            key in actual &&
-            TestAssertions.isPartialMatch(
-              (expected as Record<string, unknown>)[key],
-              (actual as Record<string, unknown>)[key],
-            )
-          )
-        ) {
-          return false
+      // Handle arrays
+      if (Array.isArray(expected) && Array.isArray(actual)) {
+        if (expected.length !== actual.length) return false
+        for (let i = 0; i < expected.length; i++) {
+          if (!TestAssertions.isPartialMatch(expected[i], actual[i])) {
+            return false
+          }
         }
+        return true
       }
-      return true
+
+      // Handle objects (expected is already non-null object here)
+      if (!(Array.isArray(expected) || Array.isArray(actual))) {
+        const expectedObj = expected as Record<string, unknown>
+        const actualObj = actual as Record<string, unknown>
+        for (const key in expectedObj) {
+          if (
+            !(key in actualObj && TestAssertions.isPartialMatch(expectedObj[key], actualObj[key]))
+          ) {
+            return false
+          }
+        }
+        return true
+      }
+
+      // One is array, other is not
+      return false
     }
 
     return expected === actual
@@ -471,17 +484,22 @@ export class TestAssertions {
           type: 'parallel',
           passed: countMatch,
           expected: expectation.branchCount,
-          actual: parallelExec.branchCount as JsonValue,
+          actual: parallelExec.branchCount,
           message: countMatch
             ? `Parallel ${expectation.state} branch count matches expectation`
-            : `Parallel ${expectation.state} branch count mismatch. Expected: ${expectation.branchCount}, Got: ${(parallelExec as Record<string, unknown>).branchCount}`,
+            : `Parallel ${expectation.state} branch count mismatch. Expected: ${expectation.branchCount}, Got: ${parallelExec.branchCount}`,
         })
       }
 
       // Check branch paths
       if (expectation.branchPaths) {
         const pathMatching =
-          (expectation.branchPaths as { pathMatching?: string })?.pathMatching || 'exact'
+          typeof expectation.branchPaths === 'object' &&
+          !Array.isArray(expectation.branchPaths) &&
+          'pathMatching' in expectation.branchPaths &&
+          typeof expectation.branchPaths.pathMatching === 'string'
+            ? expectation.branchPaths.pathMatching
+            : 'exact'
 
         for (const [index, expectedPath] of Object.entries(expectation.branchPaths)) {
           if (index === 'pathMatching') continue // Skip the pathMatching property
@@ -491,7 +509,7 @@ export class TestAssertions {
           if (actualPath && Array.isArray(expectedPath)) {
             const pathMatch = TestAssertions.comparePathStrict(
               expectedPath,
-              actualPath as string[],
+              actualPath,
               pathMatching,
             )
             assertions.push({

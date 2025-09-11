@@ -536,9 +536,16 @@ async function runSingleExecution(options: RunOptions): Promise<void> {
       // Track Map executions if present
       if (result.mapExecutions) {
         tracker.trackMapExecutions(
-          result.mapExecutions.map((exec) => ({
-            state: exec.state as string,
-            iterationPaths: exec.iterationPaths as string[][] | undefined,
+          result.mapExecutions.filter(isJsonObject).map((exec) => ({
+            state: typeof exec.state === 'string' ? exec.state : '',
+            iterationPaths:
+              Array.isArray(exec.iterationPaths) &&
+              exec.iterationPaths.every(
+                (path: unknown) =>
+                  Array.isArray(path) && path.every((p: unknown) => typeof p === 'string'),
+              )
+                ? (exec.iterationPaths as string[][])
+                : undefined,
           })),
         )
       }
@@ -546,11 +553,18 @@ async function runSingleExecution(options: RunOptions): Promise<void> {
       // Track Parallel executions if present
       if (result.parallelExecutions) {
         tracker.trackParallelExecutions(
-          result.parallelExecutions.map((exec) => ({
-            type: exec.type as string,
-            state: exec.state as string,
-            branchCount: exec.branchCount as number,
-            branchPaths: exec.branchPaths as string[][],
+          result.parallelExecutions.filter(isJsonObject).map((exec) => ({
+            type: typeof exec.type === 'string' ? exec.type : 'parallel',
+            state: typeof exec.state === 'string' ? exec.state : '',
+            branchCount: typeof exec.branchCount === 'number' ? exec.branchCount : 0,
+            branchPaths:
+              Array.isArray(exec.branchPaths) &&
+              exec.branchPaths.every(
+                (path: unknown) =>
+                  Array.isArray(path) && path.every((p: unknown) => typeof p === 'string'),
+              )
+                ? (exec.branchPaths as string[][])
+                : [],
           })),
         )
       }

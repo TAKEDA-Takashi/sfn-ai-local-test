@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type {
-  AssertionSettings,
+  Assertions as AssertionSettings,
   MapExpectation,
   ParallelExpectation,
-  StateExecution,
   TestCase,
-} from '../../types/test.js'
+} from '../../schemas/test-schema.js'
+import type { StateExecution } from '../../types/test.js'
 import type { ExecutionResult } from '../interpreter/executor.js'
 import { TestAssertions } from './assertions.js'
 
@@ -213,7 +213,6 @@ describe('TestAssertions', () => {
         name: 'test',
         input: {},
         expectedOutput: { result: 'success', count: 42 },
-        settings: { outputMatching: 'exact' },
       }
 
       const result: ExecutionResult = {
@@ -222,7 +221,9 @@ describe('TestAssertions', () => {
         success: true,
       }
 
-      const assertions = TestAssertions.performAssertions(testCase, result)
+      const assertions = TestAssertions.performAssertions(testCase, result, {
+        outputMatching: 'exact',
+      })
 
       expect(assertions[0]?.passed).toBe(true)
       expect(assertions[0]?.message).toContain('Output matches expected value')
@@ -233,7 +234,6 @@ describe('TestAssertions', () => {
         name: 'test',
         input: {},
         expectedOutput: { result: 'success' },
-        settings: { outputMatching: 'exact' },
       }
 
       const result: ExecutionResult = {
@@ -242,7 +242,9 @@ describe('TestAssertions', () => {
         success: true,
       }
 
-      const assertions = TestAssertions.performAssertions(testCase, result)
+      const assertions = TestAssertions.performAssertions(testCase, result, {
+        outputMatching: 'exact',
+      })
 
       expect(assertions[0]?.passed).toBe(false)
       expect(assertions[0]?.message).toContain('Expected output:')
@@ -254,7 +256,6 @@ describe('TestAssertions', () => {
         name: 'test',
         input: {},
         expectedOutput: { result: 'success' },
-        settings: { outputMatching: 'partial' },
       }
 
       const result: ExecutionResult = {
@@ -339,7 +340,6 @@ describe('TestAssertions', () => {
         name: 'test',
         input: {},
         expectedPath: ['Process', 'End'],
-        settings: { pathMatching: 'includes' },
       }
 
       const result: ExecutionResult = {
@@ -358,7 +358,6 @@ describe('TestAssertions', () => {
         name: 'test',
         input: {},
         expectedPath: ['Process', 'End'],
-        settings: { pathMatching: 'sequence' },
       }
 
       const result: ExecutionResult = {
@@ -794,7 +793,6 @@ describe('TestAssertions', () => {
         name: 'test',
         input: {},
         expectedOutput: complexOutput,
-        settings: { outputMatching: 'exact' },
       }
 
       const result: ExecutionResult = {
@@ -837,7 +835,6 @@ describe('TestAssertions', () => {
         name: 'test',
         input: {},
         expectedOutput: { result: 'success' },
-        settings,
       }
 
       const result: ExecutionResult = {
@@ -846,7 +843,7 @@ describe('TestAssertions', () => {
         success: true,
       }
 
-      const assertions = TestAssertions.performAssertions(testCase, result)
+      const assertions = TestAssertions.performAssertions(testCase, result, settings)
 
       expect(assertions[0]?.passed).toBe(true)
     })

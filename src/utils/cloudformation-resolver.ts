@@ -3,6 +3,7 @@
  */
 
 import type { JsonObject, JsonValue } from '../types/asl'
+import { isJsonObject } from '../types/type-guards'
 
 export function resolveCloudFormationIntrinsics(
   value: JsonValue,
@@ -21,8 +22,8 @@ export function resolveCloudFormationIntrinsics(
     return value.map((item) => resolveCloudFormationIntrinsics(item, resources, parameters))
   }
 
-  if (typeof value === 'object') {
-    const obj = value as JsonObject
+  if (isJsonObject(value)) {
+    const obj = value
 
     // Handle Fn::Join
     if ('Fn::Join' in obj) {
@@ -61,7 +62,10 @@ export function resolveCloudFormationIntrinsics(
 
       // Check resources for logical ID
       if (resources[refName]) {
-        const resource = resources[refName] as JsonObject
+        const resource = resources[refName]
+        if (!isJsonObject(resource)) {
+          return `${refName}-PLACEHOLDER`
+        }
         // For S3 buckets, return a mock name
         if (resource.Type === 'AWS::S3::Bucket') {
           return `mock-bucket-${refName.toLowerCase()}`
@@ -110,7 +114,10 @@ export function resolveCloudFormationIntrinsics(
       }
       if (Array.isArray(subValue) && subValue.length === 2) {
         let template = subValue[0] as string
-        const variables = subValue[1] as JsonObject
+        const variables = subValue[1]
+        if (!isJsonObject(variables)) {
+          return template
+        }
 
         // Replace variables
         for (const [key, val] of Object.entries(variables)) {

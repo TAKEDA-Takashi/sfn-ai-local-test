@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { MockConfig } from '../../types/mock'
+import type { MockConfig } from '../../schemas/mock-schema'
 import { MockEngine } from './engine'
 
 describe('MockEngine Lambda Arguments Matching', () => {

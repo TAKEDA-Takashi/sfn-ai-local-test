@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import type { MockConfig } from '../../schemas/mock-schema.js'
 import type { StateMachine } from '../../types/asl.js'
 import { StateFactory } from '../../types/asl.js'
-import type { MockConfig } from '../../types/mock.js'
 import { StateMachineExecutor } from '../interpreter/executor.js'
 import { MockEngine } from '../mock/engine.js'
 import { CoverageTracker } from './tracker.js'

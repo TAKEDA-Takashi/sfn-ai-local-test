@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { MockConfig } from '../../types/mock'
+import type { MockConfig } from '../../schemas/mock-schema'
 import { StateFactory } from '../../types/state-factory'
 import { TestGenerationPipeline } from './test-generation-pipeline'
 

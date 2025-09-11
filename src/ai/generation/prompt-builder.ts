@@ -13,7 +13,7 @@ import type {
   State,
   StateMachine,
 } from '../../types/asl'
-import { EMBEDDED_TYPE_DEFINITIONS } from '../agents/embedded-types'
+import { MOCK_TYPE_DEFINITIONS, TEST_TYPE_DEFINITIONS } from '../agents/embedded-types'
 import {
   type ChoiceDependency,
   DataFlowAnalyzer,
@@ -39,43 +39,6 @@ export class PromptBuilder {
   }
 
   /**
-   * Extract mock-specific type definitions from embedded types
-   */
-  private extractMockTypeDefinitions(): string {
-    // Find the Mock Configuration section
-    const mockSectionStart = '## Mock Configuration Type Definition (TypeScript):'
-    const startIndex = EMBEDDED_TYPE_DEFINITIONS.indexOf(mockSectionStart)
-
-    if (startIndex === -1) {
-      // Fallback: return entire definitions if section not found
-      return EMBEDDED_TYPE_DEFINITIONS
-    }
-
-    // Extract from Mock section to the end
-    return EMBEDDED_TYPE_DEFINITIONS.substring(startIndex)
-  }
-
-  /**
-   * Extract test-specific type definitions from embedded types
-   */
-  private extractTestTypeDefinitions(): string {
-    // Find the Test Suite section and extract until Mock section
-    const testSectionStart = '## Test Suite Type Definition (TypeScript):'
-    const mockSectionStart = '## Mock Configuration Type Definition (TypeScript):'
-
-    const testStartIndex = EMBEDDED_TYPE_DEFINITIONS.indexOf(testSectionStart)
-    const mockStartIndex = EMBEDDED_TYPE_DEFINITIONS.indexOf(mockSectionStart)
-
-    if (testStartIndex === -1 || mockStartIndex === -1) {
-      // Fallback: return entire definitions if sections not found
-      return EMBEDDED_TYPE_DEFINITIONS
-    }
-
-    // Extract Test section only (from start to Mock section)
-    return EMBEDDED_TYPE_DEFINITIONS.substring(testStartIndex, mockStartIndex).trim()
-  }
-
-  /**
    * Build mock generation prompt with hierarchy understanding
    */
   buildMockPrompt(stateMachine: StateMachine): string {
@@ -86,7 +49,7 @@ export class PromptBuilder {
     sections.push(this.getMockYamlOutputRules())
 
     // TypeScript型定義から生成したスキーマを提示（モック部分のみ）
-    sections.push(this.extractMockTypeDefinitions())
+    sections.push(MOCK_TYPE_DEFINITIONS)
 
     // 利用可能なステート名を明示して誤りを防止
     sections.push(this.getAvailableStatesSection(stateMachine))
@@ -206,7 +169,7 @@ export class PromptBuilder {
     sections.push(this.getTestYamlOutputRules())
 
     // TypeScript型定義から生成したスキーマを提示（テスト部分のみ）
-    sections.push(this.extractTestTypeDefinitions())
+    sections.push(TEST_TYPE_DEFINITIONS)
 
     // 利用可能なステート名を明示して誤りを防止
     sections.push(this.getAvailableStatesSection(stateMachine))

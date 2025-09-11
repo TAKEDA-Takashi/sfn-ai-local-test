@@ -1,8 +1,8 @@
 import { StateMachineExecutor } from '../../core/interpreter/executor'
 import { MockEngine } from '../../core/mock/engine'
+import type { MockConfig } from '../../schemas/mock-schema'
+import type { TestCase, TestSuite } from '../../schemas/test-schema'
 import type { JsonValue, State, StateMachine } from '../../types/asl'
-import type { MockConfig } from '../../types/mock'
-import type { TestCase, TestSuite } from '../../types/test'
 import { InvalidInputError, TestExecutionError } from './errors'
 
 export interface ValidationCorrection {

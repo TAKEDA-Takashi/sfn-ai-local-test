@@ -1,6 +1,12 @@
-import type { ItemReader, JsonArray, JsonObject, JsonValue } from '../../types/asl'
-import type { MockConfig, MockDefinition, MockEngineOptions, MockState } from '../../types/mock'
-import { isJsonValue } from '../../types/type-guards'
+import type {
+  MockConfig,
+  MockDefinition,
+  MockEngineOptions,
+  MockState,
+} from '../../schemas/mock-schema'
+import { mockConfigSchema } from '../../schemas/mock-schema'
+import type { ItemReader, JsonArray, JsonValue } from '../../types/asl'
+import { isJsonObject, isJsonValue } from '../../types/type-guards'
 import { MockFileLoader } from './file-loader'
 import { ItemReaderValidator } from './item-reader-validator'
 
@@ -11,8 +17,13 @@ export class MockEngine {
   private fileLoader: MockFileLoader
   private responseCache: Map<string, JsonValue> = new Map()
 
-  constructor(config: MockConfig, options: MockEngineOptions = {}) {
-    this.config = config
+  constructor(config: unknown, options: MockEngineOptions = {}) {
+    // Validate config with Zod
+    const parseResult = mockConfigSchema.safeParse(config)
+    if (!parseResult.success) {
+      throw new Error(`Invalid mock config: ${parseResult.error.message}`)
+    }
+    this.config = parseResult.data
     this.state = {
       callCount: new Map(),
       history: [],
@@ -359,9 +370,18 @@ export class MockEngine {
     if (typeof expected !== typeof actual) return false
     if (typeof expected !== 'object' || expected === null || actual === null) return false
 
+    // Handle arrays separately
+    if (Array.isArray(expected)) {
+      if (!Array.isArray(actual)) return false
+      if (expected.length !== actual.length) return false
+      return expected.every((item, index) => this.partialDeepEqual(item, actual[index]))
+    }
+
     // 部分一致：expectedの全キーがactualに存在し、値が一致すればOK
-    const expectedObj = expected as JsonObject
-    const actualObj = actual as JsonObject
+    if (!(isJsonObject(expected) && isJsonObject(actual))) return false
+
+    const expectedObj = expected
+    const actualObj = actual
 
     for (const key of Object.keys(expectedObj)) {
       if (!(key in actualObj)) return false

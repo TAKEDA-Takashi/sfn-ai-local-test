@@ -2,8 +2,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hasNameBasedConfig } from '../../ai/agents/claude-cli'
-import type { ProjectConfig } from '../../config/loader'
 import { loadProjectConfig } from '../../config/loader'
+import type { ProjectConfig } from '../../schemas/config-schema'
 
 vi.mock('../../config/loader')
 

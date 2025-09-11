@@ -116,10 +116,15 @@ describe('runCommand - multiple state machines', () => {
         .mockReturnValueOnce('./mocks/workflow-2.mock.yaml')
         .mockReturnValueOnce('./mocks/workflow-3.mock.yaml')
 
+      const validMockConfig = JSON.stringify({
+        version: '1.0',
+        mocks: [],
+      })
+
       mockedReadFileSync
-        .mockReturnValueOnce('mock1: content')
-        .mockReturnValueOnce('mock2: content')
-        .mockReturnValueOnce('mock3: content')
+        .mockReturnValueOnce(validMockConfig)
+        .mockReturnValueOnce(validMockConfig)
+        .mockReturnValueOnce(validMockConfig)
 
       mockExecute
         .mockResolvedValueOnce({ result: 'success1', path: ['State1'] })
@@ -165,10 +170,15 @@ describe('runCommand - multiple state machines', () => {
         .mockReturnValueOnce('./mocks/workflow-2.mock.yaml')
         .mockReturnValueOnce('./mocks/workflow-3.mock.yaml')
 
+      const validMockConfig = JSON.stringify({
+        version: '1.0',
+        mocks: [],
+      })
+
       mockedReadFileSync
-        .mockReturnValueOnce('mock1: content')
-        .mockReturnValueOnce('mock2: content')
-        .mockReturnValueOnce('mock3: content')
+        .mockReturnValueOnce(validMockConfig)
+        .mockReturnValueOnce(validMockConfig)
+        .mockReturnValueOnce(validMockConfig)
 
       mockExecute
         .mockResolvedValueOnce({ result: 'success1', path: ['State1'] })

@@ -1,21 +1,26 @@
 import type { JsonObject } from '../types/asl'
+import { isJsonObject } from '../types/type-guards'
 
 /**
  * Extract Step Functions state machine definition from CDK/CloudFormation template
  */
 export function extractStateMachineFromCDK(cdkTemplate: JsonObject): JsonObject {
-  const resources = (cdkTemplate.Resources as JsonObject) || {}
+  const resources = isJsonObject(cdkTemplate.Resources) ? cdkTemplate.Resources : {}
 
   for (const [, resource] of Object.entries(resources)) {
-    const res = resource as JsonObject
-    if (res.Type === 'AWS::StepFunctions::StateMachine') {
-      const properties = res.Properties as JsonObject | undefined
+    if (!isJsonObject(resource)) continue
+    if (resource.Type === 'AWS::StepFunctions::StateMachine') {
+      const properties = isJsonObject(resource.Properties) ? resource.Properties : undefined
       const definition = properties?.Definition || properties?.DefinitionString
       if (typeof definition === 'string') {
-        return JSON.parse(definition) as JsonObject
+        const parsed = JSON.parse(definition)
+        if (!isJsonObject(parsed)) {
+          throw new Error('Parsed definition is not a valid object')
+        }
+        return parsed
       }
-      if (definition && typeof definition === 'object') {
-        return definition as JsonObject
+      if (isJsonObject(definition)) {
+        return definition
       }
     }
   }

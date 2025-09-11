@@ -1,7 +1,7 @@
 import * as yaml from 'js-yaml'
+import type { MockConfig } from '../../schemas/mock-schema'
+import { testSuiteSchema } from '../../schemas/test-schema'
 import type { JsonObject, StateMachine } from '../../types/asl'
-import type { MockConfig } from '../../types/mock'
-import type { TestSuite } from '../../types/test'
 import { StateMachineValidator, type ValidationIssue } from '../validation/state-machine-validator'
 import { TestExecutionValidator } from '../validation/test-execution-validator'
 import { GenerationRetryManager } from './generation-retry-manager'
@@ -80,7 +80,8 @@ export class TestGenerationPipeline {
     if (enableExecutionValidation) {
       try {
         // Parse generated YAML to TestSuite
-        const testSuite = yaml.load(generationResult.content) as TestSuite
+        const rawSuite = yaml.load(generationResult.content)
+        const testSuite = testSuiteSchema.parse(rawSuite)
 
         // Validate test suite format before execution
         if (!testSuite?.testCases || testSuite.testCases.length === 0) {

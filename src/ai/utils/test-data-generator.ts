@@ -5,8 +5,8 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import * as yaml from 'js-yaml'
+import { mockConfigSchema } from '../../schemas/mock-schema'
 import type { MapState, StateMachine } from '../../types/asl'
-import type { MockConfig } from '../../types/mock'
 import { analyzeItemReaders, generateSampleData, type ItemReaderInfo } from './item-reader-analyzer'
 import { findStates } from './state-traversal'
 
@@ -37,7 +37,8 @@ export function generateTestDataFiles(
     mocks?: Array<{ state: string; type: string; dataFile?: string; dataFormat?: string }>
   }
   try {
-    mockConfig = yaml.load(mockYaml) as MockConfig
+    const rawConfig = yaml.load(mockYaml)
+    mockConfig = mockConfigSchema.parse(rawConfig)
     if (!mockConfig || typeof mockConfig !== 'object') {
       return generatedFiles
     }

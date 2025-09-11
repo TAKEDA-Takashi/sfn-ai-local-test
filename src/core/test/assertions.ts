@@ -1,13 +1,12 @@
-import type { JsonObject, JsonValue } from '../../types/asl'
 import type {
-  AssertionResult,
-  AssertionSettings,
+  Assertions as AssertionSettings,
   MapExpectation,
   ParallelExpectation,
-  StateExecution,
   StateExpectation,
   TestCase,
-} from '../../types/test'
+} from '../../schemas/test-schema'
+import type { JsonObject, JsonValue } from '../../types/asl'
+import type { AssertionResult, StateExecution } from '../../types/test'
 import type { ExecutionResult } from '../interpreter/executor'
 
 export class TestAssertions {
@@ -17,8 +16,8 @@ export class TestAssertions {
     suiteSettings?: AssertionSettings,
   ): AssertionResult[] {
     const assertions: AssertionResult[] = []
-    // Merge suite-level and test-level settings (test-level takes precedence)
-    const settings: AssertionSettings = { ...suiteSettings, ...testCase.settings }
+    // Use suite-level settings
+    const settings: AssertionSettings = suiteSettings || {}
 
     // Output assertion
     if (testCase.expectedOutput !== undefined) {
@@ -151,7 +150,7 @@ export class TestAssertions {
           ? 'Execution path matches expected sequence exactly'
           : `Expected path: [${expected.join(' → ')}], but got: [${actual.join(' → ')}]`
         break
-      case 'contains':
+      case 'includes':
         success = TestAssertions.pathContainsSequence(actual, expected)
         message = success
           ? 'Execution path contains expected sequence'
@@ -241,7 +240,7 @@ export class TestAssertions {
         const inputMatch = TestAssertions.compareValues(
           expectation.input,
           execution.input,
-          expectation.inputMatching || settings.outputMatching || 'partial',
+          expectation.outputMatching || settings.outputMatching || 'partial',
         )
         assertions.push({
           type: 'state',
@@ -292,8 +291,8 @@ export class TestAssertions {
           assertions.push({
             type: 'state',
             passed: varMatch,
-            expected: value,
-            actual: variablesAfter[key] ?? null,
+            expected: expectation,
+            actual: execution,
             message: varMatch
               ? `State ${expectation.state} variable ${key} matches expectation`
               : `State ${expectation.state} variable ${key} mismatch. Expected: ${JSON.stringify(
@@ -380,19 +379,43 @@ export class TestAssertions {
         })
       }
 
-      // Check iteration paths
+      // Check iteration paths (object format only)
       if (expectation.iterationPaths) {
-        // Handle both array format and object format
-        if (Array.isArray(expectation.iterationPaths)) {
-          // Simple array format: [["State1", "State2"], ["State1", "State3"]]
-          for (let i = 0; i < expectation.iterationPaths.length; i++) {
-            const expectedPath = expectation.iterationPaths[i]
-            if (!(expectedPath && Array.isArray(expectedPath))) continue
+        const pathMatching =
+          expectation.iterationPaths.pathMatching || settings.pathMatching || 'exact'
 
-            const mapExecObj = mapExec as JsonObject
-            const actualPath = (mapExecObj.iterationPaths as string[][])?.[i]
+        // Check all iterations follow the same path
+        if (expectation.iterationPaths.all) {
+          const iterationPaths = mapExec.iterationPaths as string[][]
+          for (let i = 0; i < iterationPaths.length; i++) {
+            const actualPath = iterationPaths[i] as string[]
             if (actualPath) {
-              const pathMatching = settings.pathMatching || 'exact'
+              const pathMatch = TestAssertions.comparePathStrict(
+                expectation.iterationPaths.all,
+                actualPath as string[],
+                pathMatching,
+              )
+              assertions.push({
+                type: 'map',
+                passed: pathMatch,
+                expected: expectation.iterationPaths.all,
+                actual: actualPath,
+                message: pathMatch
+                  ? `Map ${expectation.state} iteration ${i} follows expected path`
+                  : `Map ${expectation.state} iteration ${i} path mismatch. Expected: [${expectation.iterationPaths.all.join(
+                      ' → ',
+                    )}], Got: [${(actualPath as string[]).join(' → ')}]`,
+              })
+            }
+          }
+        }
+
+        // Check specific iteration paths
+        if (expectation.iterationPaths.samples) {
+          for (const [index, expectedPath] of Object.entries(expectation.iterationPaths.samples)) {
+            const idx = Number.parseInt(index, 10)
+            const actualPath = (mapExec.iterationPaths as string[][])[idx]
+            if (actualPath) {
               const pathMatch = TestAssertions.comparePathStrict(
                 expectedPath,
                 actualPath as string[],
@@ -404,79 +427,13 @@ export class TestAssertions {
                 expected: expectedPath,
                 actual: actualPath,
                 message: pathMatch
-                  ? `Map ${expectation.state} iteration ${i} path matches expectation`
+                  ? `Map ${expectation.state} iteration ${idx} path matches sample expectation`
                   : `Map ${
                       expectation.state
-                    } iteration ${i} path mismatch. Expected: [${expectedPath.join(
+                    } iteration ${idx} path mismatch. Expected: [${expectedPath.join(
                       ' → ',
                     )}], Got: [${(actualPath as string[]).join(' → ')}]`,
               })
-            }
-          }
-        } else {
-          // Object format with 'all' and 'samples' properties
-          const pathMatching =
-            (
-              expectation.iterationPaths as MapExpectation['iterationPaths'] & {
-                pathMatching?: string
-              }
-            )?.pathMatching ||
-            settings.pathMatching ||
-            'exact'
-
-          // Check all iterations follow the same path
-          if ((expectation.iterationPaths as { all?: string[] }).all) {
-            const iterationPaths = mapExec.iterationPaths as string[][]
-            for (let i = 0; i < iterationPaths.length; i++) {
-              const actualPath = iterationPaths[i] as string[]
-              if (actualPath) {
-                const pathMatch = TestAssertions.comparePathStrict(
-                  (expectation.iterationPaths as { all: string[] }).all,
-                  actualPath as string[],
-                  pathMatching,
-                )
-                assertions.push({
-                  type: 'map',
-                  passed: pathMatch,
-                  expected: (expectation.iterationPaths as { all?: string[] }).all || [],
-                  actual: actualPath,
-                  message: pathMatch
-                    ? `Map ${expectation.state} iteration ${i} follows expected path`
-                    : `Map ${expectation.state} iteration ${i} path mismatch. Expected: [${(
-                        (expectation.iterationPaths as { all: string[] }).all
-                      ).join(' → ')}], Got: [${(actualPath as string[]).join(' → ')}]`,
-                })
-              }
-            }
-          }
-
-          // Check specific iteration paths
-          if ((expectation.iterationPaths as { samples?: Record<string, string[]> }).samples) {
-            for (const [index, expectedPath] of Object.entries(
-              (expectation.iterationPaths as { samples: Record<string, string[]> }).samples,
-            )) {
-              const idx = Number.parseInt(index, 10)
-              const actualPath = (mapExec.iterationPaths as string[][])[idx]
-              if (actualPath) {
-                const pathMatch = TestAssertions.comparePathStrict(
-                  expectedPath,
-                  actualPath as string[],
-                  pathMatching,
-                )
-                assertions.push({
-                  type: 'map',
-                  passed: pathMatch,
-                  expected: expectedPath,
-                  actual: actualPath,
-                  message: pathMatch
-                    ? `Map ${expectation.state} iteration ${idx} path matches sample expectation`
-                    : `Map ${
-                        expectation.state
-                      } iteration ${idx} path mismatch. Expected: [${expectedPath.join(
-                        ' → ',
-                      )}], Got: [${(actualPath as string[]).join(' → ')}]`,
-                })
-              }
             }
           }
         }

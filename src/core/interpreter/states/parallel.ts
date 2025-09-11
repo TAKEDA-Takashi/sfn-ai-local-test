@@ -1,11 +1,6 @@
-import type {
-  ExecutionContext,
-  JsonArray,
-  JsonObject,
-  JsonValue,
-  StateMachine,
-} from '../../../types/asl'
+import type { ExecutionContext, JsonArray, JsonValue, StateMachine } from '../../../types/asl'
 import type { ParallelState } from '../../../types/state-classes'
+import { isJsonObject } from '../../../types/type-guards'
 import { StateMachineExecutor } from '../executor'
 import { BaseStateExecutor, type StateExecutionResult } from './base'
 
@@ -48,7 +43,8 @@ export class ParallelStateExecutor extends BaseStateExecutor<ParallelState> {
       return branchResult.output
     })
 
-    const results = (await Promise.all(branchPromises)) as JsonArray
+    // Promise.all returns an array of JsonValue (branch outputs)
+    const results: JsonArray = await Promise.all(branchPromises)
 
     // Parallelメタデータの記録
     this.recordParallelMetadata(currentStateName, branchPaths, context)
@@ -178,14 +174,21 @@ export class ParallelStateExecutor extends BaseStateExecutor<ParallelState> {
           Cause: error instanceof Error ? error.message : String(error),
         }
         // ResultPath処理の簡易実装
-        const resultPath = matchedCatch.ResultPath as string
-        errorOutput =
-          resultPath === '$'
-            ? errorInfo
-            : ({
-                ...(context.input as JsonObject),
-                [resultPath.replace('$.', '')]: errorInfo,
-              } as JsonValue)
+        const resultPath = matchedCatch.ResultPath
+        if (typeof resultPath === 'string') {
+          if (resultPath === '$') {
+            errorOutput = errorInfo
+          } else {
+            // Ensure context.input is an object before spreading
+            const baseOutput = isJsonObject(context.input) ? context.input : {}
+            errorOutput = {
+              ...baseOutput,
+              [resultPath.replace('$.', '')]: errorInfo,
+            }
+          }
+        } else {
+          errorOutput = errorInfo
+        }
       }
 
       return {

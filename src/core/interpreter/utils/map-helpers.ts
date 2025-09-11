@@ -126,8 +126,14 @@ export function processMapContextSelector(
     return item
   }
   if (selector === '$$.Map.Item.Index') {
-    const mapContext = context.Map as JsonObject
-    const itemContext = mapContext.Item as JsonObject
+    if (!context.Map || typeof context.Map !== 'object' || Array.isArray(context.Map)) {
+      return null
+    }
+    const mapContext = context.Map
+    if (!mapContext.Item || typeof mapContext.Item !== 'object' || Array.isArray(mapContext.Item)) {
+      return null
+    }
+    const itemContext = mapContext.Item
     return itemContext.Index ?? null
   }
   if (selector.startsWith('$$.')) {

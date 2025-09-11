@@ -6,7 +6,7 @@ import { PassVariableAnalyzer } from './analyzers/pass-variable-analyzer'
 
 interface DataFlowNode {
   stateName: string
-  type: 'Pass' | 'Task' | 'Choice' | 'Parallel' | 'Map'
+  type: string // State.Type can be any state type string
   produces: string[] // このステートが生成する変数・フィールド
   consumes: string[] // このステートが使用する変数・フィールド
   outputExtraction: string[] // Outputフィールドで抽出される部分
@@ -116,7 +116,7 @@ export class DataFlowAnalyzer {
     for (const [stateName, state] of Object.entries(states)) {
       const node: DataFlowNode = {
         stateName,
-        type: state.Type as 'Pass' | 'Task' | 'Choice' | 'Parallel' | 'Map',
+        type: state.Type,
         produces: [],
         consumes: [],
         outputExtraction: [],

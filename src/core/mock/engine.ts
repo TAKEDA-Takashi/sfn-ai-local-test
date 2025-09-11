@@ -208,8 +208,12 @@ export class MockEngine {
       case 'itemReader':
         response = this.handleItemReaderMock(mock)
         break
-      default:
-        throw new Error(`Unknown mock type: ${(mock as MockDefinition).type}`)
+      default: {
+        // Exhaustiveness check - this should never be reached
+        const _exhaustiveCheck: never = mock
+        // Return never to satisfy TypeScript, but this code is unreachable
+        return _exhaustiveCheck
+      }
     }
 
     this.state.history.push({
@@ -219,9 +223,9 @@ export class MockEngine {
       timestamp: new Date(),
       error: error
         ? {
-            type: (error as Error & { type?: string }).type || 'Error',
+            type: 'type' in error && typeof error.type === 'string' ? error.type : 'Error',
             message: error.message,
-            cause: (error as Error & { cause?: string }).cause,
+            cause: 'cause' in error && typeof error.cause === 'string' ? error.cause : undefined,
           }
         : undefined,
     })
@@ -327,10 +331,33 @@ export class MockEngine {
     const response = responses[index]
 
     if (response && typeof response === 'object' && 'error' in response && response.error) {
-      const errorObj = response.error as { message?: string; cause?: string; type?: string }
-      const error = new Error(errorObj.message || errorObj.cause || 'Mock error')
-      Object.assign(error, { type: errorObj.type })
-      Object.assign(error, { cause: errorObj.cause })
+      const errorObj = response.error
+      // Extract error properties with type checking
+      const message =
+        typeof errorObj === 'object' &&
+        errorObj !== null &&
+        'message' in errorObj &&
+        typeof errorObj.message === 'string'
+          ? errorObj.message
+          : undefined
+      const cause =
+        typeof errorObj === 'object' &&
+        errorObj !== null &&
+        'cause' in errorObj &&
+        typeof errorObj.cause === 'string'
+          ? errorObj.cause
+          : undefined
+      const type =
+        typeof errorObj === 'object' &&
+        errorObj !== null &&
+        'type' in errorObj &&
+        typeof errorObj.type === 'string'
+          ? errorObj.type
+          : undefined
+
+      const error = new Error(message || cause || 'Mock error')
+      if (type) Object.assign(error, { type })
+      if (cause) Object.assign(error, { cause })
       throw error
     }
 
@@ -407,7 +434,7 @@ export class MockEngine {
   ): JsonValue {
     const cacheKey = `${filePath}:${format || 'auto'}`
     if (this.responseCache.has(cacheKey)) {
-      return this.responseCache.get(cacheKey) ?? ({} as JsonValue)
+      return this.responseCache.get(cacheKey) ?? {}
     }
 
     try {

@@ -11,6 +11,10 @@
 
 // Type unions are imported from state-classes.js via re-export
 
+import {
+  isJSONataChoiceRule,
+  isJSONPathChoiceRule,
+} from '../core/interpreter/utils/choice-guards.js'
 import type {
   ItemProcessor,
   JSONataChoiceRule,
@@ -18,7 +22,6 @@ import type {
   JsonArray,
   JsonObject,
   JsonValue,
-  State,
   StateMachine,
 } from './asl.js'
 import {
@@ -40,14 +43,9 @@ import {
   JSONPathSucceedState,
   JSONPathTaskState,
   JSONPathWaitState,
+  type State,
 } from './state-classes.js'
 import { isJsonObject } from './type-guards.js'
-
-// Import type guards for Choice validation
-function isJSONPathChoiceRule(rule: unknown): boolean {
-  if (!rule || typeof rule !== 'object') return false
-  return 'Variable' in rule || 'And' in rule || 'Or' in rule || 'Not' in rule
-}
 
 export function isString(value: unknown): value is string {
   return typeof value === 'string'
@@ -55,6 +53,28 @@ export function isString(value: unknown): value is string {
 
 export function isArray(value: unknown): value is JsonArray {
   return Array.isArray(value)
+}
+
+/**
+ * Type guard for JSONata choices array
+ */
+function isJSONataChoicesArray(choices: unknown): choices is JSONataChoiceRule[] {
+  if (!Array.isArray(choices)) return false
+  return choices.every((choice) => {
+    if (!choice || typeof choice !== 'object') return false
+    return isJSONataChoiceRule(choice)
+  })
+}
+
+/**
+ * Type guard for JSONPath choices array
+ */
+function isJSONPathChoicesArray(choices: unknown): choices is JSONPathChoiceRule[] {
+  if (!Array.isArray(choices)) return false
+  return choices.every((choice) => {
+    if (!choice || typeof choice !== 'object') return false
+    return isJSONPathChoiceRule(choice)
+  })
 }
 
 // Type guard for valid QueryLanguage value
@@ -116,19 +136,26 @@ export class StateFactory {
 
     // Return complete StateMachine with converted states
     // Preserve QueryLanguage only if it was explicitly provided
-    if ('QueryLanguage' in stateMachineDefinition) {
-      return {
+    if (
+      'QueryLanguage' in stateMachineDefinition &&
+      isValidQueryLanguage(stateMachineDefinition.QueryLanguage)
+    ) {
+      const result: StateMachine = {
         ...stateMachineDefinition,
+        StartAt: stateMachineDefinition.StartAt,
         States: states,
         QueryLanguage: stateMachineDefinition.QueryLanguage,
-      } as StateMachine
+      }
+      return result
     }
 
     // Don't add QueryLanguage if it wasn't in the original
-    return {
+    const result: StateMachine = {
       ...stateMachineDefinition,
+      StartAt: stateMachineDefinition.StartAt,
       States: states,
-    } as StateMachine
+    }
+    return result
   }
 
   /**
@@ -185,7 +212,13 @@ export class StateFactory {
         // Validate Choice rules based on query language
         if (queryLanguage === 'JSONata') {
           for (const choice of aslState.Choices) {
-            if (isJSONPathChoiceRule(choice)) {
+            // Type guard check - ensure it's an object before checking rule type
+            // Check if choice is an object and has JSONPath-specific fields
+            if (
+              choice &&
+              typeof choice === 'object' &&
+              ('Variable' in choice || 'And' in choice || 'Or' in choice || 'Not' in choice)
+            ) {
               throw new Error(
                 "Variable field is not supported in JSONata mode. Use 'Condition' field instead",
               )
@@ -199,16 +232,24 @@ export class StateFactory {
           ...stateWithoutQL,
           Choices: aslState.Choices,
         }
-        // Choices array needs type assertion as we can't validate the specific rule type at runtime
-        return queryLanguage === 'JSONata'
-          ? new JSONataChoiceState({
-              ...config,
-              Choices: config.Choices as JSONataChoiceRule[],
-            })
-          : new JSONPathChoiceState({
-              ...config,
-              Choices: config.Choices as JSONPathChoiceRule[],
-            })
+        // Use type guards to validate and narrow Choices type
+        if (queryLanguage === 'JSONata') {
+          if (!isJSONataChoicesArray(config.Choices)) {
+            throw new Error(`Invalid JSONata Choices array`)
+          }
+          return new JSONataChoiceState({
+            ...config,
+            Choices: config.Choices,
+          })
+        } else {
+          if (!isJSONPathChoicesArray(config.Choices)) {
+            throw new Error(`Invalid JSONPath Choices array`)
+          }
+          return new JSONPathChoiceState({
+            ...config,
+            Choices: config.Choices,
+          })
+        }
       }
 
       case 'Map': {
@@ -311,15 +352,48 @@ export class StateFactory {
         // Convert nested States in each branch to State class instances
         // Note: Branches inherit QueryLanguage from the state machine level, not from the Parallel state
         const branches = aslState.Branches.map((branch) => {
-          if (isBranch(branch)) {
+          // Validate that branch is an object
+          if (!isJsonObject(branch)) {
+            throw new Error('Each branch must be an object')
+          }
+
+          // Check if it has States to convert
+          if (hasStates(branch)) {
             // Parallel branches inherit from StateMachine, not from Parallel state
             const states = StateFactory.createStates(branch.States, stateMachineQueryLanguage)
-            return {
+            // Ensure branch has StartAt field for StateMachine compliance
+            const branchWithStates = {
               ...branch,
               States: states,
             }
+            // Ensure StartAt is present
+            if (!('StartAt' in branchWithStates) || typeof branchWithStates.StartAt !== 'string') {
+              throw new Error('Branch must have a StartAt field')
+            }
+            // Validated, construct proper StateMachine
+            const validBranch: StateMachine = {
+              ...branchWithStates,
+              StartAt: branchWithStates.StartAt,
+              States: states,
+            }
+            return validBranch
           }
-          return branch
+
+          // If no States to convert, ensure it's still a valid StateMachine
+          if (!('StartAt' in branch) || typeof branch.StartAt !== 'string') {
+            throw new Error('Branch must have a StartAt field')
+          }
+          if (!('States' in branch && isJsonObject(branch.States))) {
+            throw new Error('Branch must have a States field')
+          }
+          // Branch has StartAt and States, so it's a valid StateMachine structure
+          // Create proper StateMachine from validated branch
+          const validBranch: StateMachine = {
+            ...branch,
+            StartAt: branch.StartAt,
+            States: StateFactory.createStates(branch.States, queryLanguage),
+          }
+          return validBranch
         })
 
         // Include QueryLanguage in config for validation
@@ -327,14 +401,14 @@ export class StateFactory {
           const config = {
             ...aslState,
             QueryLanguage: 'JSONata' as const,
-            Branches: branches as StateMachine[],
+            Branches: branches,
           }
           return new JSONataParallelState(config)
         } else {
           const config = {
             ...aslState,
             QueryLanguage: 'JSONPath' as const,
-            Branches: branches as StateMachine[],
+            Branches: branches,
           }
           return new JSONPathParallelState(config)
         }

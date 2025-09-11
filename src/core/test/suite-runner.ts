@@ -13,9 +13,10 @@ import {
 } from '../../constants/defaults'
 import { mockConfigSchema } from '../../schemas/mock-schema'
 import type { TestSuite } from '../../schemas/test-schema'
-import type { JsonObject, StateMachine } from '../../types/asl'
+import type { StateMachine } from '../../types/asl'
 import { StateFactory } from '../../types/state-factory'
 import type { TestSuiteResult } from '../../types/test'
+import { isJsonObject } from '../../types/type-guards'
 import { extractStateMachineFromCDK } from '../../utils/cdk-extractor'
 import { MockEngine } from '../mock/engine'
 import { TestSuiteExecutor } from './executor'
@@ -40,8 +41,10 @@ export class TestSuiteRunner {
     // Load state machine
     const stateMachineData = this.loadStateMachine()
     // Convert state machine to use State class instances
-    const rawStateMachine = stateMachineData.stateMachine as JsonObject
-    this.stateMachine = StateFactory.createStateMachine(rawStateMachine)
+    if (!isJsonObject(stateMachineData.stateMachine)) {
+      throw new Error('Invalid state machine definition')
+    }
+    this.stateMachine = StateFactory.createStateMachine(stateMachineData.stateMachine)
     this.stateMachineName = stateMachineData.stateMachineName
 
     // Load mock configuration
@@ -51,11 +54,7 @@ export class TestSuiteRunner {
     // this.testDataPath = this.resolveTestDataPath()
 
     // Create executor
-    this.executor = new TestSuiteExecutor(
-      this.suite,
-      this.stateMachine as StateMachine,
-      this.mockEngine,
-    )
+    this.executor = new TestSuiteExecutor(this.suite, this.stateMachine, this.mockEngine)
   }
 
   private loadAndValidateTestSuite(suitePath: string): TestSuite {
@@ -141,7 +140,10 @@ export class TestSuiteRunner {
       const parsedContent = JSON.parse(stateMachineContent)
 
       if (parsedContent.Resources) {
-        const stateMachine = extractStateMachineFromCDK(parsedContent as JsonObject)
+        if (!isJsonObject(parsedContent)) {
+          throw new Error('Parsed content is not a valid JSON object')
+        }
+        const stateMachine = extractStateMachineFromCDK(parsedContent)
         return { stateMachine }
       } else {
         return { stateMachine: parsedContent }

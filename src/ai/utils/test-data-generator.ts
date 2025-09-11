@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 import * as yaml from 'js-yaml'
 import { mockConfigSchema } from '../../schemas/mock-schema'
 import type { MapState, StateMachine } from '../../types/asl'
-import { analyzeItemReaders, generateSampleData, type ItemReaderInfo } from './item-reader-analyzer'
+import { analyzeItemReaders, generateSampleData } from './item-reader-analyzer'
 import { findStates } from './state-traversal'
 
 export interface TestDataFile {
@@ -66,7 +66,10 @@ export function generateTestDataFiles(
 
       // Generate test data based on the format and ItemProcessor requirements
       const itemCount = reader.estimatedItemCount || 10
-      const format = (mockForState.dataFormat || reader.format) as ItemReaderInfo['format']
+      // Both dataFormat and reader.format should be the same type, but TypeScript loses the union type
+      const format = (mockForState.dataFormat || reader.format) as Parameters<
+        typeof generateSampleData
+      >[0]
       const sampleData = generateSampleData(format, itemCount, mapState || undefined)
 
       // Use the filename from the mock (handle relative paths)
@@ -105,5 +108,13 @@ function findMapState(stateMachine: StateMachine, stateName: string): MapState |
     return name === stateName && state.isMap()
   })
 
-  return mapStates.length > 0 ? (mapStates[0]?.state as MapState) : null
+  if (mapStates.length > 0) {
+    const firstState = mapStates[0]?.state
+    // isMap() in the filter ensures this is a MapState
+    if (firstState?.isMap()) {
+      return firstState
+    }
+  }
+
+  return null
 }

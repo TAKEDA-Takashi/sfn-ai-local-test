@@ -25,12 +25,12 @@ export class JSONPathStrategy implements ProcessingStrategy {
     }
 
     // 1. InputPath の適用
-    let processedInput = this.applyInputPath(input, state as JSONPathState)
+    let processedInput = this.applyInputPath(input, state)
 
     // 2. Parameters の適用
     // Map/DistributedMap states apply Parameters per item, not to the whole input
     if ('Parameters' in state && state.Parameters && !state.isMap()) {
-      processedInput = this.applyParameters(processedInput, state as JSONPathState)
+      processedInput = this.applyParameters(processedInput, state)
     }
 
     return Promise.resolve(processedInput)
@@ -53,19 +53,19 @@ export class JSONPathStrategy implements ProcessingStrategy {
     // 1. ResultSelector の適用
     let processedResult = result
     if ('ResultSelector' in state && state.ResultSelector) {
-      processedResult = this.applyResultSelector(result, originalInput, state as JSONPathState)
+      processedResult = this.applyResultSelector(result, originalInput, state)
     }
 
     // 2. ResultPath の適用
-    let output = this.applyResultPath(originalInput, processedResult, state as JSONPathState)
+    let output = this.applyResultPath(originalInput, processedResult, state)
 
     // 3. OutputPath の適用
-    output = this.applyOutputPath(output, state as JSONPathState)
+    output = this.applyOutputPath(output, state)
 
     // 4. Assign の適用 (Variables の更新) - Task結果から直接評価
     if ('Assign' in state && state.Assign) {
       // Assignは、ResultSelectorが適用された結果（Task実行結果から作られた）から値を取得
-      this.applyAssign(processedResult, state as JSONPathState, context)
+      this.applyAssign(processedResult, state, context)
     }
 
     return Promise.resolve(output)
@@ -89,7 +89,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
       wrap: false,
     })
 
-    return result !== undefined ? (result as JsonValue) : null
+    return result !== undefined ? result : null
   }
 
   /**
@@ -150,7 +150,10 @@ export class JSONPathStrategy implements ProcessingStrategy {
 
       for (let i = 0; i < pathParts.length - 1; i++) {
         current[pathParts[i]] = {}
-        current = current[pathParts[i]] as JsonObject
+        const next = current[pathParts[i]]
+        if (typeof next === 'object' && next !== null && !Array.isArray(next)) {
+          current = next
+        }
       }
       current[pathParts[pathParts.length - 1]] = result
 
@@ -160,13 +163,27 @@ export class JSONPathStrategy implements ProcessingStrategy {
     // 元の入力がオブジェクトの場合はディープコピーして挿入
     const output = deepClone(originalInput)
     const pathParts = resultPath.slice(2).split('.')
-    let current = output as JsonObject
+
+    // outputは既にオブジェクトであることが確認済み
+    if (typeof output !== 'object' || output === null || Array.isArray(output)) {
+      throw new Error('Unexpected output type in ResultPath processing')
+    }
+    let current = output
 
     for (let i = 0; i < pathParts.length - 1; i++) {
       if (!(pathParts[i] in current)) {
         current[pathParts[i]] = {}
       }
-      current = current[pathParts[i]] as JsonObject
+      const next = current[pathParts[i]]
+      if (typeof next !== 'object' || next === null || Array.isArray(next)) {
+        current[pathParts[i]] = {}
+      }
+      // 上記のチェックで current[pathParts[i]] は必ずオブジェクトになることが保証されている
+      const nextObj = current[pathParts[i]]
+      if (typeof nextObj !== 'object' || nextObj === null || Array.isArray(nextObj)) {
+        throw new Error('Unexpected state in ResultPath processing')
+      }
+      current = nextObj
     }
     current[pathParts[pathParts.length - 1]] = result
 
@@ -191,7 +208,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
       wrap: false,
     })
 
-    return result !== undefined ? (result as JsonValue) : null
+    return result !== undefined ? result : null
   }
 
   /**

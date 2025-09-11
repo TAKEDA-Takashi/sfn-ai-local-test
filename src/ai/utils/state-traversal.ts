@@ -80,7 +80,7 @@ function traverseState(
         const branchIsJSONata = branch.QueryLanguage === 'JSONata' || stateIsJSONata
         for (const [branchStateName, branchState] of Object.entries(branch.States)) {
           // branch.Statesは既にStateインターフェース（実行時はクラス）
-          const result = traverseState(branchStateName, branchState as State, visitor, {
+          const result = traverseState(branchStateName, branchState, visitor, {
             depth: context.depth + 1,
             path: `${context.path}.Branch[${index}].${branchStateName}`,
             parentType: 'Parallel',
@@ -100,7 +100,7 @@ function traverseState(
       const processorIsJSONata = stateIsJSONata
       for (const [procStateName, procState] of Object.entries(processor.States)) {
         // processor.States is already properly typed from MapState interface
-        const result = traverseState(procStateName, procState as State, visitor, {
+        const result = traverseState(procStateName, procState, visitor, {
           depth: context.depth + 1,
           path: `${context.path}.ItemProcessor.${procStateName}`,
           parentType: state.Type,

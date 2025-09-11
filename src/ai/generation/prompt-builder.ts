@@ -6,13 +6,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { HTTP_STATUS_OK } from '../../constants/defaults'
-import type {
-  ChoiceState,
-  DistributedMapState,
-  ItemReader,
-  State,
-  StateMachine,
-} from '../../types/asl'
+import type { ChoiceState, ItemReader, State, StateMachine } from '../../types/asl'
 import { MOCK_TYPE_DEFINITIONS, TEST_TYPE_DEFINITIONS } from '../agents/embedded-types'
 import {
   type ChoiceDependency,
@@ -83,20 +77,20 @@ export class PromptBuilder {
     // ItemReaderがある場合は必須モックとして明示
     if (hasState(stateMachine, StateFilters.hasItemReader)) {
       const allStates = findStates(stateMachine, StateFilters.hasItemReader)
-      const itemReaderStates = allStates
-        .filter(({ state }) => state.isDistributedMap())
+      const distributedMapStates = allStates.filter(({ state }) => state.isDistributedMap())
+      const itemReaderStates = distributedMapStates
         .map(({ name, state }) => {
-          // isDistributedMap()がtrueなら、DistributedMapStateとして扱える
-          const distributedMapState = state as DistributedMapState
+          // isDistributedMap()でフィルタ済みだが、TypeScriptが推論できない場合がある
+          if (!state.isDistributedMap()) return null
           return {
             name,
-            itemReader: distributedMapState.ItemReader,
-            hasResultWriter: !!distributedMapState.ResultWriter,
+            itemReader: state.ItemReader,
+            hasResultWriter: !!state.ResultWriter,
           }
         })
         .filter(
-          (state): state is { name: string; itemReader: ItemReader; hasResultWriter: boolean } =>
-            state.itemReader !== undefined,
+          (item): item is { name: string; itemReader: ItemReader; hasResultWriter: boolean } =>
+            item !== null && item.itemReader !== undefined,
         )
       sections.push(this.getItemReaderMandatorySection(itemReaderStates))
     }
@@ -839,8 +833,8 @@ The executor handles this automatically based on ItemReader processing.
 
     itemReaderStates.forEach(({ name, itemReader }) => {
       const readerConfig = itemReader.ReaderConfig || {}
-      const inputType = (readerConfig.InputType as string) || 'JSONL'
-      const resource = (itemReader.Resource as string) || ''
+      const inputType = readerConfig.InputType || 'JSONL'
+      const resource = itemReader.Resource || ''
       const dataFileName = `${name.toLowerCase().replace(/\s+/g, '-')}-items.${inputType.toLowerCase()}`
 
       sections.push(`### State: "${name}"`)
@@ -985,7 +979,7 @@ The executor handles this automatically based on ItemReader processing.
     }
 
     // StateMachine should already contain processed State instances
-    const states = stateMachine.States as Record<string, State>
+    const states = stateMachine.States
 
     // Build a state graph for structural analysis
     const stateGraph = this.buildStateGraph(states)

@@ -43,15 +43,15 @@ export class JSONPathProcessor {
 
     // Handle nested objects (recursively process)
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      const processedValue = JSONPathProcessor.processEntries(value as JsonObject, data, options)
+      const processedValue = JSONPathProcessor.processEntries(value, data, options)
       return { key: finalKey, value: processedValue }
     }
 
     // Handle arrays (recursively process each element)
     if (Array.isArray(value)) {
       const processedValue = value.map((item) => {
-        if (typeof item === 'object' && item !== null) {
-          return JSONPathProcessor.processEntries(item as JsonObject, data, options)
+        if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+          return JSONPathProcessor.processEntries(item, data, options)
         }
         return item
       })
@@ -97,7 +97,7 @@ export class JSONPathProcessor {
     },
   ): JsonValue {
     if (options?.handleIntrinsics && value.startsWith('States.')) {
-      return JSONPathEvaluator.evaluate(value, data) as JsonValue
+      return JSONPathEvaluator.evaluate(value, data)
     }
 
     if (value.startsWith('$')) {
@@ -180,8 +180,11 @@ export class JSONPathProcessor {
             if (value.startsWith('$$') && options?.contextPathHandler) {
               processedEntries[newKey] = options.contextPathHandler(value)
             } else if (value.startsWith('States.')) {
-              const inputObj = data as JsonObject
-              const dataContext = inputObj?.$ !== undefined ? inputObj.$ : data
+              let dataContext = data
+              if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+                const inputObj = data
+                dataContext = inputObj.$ !== undefined ? inputObj.$ : data
+              }
               if (options?.context?.variables && options.evaluateIntrinsicWithVariables) {
                 processedEntries[newKey] = options.evaluateIntrinsicWithVariables(
                   value,
@@ -189,10 +192,7 @@ export class JSONPathProcessor {
                   options.context,
                 )
               } else if (options?.handleIntrinsics) {
-                processedEntries[newKey] = JSONPathEvaluator.evaluate(
-                  value,
-                  dataContext,
-                ) as JsonValue
+                processedEntries[newKey] = JSONPathEvaluator.evaluate(value, dataContext)
               } else {
                 processedEntries[newKey] = value
               }
@@ -202,8 +202,11 @@ export class JSONPathProcessor {
                 processedEntries[newKey] = options.context.variables[varName] ?? null
               } else {
                 // For ResultSelector, $ references the result
-                const inputObj = data as JsonObject
-                const dataContext = inputObj?.$ !== undefined ? inputObj.$ : data
+                let dataContext = data
+                if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+                  const inputObj = data
+                  dataContext = inputObj.$ !== undefined ? inputObj.$ : data
+                }
                 processedEntries[newKey] = JSONPathProcessor.evaluateStringValue(
                   value,
                   dataContext,
@@ -223,7 +226,7 @@ export class JSONPathProcessor {
           processedEntries[key] = JSONPathProcessor.processParameters(value, data, options)
         }
       }
-      return processedEntries as JsonValue
+      return processedEntries
     }
 
     return params

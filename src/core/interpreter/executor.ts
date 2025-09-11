@@ -1,5 +1,6 @@
 import type { ExecutionContext, JsonObject, JsonValue, StateMachine } from '../../types/asl'
 import type { StateExecution } from '../../types/test'
+import { isJsonObject } from '../../types/type-guards'
 import { deepClone } from '../../utils/deep-clone'
 import type { MockEngine } from '../mock/engine'
 import type { StateExecutionResult } from './states/base'
@@ -90,7 +91,7 @@ export class StateMachineExecutor {
         // JSONata用のExecutionコンテキストを追加
         Execution: {
           Id: `execution-${Date.now()}`,
-          Input: input as JsonObject,
+          Input: isJsonObject(input) ? input : {},
           Name: `execution-${Date.now()}`,
           RoleArn: 'arn:aws:iam::123456789012:role/StepFunctionsRole',
           StartTime: new Date().toISOString(),
@@ -127,12 +128,19 @@ export class StateMachineExecutor {
           throw new Error(`No executor found for state type: ${state.Type}`)
         }
 
-        let result: StateExecutionResult
+        let result: StateExecutionResult | undefined
         try {
           const stateResult = await executor.execute(context)
           result = stateResult
 
-          if (result.executionPath && Array.isArray(result.executionPath)) {
+          // Map/DistributedMap/Parallelステートの場合、内部の実行パスは追加しない
+          // これらのステートは自身のみをexecutionPathに含める
+          if (
+            result.executionPath &&
+            Array.isArray(result.executionPath) &&
+            !state.isMap() &&
+            !state.isParallel()
+          ) {
             // 現在のステートは既に追加済みなので、追加分のみ取得
             const additionalPaths = result.executionPath.slice(1)
             context.executionPath.push(...additionalPaths)
@@ -141,7 +149,7 @@ export class StateMachineExecutor {
           if (context.stateExecutions) {
             // For Parallel states, child executions are already added by ParallelStateExecutor
             // Only add the Parallel state itself, not overwrite child executions
-            if (state.Type !== 'Parallel') {
+            if (!state.isParallel()) {
               const stateExecution: StateExecution = {
                 statePath: [...(context.currentStatePath || []), context.currentState],
                 state: context.currentState,
@@ -169,7 +177,16 @@ export class StateMachineExecutor {
           if (options.verbose) {
             console.error(`State execution error in ${context.currentState}:`, error)
           }
-          throw error
+          // エラーが発生した場合、result.errorがセットされている可能性がある
+          // その場合はエラーを投げずに処理を続ける
+          if (result?.error) {
+            // エラーハンドリングされた結果を使用
+            if (options.verbose) {
+              console.log(`Error was handled by state executor: ${result.error}`)
+            }
+          } else {
+            throw error
+          }
         }
 
         if (options.verbose) {
@@ -180,7 +197,7 @@ export class StateMachineExecutor {
           })
         }
 
-        if (state.Type === 'Succeed') {
+        if (state.isSucceed()) {
           return {
             output: result.output || context.input,
             executionPath: context.executionPath,
@@ -192,7 +209,7 @@ export class StateMachineExecutor {
           }
         }
 
-        if (state.Type === 'Fail') {
+        if (state.isFail()) {
           return {
             output: context.input,
             executionPath: context.executionPath,

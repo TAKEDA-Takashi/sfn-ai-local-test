@@ -2,14 +2,8 @@
  * Analyzes ItemReader configuration in DistributedMap states
  */
 
-import type {
-  ItemProcessor,
-  JsonObject,
-  JsonValue,
-  MapState,
-  State,
-  StateMachine,
-} from '../../types/asl'
+import type { ItemProcessor, JsonObject, JsonValue, MapState, StateMachine } from '../../types/asl'
+import { isJsonObject } from '../../types/type-guards'
 // DataFlowAnalyzer is available for future use if needed
 // import { DataFlowAnalyzer } from '../analysis/data-flow-analyzer'
 import { findStates, StateFilters } from './state-traversal'
@@ -33,25 +27,31 @@ export function analyzeItemReaders(stateMachine: StateMachine): ItemReaderInfo[]
       // If no itemReader, return default info
       return {
         stateName: name,
-        format: 'json' as ItemReaderInfo['format'],
+        format: 'json',
         estimatedItemCount: 10,
         resource: '',
         hasItemReader: false,
       }
     }
 
-    const resource = itemReader.Resource as string
+    const resource = typeof itemReader.Resource === 'string' ? itemReader.Resource : ''
 
     // Determine format based on resource type
     let format: ItemReaderInfo['format'] = 'json'
     let estimatedItemCount = 10 // Default estimate
 
-    if (resource?.includes('s3:listObjectsV2')) {
+    if (resource.includes('s3:listObjectsV2')) {
       format = 's3objects'
       estimatedItemCount = 20 // S3 listings typically have more items
-    } else if (resource?.includes('s3:getObject')) {
+    } else if (resource.includes('s3:getObject')) {
       const readerConfig = itemReader.ReaderConfig
-      const inputType = readerConfig?.InputType as string
+      const inputType =
+        readerConfig &&
+        typeof readerConfig === 'object' &&
+        'InputType' in readerConfig &&
+        typeof readerConfig.InputType === 'string'
+          ? readerConfig.InputType
+          : undefined
 
       if (inputType === 'CSV') {
         format = 'csv'
@@ -64,9 +64,11 @@ export function analyzeItemReaders(stateMachine: StateMachine): ItemReaderInfo[]
         estimatedItemCount = 100 // S3 inventory manifest can have many items
       } else {
         // Fallback: detect format from Arguments.Key extension (for JSONata mode)
-        const hasArguments = 'Arguments' in itemReader && itemReader.Arguments
-        const args = hasArguments ? (itemReader.Arguments as JsonObject) : undefined
-        const key = args?.Key as string
+        const args =
+          'Arguments' in itemReader && isJsonObject(itemReader.Arguments)
+            ? itemReader.Arguments
+            : undefined
+        const key = args && 'Key' in args && typeof args.Key === 'string' ? args.Key : undefined
 
         if (key) {
           if (key.includes('.jsonl') || key.endsWith('.jsonl')) {
@@ -135,9 +137,8 @@ function analyzeItemProcessorFieldUsage(
 ): JsonObject | null {
   const requiredFields: JsonObject = {}
 
-  // Convert processor to object for analysis
-  const processorObj = processor as { States?: Record<string, State> }
-  if (!processorObj.States) {
+  // ItemProcessor always has States property (required in interface)
+  if (!processor.States) {
     return null
   }
 
@@ -146,7 +147,7 @@ function analyzeItemProcessorFieldUsage(
   // JSONPath: $.fieldName.subField (when fieldName is "value")
   const jsonataPattern = new RegExp(`\\$states\\.input\\.${fieldName}\\.([\\w.]+)`, 'g')
   const jsonpathPattern = new RegExp(`\\$\\.${fieldName}\\.([\\w.]+)`, 'g')
-  const jsonString = JSON.stringify(processorObj.States)
+  const jsonString = JSON.stringify(processor.States)
 
   // Debug logging
   // console.log('Processing field:', fieldName)
@@ -438,31 +439,27 @@ function extractFieldsFromItemProcessor(
 ): void {
   if (!processor.States) return
 
-  for (const [, rawState] of Object.entries(processor.States)) {
-    // StateFactoryで作成されたStateインスタンスを想定
-    const state = rawState as State
+  for (const [, state] of Object.entries(processor.States)) {
+    // processor.States is Record<string, State>, so state is already typed as State
 
     // ガード関数を使用してChoice状態を判定
     if (state.isChoice()) {
-      const choiceState = state as State & {
-        Choices: Array<{
-          Variable?: string
-          StringEquals?: JsonValue
-          NumericGreaterThan?: number
-          BooleanEquals?: boolean
-        }>
-      }
+      // isChoice() type guard ensures state has Choices property
       // Choice条件から必要フィールドを抽出
-      if ('Choices' in choiceState) {
-        for (const choice of choiceState.Choices) {
-          if (choice.Variable) {
+      if ('Choices' in state && state.Choices) {
+        for (const choice of state.Choices) {
+          // Check if it's a JSONPath choice (has Variable field)
+          if ('Variable' in choice && choice.Variable) {
             const fieldName = extractFieldFromPath(choice.Variable)
             if (fieldName && !sampleInput[fieldName]) {
-              if (choice.StringEquals !== undefined) {
+              if ('StringEquals' in choice && choice.StringEquals !== undefined) {
                 sampleInput[fieldName] = choice.StringEquals
-              } else if (choice.NumericGreaterThan !== undefined) {
+              } else if (
+                'NumericGreaterThan' in choice &&
+                choice.NumericGreaterThan !== undefined
+              ) {
                 sampleInput[fieldName] = choice.NumericGreaterThan + 1
-              } else if (choice.BooleanEquals !== undefined) {
+              } else if ('BooleanEquals' in choice && choice.BooleanEquals !== undefined) {
                 sampleInput[fieldName] = choice.BooleanEquals
               } else {
                 sampleInput[fieldName] = generateSampleValueForField(fieldName)
@@ -472,10 +469,10 @@ function extractFieldsFromItemProcessor(
         }
       }
     } else if (state.isTask()) {
-      const taskState = state as State & { Parameters?: JsonValue }
+      // isTask() type guard ensures state is a TaskState
       // Task Parameters から必要フィールドを抽出
-      if ('Parameters' in taskState && taskState.Parameters) {
-        extractFieldsFromParameters(taskState.Parameters, sampleInput, isJSONata)
+      if ('Parameters' in state && state.Parameters) {
+        extractFieldsFromParameters(state.Parameters, sampleInput, isJSONata)
       }
     }
   }
@@ -491,7 +488,12 @@ function extractFieldsFromParameters(
 ): void {
   if (!params || typeof params !== 'object') return
 
-  for (const [, value] of Object.entries(params as JsonObject)) {
+  // Type check params before processing
+  if (typeof params !== 'object' || params === null || Array.isArray(params)) {
+    return
+  }
+
+  for (const [, value] of Object.entries(params)) {
     if (typeof value === 'string') {
       const fieldName = extractFieldFromPath(value)
       if (fieldName && !sampleInput[fieldName]) {

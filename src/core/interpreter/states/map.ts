@@ -10,6 +10,7 @@ import type {
   ToleranceConfig,
 } from '../../../types/asl'
 import type { MapState } from '../../../types/state-classes'
+import { hasIterator } from '../../../types/type-guards'
 import type { MockEngine } from '../../mock/engine'
 import { ItemReaderValidator } from '../../mock/item-reader-validator'
 import { JSONataEvaluator } from '../expressions/jsonata'
@@ -167,8 +168,14 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
         variables: context.variables,
       }
     } catch (error) {
+      console.error(`Map state error in ${context.currentState}:`, error)
       // BaseStateExecutorのhandleErrorを使用
-      return this.handleError(error, context)
+      const errorResult = this.handleError(error, context)
+      // MapステートにNextがある場合、それを保持する
+      if (!errorResult.nextState && this.state.Next) {
+        errorResult.nextState = this.state.Next
+      }
+      return errorResult
     }
   }
 
@@ -191,11 +198,16 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
       return Array.isArray(input) ? input : [input]
     }
 
+    // itemsPath is guaranteed to be string at this point
+    if (typeof itemsPath !== 'string') {
+      return Array.isArray(input) ? input : [input]
+    }
+
     try {
-      return JSONPathUtils.extractItemsArray(itemsPath as string, input)
+      return JSONPathUtils.extractItemsArray(itemsPath, input)
     } catch (_error) {
       // Fallback to single item array if extraction fails
-      const result = JSONPathUtils.evaluateFirst(itemsPath as string, input, []) ?? []
+      const result = JSONPathUtils.evaluateFirst(itemsPath, input, []) ?? []
       return Array.isArray(result) ? result : [result]
     }
   }
@@ -277,7 +289,9 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
           },
         }
 
-        return await JSONataEvaluator.evaluate(jsonataExpr, item, bindings)
+        const result = await JSONataEvaluator.evaluate(jsonataExpr, item, bindings)
+        // undefinedはnullとして扱う
+        return result === undefined ? null : result
       }
       if (selector.endsWith('.$')) {
         return JSONPathProcessor.processEntry(selector, selector, item).value
@@ -308,8 +322,13 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
     iterationIndex?: number,
   ): Promise<StateExecutionResult> {
     // Support both ItemProcessor (newer) and Iterator (older) fields
-    const processor =
-      this.state.ItemProcessor || (this.state as { Iterator?: ItemProcessor }).Iterator
+    let processor: ItemProcessor | undefined = this.state.ItemProcessor
+
+    // For legacy compatibility, check if Iterator exists
+    // Note: Iterator is a legacy field not in the type definition
+    if (!processor && hasIterator(this.state)) {
+      processor = this.state.Iterator
+    }
 
     if (!processor) {
       return { output: itemInput, executionPath: [], success: true }
@@ -317,11 +336,11 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
 
     // Use ItemProcessorRunner instead of StateMachineExecutor to avoid circular dependency
     // Pass QueryLanguage from Map state to ItemProcessor
-    const processorWithQueryLang = {
-      ...processor,
-      QueryLanguage: this.state.QueryLanguage,
-    } as ItemProcessor & { QueryLanguage?: string }
-    const runner = new ItemProcessorRunner(processorWithQueryLang, this.mockEngine)
+    // ItemProcessor doesn't have QueryLanguage in the interface, but ItemProcessorRunner can handle it
+    if (this.state.QueryLanguage && !('QueryLanguage' in processor)) {
+      Object.assign(processor, { QueryLanguage: this.state.QueryLanguage })
+    }
+    const runner = new ItemProcessorRunner(processor, this.mockEngine)
 
     // For Inline Map (default), pass variables context to allow access to outer scope
     let processorContext: ItemProcessorContext
@@ -588,8 +607,7 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
       }
     } catch (error) {
       // TypeScript catch always produces unknown type, need to safely convert
-      const errorValue = error instanceof Error ? error : (error as JsonValue)
-      return super.handleError(errorValue, context)
+      return super.handleError(error, context)
     }
   }
 
@@ -599,7 +617,11 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
     }
 
     // Fall back to ItemsPath or direct array
-    return this.getItemsArrayForDistributed(input) as JsonArray
+    const items = this.getItemsArrayForDistributed(input)
+    if (!Array.isArray(items)) {
+      throw new Error('Expected array from getItemsArrayForDistributed')
+    }
+    return items
   }
 
   private readItemsFromDataSource(itemReader: ItemReader, context: ExecutionContext): JsonArray {
@@ -617,10 +639,13 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
         state: context.currentState,
         type: 'itemReader',
         resource: itemReader.Resource,
-        config: config as JsonValue,
+        config: config,
       })
       if (mockData) {
-        return mockData as JsonArray
+        if (!Array.isArray(mockData)) {
+          throw new Error('ItemReader mock must return an array')
+        }
+        return mockData
       }
     }
 
@@ -722,7 +747,7 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
       Input: contextInput,
     }
 
-    return await this.processItemSelector(this.state.ItemSelector as JsonValue, item, context)
+    return await this.processItemSelector(this.state.ItemSelector, item, context)
   }
 
   private applyParametersToItem(
@@ -770,16 +795,33 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
         return item
       }
       if (parameters === '$$.Map.Item.Index') {
-        const typedContext = context as JsonObject
-        const mapContext = typedContext.Map as JsonObject
-        const itemContext = mapContext.Item as JsonObject
+        if (typeof context !== 'object' || context === null || Array.isArray(context)) {
+          return null
+        }
+        const typedContext = context
+        if (
+          !typedContext.Map ||
+          typeof typedContext.Map !== 'object' ||
+          Array.isArray(typedContext.Map)
+        ) {
+          return null
+        }
+        const mapContext = typedContext.Map
+        if (
+          !mapContext.Item ||
+          typeof mapContext.Item !== 'object' ||
+          Array.isArray(mapContext.Item)
+        ) {
+          return null
+        }
+        const itemContext = mapContext.Item
         return itemContext.Index
       }
       if (parameters.startsWith('$$.')) {
-        return JSONPathUtils.evaluateWithContext(parameters, item as JsonValue, context)
+        return JSONPathUtils.evaluateWithContext(parameters, item, context)
       }
       if (parameters.endsWith('.$')) {
-        return JSONPathProcessor.processEntry(parameters, parameters, item as JsonValue).value
+        return JSONPathProcessor.processEntry(parameters, parameters, item).value
       }
       return parameters
     }

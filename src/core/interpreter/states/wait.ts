@@ -78,7 +78,12 @@ export class WaitStateExecutor extends BaseStateExecutor<WaitState> {
       if (current === null || current === undefined || typeof current !== 'object') {
         return undefined
       }
-      current = (current as Record<string, JsonValue>)[part]
+      // 配列の場合はインデックスアクセス不可
+      if (Array.isArray(current)) {
+        return undefined
+      }
+      // ここでcurrentは非null、非undefined、非配列のオブジェクト
+      current = current[part]
     }
 
     return current

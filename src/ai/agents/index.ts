@@ -5,7 +5,7 @@ import { HTTP_STATUS_OK, LAMBDA_VERSION_LATEST } from '../../constants/defaults'
 // import { DataFlowTracker } from '../utils/data-flow-tracker'
 // import { MockFormatSelector } from '../utils/mock-format-selector'
 // import { ConsistencyChecker } from '../utils/consistency-checker'
-import type { JsonObject, State, StateMachine } from '../../types/asl'
+import type { JsonObject, StateMachine } from '../../types/asl'
 // Inline type check
 import {
   generateMockWithClaudeCLI,
@@ -240,31 +240,30 @@ function analyzeStateMachineFeatures(stateMachine: StateMachine): JsonObject {
   const variableNames = new Set<string>()
 
   for (const [stateName, state] of Object.entries(stateMachine.States || {})) {
-    const s = state as State
-
     // Check for Variables/Assign
-    if ('Assign' in s && s.Assign) {
+    if ('Assign' in state && state.Assign) {
       features.variables = true
       variableStates.push(stateName)
-      Object.keys(s.Assign).forEach((key) => {
+      Object.keys(state.Assign).forEach((key) => {
         const cleanKey = key.replace(/\.\$?$/, '')
         variableNames.add(cleanKey)
       })
     }
 
     // Check state types using type guards
-    if (s.isChoice()) features.hasChoice = true
-    if (s.isMap()) {
-      if (s.isDistributedMap()) {
+    if (state.isChoice()) features.hasChoice = true
+    if (state.isMap()) {
+      if (state.isDistributedMap()) {
         features.hasDistributedMap = true
       } else {
         features.hasMap = true
       }
     }
-    if (s.isParallel()) features.hasParallel = true
+    if (state.isParallel()) features.hasParallel = true
 
     // Check error handling
-    if (('Retry' in s && s.Retry) || ('Catch' in s && s.Catch)) features.errorHandling = true
+    if (('Retry' in state && state.Retry) || ('Catch' in state && state.Catch))
+      features.errorHandling = true
   }
 
   if (features.variables) {

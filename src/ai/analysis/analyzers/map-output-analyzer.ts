@@ -19,8 +19,8 @@ export class MapOutputAnalyzer {
     for (const [stateName, state] of Object.entries(states)) {
       if (!state.isMap()) continue
 
-      const mapState = state as MapState
-      const spec = this.analyzeMapState(stateName, mapState)
+      // state.isMap() is a type predicate, so state is now MapState
+      const spec = this.analyzeMapState(stateName, state)
       if (spec) {
         specs.push(spec)
       }
@@ -128,10 +128,13 @@ export class MapOutputAnalyzer {
 
     if (isJSONata) {
       // JSONataモード：Arguments から入力配列を特定
-      if ('Arguments' in mapState && mapState.Arguments && typeof mapState.Arguments === 'object') {
-        const inputArrayFields = this.extractArrayFieldsFromJSONata(
-          mapState.Arguments as JsonObject,
-        )
+      if (
+        'Arguments' in mapState &&
+        mapState.Arguments &&
+        typeof mapState.Arguments === 'object' &&
+        !Array.isArray(mapState.Arguments)
+      ) {
+        const inputArrayFields = this.extractArrayFieldsFromJSONata(mapState.Arguments)
         if (inputArrayFields.length > 0) {
           const primaryField = inputArrayFields[0]
           sizeCalculation = `input.${primaryField}.length`

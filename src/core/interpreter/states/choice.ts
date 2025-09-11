@@ -5,6 +5,7 @@ import type {
   JsonValue,
 } from '../../../types/asl'
 import type { ChoiceState } from '../../../types/state-classes'
+import { isJsonObject } from '../../../types/type-guards'
 import { JSONataEvaluator } from '../expressions/jsonata'
 import { isJSONataChoiceRule, isJSONPathChoiceRule } from '../utils/choice-guards'
 import { JSONPathUtils } from '../utils/jsonpath-utils'
@@ -102,7 +103,8 @@ export class ChoiceStateExecutor extends BaseStateExecutor<ChoiceState> {
       return false
     }
 
-    const choiceRule = choice as JSONPathChoiceRule
+    // choice should already be JSONPathChoiceRule, but ensure type safety
+    const choiceRule = choice
 
     // IsPresentオペレータはパスの存在チェックのみ（エラーをスローしない）
     if (choiceRule.IsPresent !== undefined) {
@@ -293,7 +295,8 @@ export class ChoiceStateExecutor extends BaseStateExecutor<ChoiceState> {
       }
 
       const result = await JSONataEvaluator.evaluate(jsonataExpression, evaluationData, bindings)
-      return Boolean(result)
+      // undefinedはfalseとして扱う
+      return result === undefined ? false : Boolean(result)
     } catch (error) {
       console.warn(`JSONata condition evaluation failed: ${error}`)
       return false
@@ -313,13 +316,13 @@ export class ChoiceStateExecutor extends BaseStateExecutor<ChoiceState> {
 
       let current = input
       for (const segment of pathSegments) {
-        if (current === null || current === undefined || typeof current !== 'object') {
+        if (!isJsonObject(current)) {
           return false
         }
         if (!Object.hasOwn(current, segment)) {
           return false
         }
-        current = (current as Record<string, JsonValue>)[segment]
+        current = current[segment]
       }
       return true
     }

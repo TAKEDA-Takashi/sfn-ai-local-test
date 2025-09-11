@@ -111,7 +111,10 @@ export class JSONataStrategy implements ProcessingStrategy {
           },
         }
 
-        return await JSONataEvaluator.evaluate(jsonataExpr, statesContext.input, bindings)
+        const result = await JSONataEvaluator.evaluate(jsonataExpr, statesContext.input, bindings)
+        // JSONataは undefined を返すことがある（例：$partition([],2)）
+        // AWS Step Functionsの仕様では、undefinedはnullとして扱われる
+        return result === undefined ? null : result
       }
       return expression
     }

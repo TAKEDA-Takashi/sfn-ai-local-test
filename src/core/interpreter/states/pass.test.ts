@@ -89,7 +89,8 @@ describe('PassStateExecutor with JSONata', () => {
       stateExecutions: [],
     } as any)
 
-    expect(result.output).toBeUndefined()
+    // JSONata の undefined は null に変換される (AWS Step Functions 仕様)
+    expect(result.output).toBeNull()
   })
 
   it('should handle $range with single value result', async () => {

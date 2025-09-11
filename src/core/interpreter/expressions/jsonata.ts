@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import jsonata from 'jsonata'
 import type { JsonArray, JsonObject, JsonValue } from '../../../types/asl'
+import { isJsonValue } from '../../../types/type-guards'
 
 export class JSONataEvaluator {
   /**
@@ -10,7 +11,7 @@ export class JSONataEvaluator {
     expression: string,
     data: JsonValue,
     bindings?: JsonObject,
-  ): Promise<JsonValue> {
+  ): Promise<JsonValue | undefined> {
     try {
       const expr = jsonata(expression)
 
@@ -23,7 +24,18 @@ export class JSONataEvaluator {
       JSONataEvaluator.registerStepFunctionsFunctions(expr)
 
       const result = await expr.evaluate(data)
-      return result as JsonValue
+
+      // JSONataは undefined を返すことがある（例：$partition([],2)）
+      // undefined はJSONの値ではないが、JSONataの仕様上有効な結果
+      if (result === undefined) {
+        return undefined
+      }
+
+      // undefined以外の場合は、有効なJSON値であることを確認
+      if (!isJsonValue(result)) {
+        throw new Error(`JSONata evaluation returned non-JSON value: ${typeof result}`)
+      }
+      return result
     } catch (error) {
       console.error('JSONata evaluation error details:', error)
       throw new Error(

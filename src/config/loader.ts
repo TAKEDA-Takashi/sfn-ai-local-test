@@ -13,30 +13,15 @@ import {
   MOCK_FILE_EXTENSION,
   TEST_FILE_EXTENSION,
 } from '../constants/defaults'
+import {
+  type ProjectConfig,
+  projectConfigSchema,
+  type StateMachineConfig,
+  validateCdkSources,
+} from '../schemas/config-schema'
 import type { JsonObject } from '../types/asl'
 import { isJsonObject } from '../types/type-guards'
 import { resolveCloudFormationIntrinsics } from '../utils/cloudformation-resolver'
-
-export interface StateMachineConfig {
-  name: string
-  source: {
-    type: 'cdk' | 'asl'
-    path: string
-    stateMachineName?: string // CDKの場合のみ必要
-  }
-}
-
-export interface ProjectConfig {
-  version: string
-  paths?: {
-    mocks?: string
-    testSuites?: string
-    testData?: string
-    extracted?: string
-    coverage?: string
-  }
-  stateMachines: StateMachineConfig[]
-}
 
 const DEFAULT_PATHS = {
   mocks: DEFAULT_MOCKS_DIR,
@@ -47,77 +32,19 @@ const DEFAULT_PATHS = {
 }
 
 function validateProjectConfig(config: unknown): ProjectConfig {
-  if (!isJsonObject(config)) {
-    throw new Error('Invalid configuration file format')
+  // Parse and validate with Zod schema
+  const parsedConfig = projectConfigSchema.parse(config)
+
+  // Apply default paths if not specified
+  if (!parsedConfig.paths) {
+    parsedConfig.paths = {}
   }
+  parsedConfig.paths = { ...DEFAULT_PATHS, ...parsedConfig.paths }
 
-  // Validate version
-  const version = typeof config.version === 'string' ? config.version : '1.0'
+  // Additional validation for CDK sources
+  validateCdkSources(parsedConfig)
 
-  // Validate paths
-  let paths = DEFAULT_PATHS
-  if (config.paths) {
-    if (!isJsonObject(config.paths)) {
-      throw new Error('Invalid paths configuration')
-    }
-    paths = { ...DEFAULT_PATHS, ...(config.paths as Record<string, string>) }
-  }
-
-  // Validate stateMachines
-  const stateMachines: StateMachineConfig[] = []
-  if (config.stateMachines) {
-    if (!Array.isArray(config.stateMachines)) {
-      throw new Error('stateMachines must be an array')
-    }
-
-    for (const machine of config.stateMachines) {
-      if (!isJsonObject(machine)) {
-        throw new Error('Invalid state machine configuration')
-      }
-
-      const name = machine.name
-      const source = machine.source
-
-      if (typeof name !== 'string') {
-        throw new Error('State machine name must be a string')
-      }
-
-      if (!isJsonObject(source)) {
-        throw new Error('State machine source must be an object')
-      }
-
-      const type = source.type
-      const path = source.path
-      const stateMachineName = source.stateMachineName
-
-      if (type !== 'cdk' && type !== 'asl') {
-        throw new Error('State machine source type must be "cdk" or "asl"')
-      }
-
-      if (typeof path !== 'string') {
-        throw new Error('State machine source path must be a string')
-      }
-
-      if (stateMachineName !== undefined && typeof stateMachineName !== 'string') {
-        throw new Error('State machine name in source must be a string if provided')
-      }
-
-      stateMachines.push({
-        name,
-        source: {
-          type,
-          path,
-          stateMachineName,
-        },
-      })
-    }
-  }
-
-  return {
-    version,
-    paths,
-    stateMachines,
-  }
+  return parsedConfig
 }
 
 export function loadProjectConfig(

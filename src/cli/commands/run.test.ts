@@ -1,12 +1,12 @@
 import * as fs from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProjectConfig } from '../../config/loader'
 import { loadProjectConfig } from '../../config/loader'
 import { DEFAULT_CONFIG_FILE } from '../../constants/defaults'
 import { CoverageStorageManager } from '../../core/coverage/storage'
 import { StateMachineExecutor } from '../../core/interpreter/executor'
 import { MockEngine } from '../../core/mock/engine'
 import { TestSuiteRunner } from '../../core/test/suite-runner'
+import type { ProjectConfig } from '../../schemas/config-schema'
 import { runCommand } from './run'
 
 vi.mock('fs')

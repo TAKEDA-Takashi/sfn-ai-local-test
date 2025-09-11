@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import chalk from 'chalk'
 import { load } from 'js-yaml'
 import ora from 'ora'
-import type { ProjectConfig } from '../../config/loader'
 import {
   findStateMachine,
   loadProjectConfig,
@@ -23,6 +22,7 @@ import { CoverageStorageManager } from '../../core/coverage/storage'
 import { type ExecutionResult, StateMachineExecutor } from '../../core/interpreter/executor'
 import { MockEngine } from '../../core/mock/engine'
 import { TestSuiteRunner } from '../../core/test/suite-runner'
+import type { ProjectConfig } from '../../schemas/config-schema'
 import { mockConfigSchema } from '../../schemas/mock-schema'
 import type { JsonObject, StateMachine } from '../../types/asl'
 import { StateFactory } from '../../types/state-factory'

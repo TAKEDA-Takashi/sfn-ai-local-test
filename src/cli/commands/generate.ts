@@ -6,7 +6,6 @@ import ora from 'ora'
 import { generateMockWithAI, generateTestWithAI } from '../../ai/agents/index'
 import { TestGenerationPipeline } from '../../ai/generation/test-generation-pipeline'
 import { generateTestDataFiles } from '../../ai/utils/test-data-generator'
-import type { StateMachineConfig } from '../../config/loader'
 import {
   findStateMachine,
   loadProjectConfig,
@@ -21,6 +20,7 @@ import {
   DEFAULT_TEST_DATA_DIR,
   DEFAULT_TEST_FILENAME,
 } from '../../constants/defaults'
+import type { StateMachineConfig } from '../../schemas/config-schema'
 import { type MockConfig, mockConfigSchema } from '../../schemas/mock-schema'
 import { type JsonObject, type JsonValue, StateFactory, type StateMachine } from '../../types/asl'
 import { isError, processInParallel } from '../../utils/parallel'

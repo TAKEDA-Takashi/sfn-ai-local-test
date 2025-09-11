@@ -12,8 +12,8 @@ import chalk from 'chalk'
 import inquirer from 'inquirer'
 import { dump } from 'js-yaml'
 import ora from 'ora'
-import type { ProjectConfig, StateMachineConfig } from '../../config/loader'
 import { DEFAULT_CONFIG_FILE } from '../../constants/defaults'
+import type { ProjectConfig, StateMachineConfig } from '../../schemas/config-schema'
 
 interface ProjectInfo {
   type: 'cdk' | 'terraform' | 'standalone' | 'unknown'

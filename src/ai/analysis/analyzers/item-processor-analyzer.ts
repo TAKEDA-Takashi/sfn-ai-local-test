@@ -18,8 +18,9 @@ export class ItemProcessorAnalyzer {
 
     traverseStates(this.stateMachine, (stateName, state, _context) => {
       if (StateFilters.isDistributedMap(stateName, state, _context)) {
-        const mapState = state as MapState
-        const analysis = this.analyzeItemProcessorInput(mapState)
+        // isDistributedMap ensures this is a Map state
+        if (!state.isMap()) return undefined
+        const analysis = this.analyzeItemProcessorInput(state)
         if (analysis) {
           analysis.stateName = stateName
           analyses.push(analysis)
@@ -56,7 +57,7 @@ export class ItemProcessorAnalyzer {
       // ItemSelector transforms data before passing to ItemProcessor
       // Both InlineMap and DistributedMap ItemSelector use Context object references ($$.Map.Item.Value.*)
       this.analyzeInlineMapItemSelector(
-        mapState.ItemSelector as JsonValue | Record<string, JsonValue>,
+        mapState.ItemSelector,
         requirements,
         sampleInput,
         mapIsJSONata,
@@ -65,7 +66,7 @@ export class ItemProcessorAnalyzer {
       // Also analyze ItemProcessor to see what fields it accesses from ItemSelector output
       // This helps detect cases where ItemSelector references entire objects and ItemProcessor accesses nested fields
       this.analyzeItemProcessorForItemSelectorOutput(
-        processor.States as Record<string, State>,
+        processor.States,
         requirements,
         sampleInput,
         mapIsJSONata,
@@ -75,7 +76,7 @@ export class ItemProcessorAnalyzer {
       if (isDistributedMap) {
         // DistributedMap: ItemReader data passed directly to child workflow
         this.analyzeItemProcessorForItemReaderData(
-          processor.States as Record<string, State>,
+          processor.States,
           requirements,
           sampleInput,
           mapIsJSONata,
@@ -83,7 +84,7 @@ export class ItemProcessorAnalyzer {
       } else {
         // InlineMap: Array element passed directly to ItemProcessor
         this.analyzeItemProcessorForArrayElement(
-          processor.States as Record<string, State>,
+          processor.States,
           requirements,
           sampleInput,
           mapIsJSONata,
@@ -114,13 +115,8 @@ export class ItemProcessorAnalyzer {
       // JSONata expression directly
       this.extractInlineMapContextReferences(selector, requirements, sampleInput, isJSONata)
     } else if (typeof selector === 'object' && selector !== null && !Array.isArray(selector)) {
-      // Object with field mappings (exclude arrays)
-      this.analyzeInlineMapItemSelectorObject(
-        selector as Record<string, JsonValue>,
-        requirements,
-        sampleInput,
-        isJSONata,
-      )
+      // Object with field mappings (exclude arrays) - TypeScript knows this is an object
+      this.analyzeInlineMapItemSelectorObject(selector, requirements, sampleInput, isJSONata)
     }
   }
 
@@ -143,13 +139,9 @@ export class ItemProcessorAnalyzer {
           // Direct field patterns ($.field) - for cases where ItemSelector uses direct references
           this.extractItemReaderDataReferences(value, requirements, sampleInput, isJSONata)
         }
-      } else if (typeof value === 'object' && value !== null) {
-        this.analyzeInlineMapItemSelectorObject(
-          value as Record<string, JsonValue>,
-          requirements,
-          sampleInput,
-          isJSONata,
-        )
+      } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        // valueは非null、非配列のオブジェクト
+        this.analyzeInlineMapItemSelectorObject(value, requirements, sampleInput, isJSONata)
       }
     }
   }
@@ -462,13 +454,8 @@ export class ItemProcessorAnalyzer {
       for (const [_key, value] of Object.entries(expression)) {
         if (typeof value === 'string') {
           this.extractItemSelectorFieldReferences(value, requirements, sampleInput, isJSONata)
-        } else if (typeof value === 'object' && value !== null) {
-          this.extractItemSelectorFieldReferences(
-            value as JsonObject,
-            requirements,
-            sampleInput,
-            isJSONata,
-          )
+        } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          this.extractItemSelectorFieldReferences(value, requirements, sampleInput, isJSONata)
         }
       }
     }
@@ -729,9 +716,9 @@ export class ItemProcessorAnalyzer {
             'Context object',
           )
         }
-      } else if (typeof value === 'object' && value !== null) {
+      } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
         // Recursively analyze nested objects
-        this.analyzeParametersForDirectInput(value as JsonObject, requirements, sampleInput)
+        this.analyzeParametersForDirectInput(value, requirements, sampleInput)
       }
     }
   }

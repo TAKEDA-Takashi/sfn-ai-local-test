@@ -5,12 +5,12 @@
 
 import type {
   DistributedMapState,
-  ItemProcessor,
   JsonObject,
   MapState,
   ParallelState,
   StateMachine,
 } from '../../types/asl'
+import { isJsonObject } from '../../types/type-guards'
 import { traverseStates } from '../utils/state-traversal'
 
 interface StateHierarchy {
@@ -78,20 +78,13 @@ export class StateHierarchyAnalyzer {
         // Analyze nested structures for top-level states
         if (context.depth === 0) {
           if (state.isParallel()) {
-            hierarchy.nestedStructures[stateName] = this.buildParallelStructure(
-              state as ParallelState,
-            )
+            hierarchy.nestedStructures[stateName] = this.buildParallelStructure(state)
           } else if (state.isMap()) {
-            const isDistributedMap = state.isDistributedMap?.()
-            if (isDistributedMap) {
-              hierarchy.nestedStructures[stateName] = this.buildDistributedMapStructure(
-                state as DistributedMapState,
-              )
-            } else if (state.isInlineMap?.()) {
-              hierarchy.nestedStructures[stateName] = this.buildMapStructure(state as MapState)
+            if (state.isDistributedMap()) {
+              hierarchy.nestedStructures[stateName] = this.buildDistributedMapStructure(state)
             } else {
-              // Default to inline Map structure for any Map state
-              hierarchy.nestedStructures[stateName] = this.buildMapStructure(state as MapState)
+              // InlineMap or default Map
+              hierarchy.nestedStructures[stateName] = this.buildMapStructure(state)
             }
           }
         }
@@ -144,13 +137,23 @@ export class StateHierarchyAnalyzer {
       }
       structure.itemProcessor = processorInfo
     } else if (state.isMap() && 'Iterator' in state && state.Iterator) {
-      // IteratorはJSONPathItemProcessorかJSONataItemProcessorの型を持つ
-      const iterator = (state as MapState & { Iterator: ItemProcessor }).Iterator
-      if (iterator?.States) {
+      // Legacy Iterator field support
+      const iterator = state.Iterator
+      if (
+        iterator &&
+        typeof iterator === 'object' &&
+        'States' in iterator &&
+        iterator.States &&
+        typeof iterator.States === 'object'
+      ) {
         const processorInfo: ProcessorInfo = {
           states: Object.keys(iterator.States),
-          startAt: iterator.StartAt || '',
-          processorConfig: iterator.ProcessorConfig as JsonObject | undefined,
+          startAt:
+            'StartAt' in iterator && typeof iterator.StartAt === 'string' ? iterator.StartAt : '',
+          processorConfig:
+            'ProcessorConfig' in iterator && isJsonObject(iterator.ProcessorConfig)
+              ? iterator.ProcessorConfig
+              : undefined,
         }
         structure.itemProcessor = processorInfo
       }

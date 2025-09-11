@@ -292,26 +292,27 @@ async function runClaudeCLI(
     return yaml.trim()
   } catch (error) {
     // Provide more detailed error information
-    if (error && typeof error === 'object') {
-      const errorObj = error as Record<string, unknown>
-      if (errorObj.killed && errorObj.signal === 'SIGTERM') {
+    if (error && typeof error === 'object' && !Array.isArray(error)) {
+      if ('killed' in error && error.killed && 'signal' in error && error.signal === 'SIGTERM') {
         throw new Error(
           `Claude CLI timed out after ${timeout}ms. Consider simplifying the state machine or increasing timeout.`,
         )
       }
       if (
-        errorObj.code === 'ENOENT' ||
-        (typeof errorObj.message === 'string' && errorObj.message.includes('command not found'))
+        ('code' in error && error.code === 'ENOENT') ||
+        ('message' in error &&
+          typeof error.message === 'string' &&
+          error.message.includes('command not found'))
       ) {
         throw new Error(
           'Claude CLI not found. Please install Claude Code or use ANTHROPIC_API_KEY for direct API access.',
         )
       }
       console.error('Claude CLI error details:', {
-        code: errorObj.code,
-        signal: errorObj.signal,
-        killed: errorObj.killed,
-        message: errorObj.message,
+        code: 'code' in error ? error.code : undefined,
+        signal: 'signal' in error ? error.signal : undefined,
+        killed: 'killed' in error ? error.killed : undefined,
+        message: 'message' in error ? error.message : undefined,
       })
     }
     throw error

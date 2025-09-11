@@ -28,6 +28,21 @@ export class TimeoutCalculator {
   }
 
   /**
+   * Type guard to check if an object is a valid StateMachine
+   */
+  private isStateMachine(obj: StateMachine | JsonObject): obj is StateMachine {
+    return (
+      typeof obj === 'object' &&
+      obj !== null &&
+      'StartAt' in obj &&
+      typeof obj.StartAt === 'string' &&
+      'States' in obj &&
+      typeof obj.States === 'object' &&
+      obj.States !== null
+    )
+  }
+
+  /**
    * Calculate appropriate timeout based on state machine complexity
    */
   calculateTimeout(stateMachine: StateMachine | JsonObject, userTimeout?: number): number {
@@ -36,7 +51,13 @@ export class TimeoutCalculator {
       return userTimeout
     }
 
-    const metrics = analyzeComplexity(stateMachine as StateMachine)
+    // Validate that we have a proper StateMachine structure
+    if (!this.isStateMachine(stateMachine)) {
+      // Return a default timeout for invalid structures
+      return this.BASE_TIMEOUT
+    }
+
+    const metrics = analyzeComplexity(stateMachine)
     return this.computeTimeout(metrics)
   }
 

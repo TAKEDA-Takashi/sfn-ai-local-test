@@ -29,8 +29,8 @@ export class ChoiceDependencyAnalyzer {
     for (const [stateName, state] of Object.entries(states)) {
       if (!state.isChoice()) continue
 
-      const choiceState = state as ChoiceState
-      const dependency = this.analyzeChoiceState(stateName, choiceState)
+      // state.isChoice() is a type predicate, so state is now ChoiceState
+      const dependency = this.analyzeChoiceState(stateName, state)
       if (dependency) {
         dependencies.push(dependency)
       }

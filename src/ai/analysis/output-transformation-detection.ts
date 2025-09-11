@@ -1,4 +1,4 @@
-import type { JSONataTaskState, StateMachine, TaskState } from '../../types/asl'
+import type { StateMachine } from '../../types/asl'
 
 export interface OutputTransformationDetails {
   stateName: string
@@ -37,11 +37,11 @@ export function getOutputTransformationDetails(
       continue
     }
 
-    const taskState = state as TaskState
-    const resource = taskState.Resource || 'unknown'
+    // state.isTask() is a type predicate, so state is now TaskState
+    const resource = state.Resource || 'unknown'
 
     // JSONPath: ResultSelector による変換
-    if ('ResultSelector' in taskState && taskState.ResultSelector) {
+    if ('ResultSelector' in state && state.ResultSelector) {
       details.push({
         stateName,
         transformationType: 'ResultSelector',
@@ -52,7 +52,7 @@ export function getOutputTransformationDetails(
     }
 
     // JSONPath: OutputPath による変換
-    if ('OutputPath' in taskState && taskState.OutputPath && taskState.OutputPath !== '$') {
+    if ('OutputPath' in state && state.OutputPath && state.OutputPath !== '$') {
       details.push({
         stateName,
         transformationType: 'OutputPath',
@@ -63,7 +63,7 @@ export function getOutputTransformationDetails(
     }
 
     // JSONPath: ResultPath による変換（デフォルト '$' 以外）
-    if ('ResultPath' in taskState && taskState.ResultPath && taskState.ResultPath !== '$') {
+    if ('ResultPath' in state && state.ResultPath && state.ResultPath !== '$') {
       details.push({
         stateName,
         transformationType: 'ResultPath',
@@ -75,8 +75,7 @@ export function getOutputTransformationDetails(
 
     // JSONata: Output による変換
     if (state.isJSONataState()) {
-      const jsonataState = taskState as JSONataTaskState
-      if ('Output' in jsonataState && jsonataState.Output) {
+      if ('Output' in state && state.Output) {
         details.push({
           stateName,
           transformationType: 'JSONataOutput',
@@ -86,7 +85,7 @@ export function getOutputTransformationDetails(
         })
       }
 
-      if ('Assign' in jsonataState && jsonataState.Assign) {
+      if ('Assign' in state && state.Assign) {
         details.push({
           stateName,
           transformationType: 'JSONataAssign',

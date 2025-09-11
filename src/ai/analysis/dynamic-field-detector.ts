@@ -1,4 +1,4 @@
-import type { PassState, State, StateMachine, TaskState } from '../../types/asl'
+import type { State, StateMachine } from '../../types/asl'
 import { isJsonObject } from '../../types/type-guards'
 
 /**
@@ -63,9 +63,8 @@ function analyzeStateForDynamicFields(stateName: string, state: State): DynamicF
 
   // Task state の Parameters をチェック（JSONPath モードのみ）
   if (state.isTask() && !state.isJSONataState()) {
-    const taskState = state as TaskState
-    if ('Parameters' in taskState && taskState.Parameters) {
-      const paths = findDynamicFieldsInObject(taskState.Parameters, 'Parameters')
+    if ('Parameters' in state && state.Parameters) {
+      const paths = findDynamicFieldsInObject(state.Parameters, 'Parameters')
       dynamicPaths.push(...paths.map((p) => `Parameters.${p}`))
       if (paths.length > 0) {
         reasons.push('Task Parameters contain dynamic values')
@@ -73,8 +72,8 @@ function analyzeStateForDynamicFields(stateName: string, state: State): DynamicF
     }
 
     // ResultSelector もチェック
-    if ('ResultSelector' in taskState && taskState.ResultSelector) {
-      const paths = findDynamicFieldsInObject(taskState.ResultSelector, 'ResultSelector')
+    if ('ResultSelector' in state && state.ResultSelector) {
+      const paths = findDynamicFieldsInObject(state.ResultSelector, 'ResultSelector')
       dynamicPaths.push(...paths.map((p) => `ResultSelector.${p}`))
       if (paths.length > 0) {
         reasons.push('ResultSelector contains dynamic values')
@@ -84,16 +83,15 @@ function analyzeStateForDynamicFields(stateName: string, state: State): DynamicF
 
   // Pass state の Parameters/Result をチェック（JSONPath モードのみ）
   if (state.isPass() && !state.isJSONataState()) {
-    const passState = state as PassState
-    if ('Parameters' in passState && passState.Parameters) {
-      const paths = findDynamicFieldsInObject(passState.Parameters, 'Parameters')
+    if ('Parameters' in state && state.Parameters) {
+      const paths = findDynamicFieldsInObject(state.Parameters, 'Parameters')
       dynamicPaths.push(...paths.map((p) => `Parameters.${p}`))
       if (paths.length > 0) {
         reasons.push('Pass Parameters contain dynamic values')
       }
     }
-    if ('Result' in passState && passState.Result && isJsonObject(passState.Result)) {
-      const paths = findDynamicFieldsInObject(passState.Result, 'Result')
+    if ('Result' in state && state.Result && isJsonObject(state.Result)) {
+      const paths = findDynamicFieldsInObject(state.Result, 'Result')
       dynamicPaths.push(...paths.map((p) => `Result.${p}`))
       if (paths.length > 0) {
         reasons.push('Pass Result contains dynamic values')
@@ -104,17 +102,17 @@ function analyzeStateForDynamicFields(stateName: string, state: State): DynamicF
   // JSONata の Output/Assign をチェック
   if (state.isJSONataState()) {
     // JSONata state can be different types with Output/Assign
-    const stateObj = state as unknown as Record<string, unknown>
-    if ('Output' in stateObj && typeof stateObj.Output === 'string') {
-      const outputStr = stateObj.Output as string
+    // Safe check for Output field without dangerous casting
+    if ('Output' in state && typeof state.Output === 'string') {
+      const outputStr = state.Output
       const hasDynamic = DYNAMIC_JSONATA_FUNCTIONS.some((fn) => outputStr.includes(fn))
       if (hasDynamic) {
         dynamicPaths.push('Output')
         reasons.push('JSONata Output uses dynamic functions')
       }
     }
-    if ('Assign' in stateObj && stateObj.Assign) {
-      const assignStr = JSON.stringify(stateObj.Assign)
+    if ('Assign' in state && state.Assign) {
+      const assignStr = JSON.stringify(state.Assign)
       const hasDynamic = DYNAMIC_JSONATA_FUNCTIONS.some((fn) => assignStr.includes(fn))
       if (hasDynamic) {
         dynamicPaths.push('Assign')

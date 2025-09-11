@@ -235,9 +235,9 @@ export class TestExecutionValidator {
    * Check if actual output looks like extracted Payload content
    */
   private hasPayloadInActual(output: JsonValue): boolean {
-    if (!output || typeof output !== 'object') return false
-    const obj = output as Record<string, JsonValue>
-    return 'Payload' in obj || 'ExecutedVersion' in obj || 'StatusCode' in obj
+    if (!output || typeof output !== 'object' || Array.isArray(output)) return false
+    // Now TypeScript knows output is an object (not null, not array)
+    return 'Payload' in output || 'ExecutedVersion' in output || 'StatusCode' in output
   }
 
   /**

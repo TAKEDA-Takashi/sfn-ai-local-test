@@ -8,6 +8,7 @@ import type {
 import type { JsonObject, JsonValue } from '../../types/asl'
 import type { AssertionResult, StateExecution } from '../../types/test'
 import { DiffFormatter } from '../../utils/diff-formatter'
+import { PathDiffFormatter } from '../../utils/path-diff-formatter'
 import type { ExecutionResult } from '../interpreter/executor'
 
 export class TestAssertions {
@@ -112,12 +113,17 @@ export class TestAssertions {
     actual: string[],
     settings: AssertionSettings,
   ): AssertionResult[] {
+    // Check if it's includes mode with multiple sequences (array of arrays)
+    if (settings.pathMatching === 'includes' && Array.isArray(expected[0])) {
+      return [TestAssertions.assertIncludesPaths(expected as string[][], actual)]
+    }
+
     // If it's a single path
     if (expected.length > 0 && typeof expected[0] === 'string') {
       return [TestAssertions.assertSinglePath(expected as string[], actual, settings)]
     }
 
-    // Multiple paths - check if any of them matches
+    // Multiple paths - check if any of them matches (OR condition)
     const multiplePaths = expected as string[][]
     const results: AssertionResult[] = []
 
@@ -145,21 +151,20 @@ export class TestAssertions {
         success = TestAssertions.comparePathStrict(expected, actual, 'exact')
         message = success
           ? 'Execution path matches expected sequence exactly'
-          : `Expected path: [${expected.join(' → ')}], but got: [${actual.join(' → ')}]`
+          : `Path mismatch:\n${PathDiffFormatter.formatExactDiff(expected, actual)}`
         break
       case 'includes':
         success = TestAssertions.pathContainsSequence(actual, expected)
         message = success
           ? 'Execution path contains expected sequence'
-          : `Expected path to contain sequence: [${expected.join(
-              ' → ',
-            )}], but got: [${actual.join(' → ')}]`
+          : `Sequence not found:\n${PathDiffFormatter.formatSequenceDiff(expected, actual)}`
         break
       default:
-        success = TestAssertions.comparePathStrict(expected, actual, 'partial')
+        // Default to exact matching (as per documentation)
+        success = TestAssertions.comparePathStrict(expected, actual, 'exact')
         message = success
-          ? 'Execution path matches expected pattern'
-          : `Expected path pattern: [${expected.join(' → ')}], but got: [${actual.join(' → ')}]`
+          ? 'Execution path matches expected sequence exactly'
+          : `Path mismatch:\n${PathDiffFormatter.formatExactDiff(expected, actual)}`
         break
     }
 
@@ -210,6 +215,7 @@ export class TestAssertions {
   }
 
   private static pathContainsSequence(actual: string[], expected: string[]): boolean {
+    // Check if the expected sequence appears consecutively in the actual path
     for (let i = 0; i <= actual.length - expected.length; i++) {
       let match = true
       for (let j = 0; j < expected.length; j++) {
@@ -221,6 +227,52 @@ export class TestAssertions {
       if (match) return true
     }
     return false
+  }
+
+  private static assertIncludesPaths(
+    expectedSequences: string[][],
+    actual: string[],
+  ): AssertionResult {
+    const missingSequences: string[][] = []
+    const foundSequences: string[][] = []
+
+    // Check each sequence
+    for (const sequence of expectedSequences) {
+      if (TestAssertions.pathContainsSequence(actual, sequence)) {
+        foundSequences.push(sequence)
+      } else {
+        missingSequences.push(sequence)
+      }
+    }
+
+    const success = missingSequences.length === 0
+    let message = ''
+
+    if (success) {
+      message = 'All specified sequences found in execution path'
+    } else {
+      const lines: string[] = ['Multiple sequences validation failed:']
+      if (foundSequences.length > 0) {
+        lines.push('  Found sequences:')
+        for (const seq of foundSequences) {
+          lines.push(`    ✓ [${seq.join(' → ')}]`)
+        }
+      }
+      lines.push('  Missing sequences:')
+      for (const seq of missingSequences) {
+        lines.push(`    ✗ [${seq.join(' → ')}]`)
+      }
+      lines.push(`  Actual path: [${actual.join(' → ')}]`)
+      message = lines.join('\n')
+    }
+
+    return {
+      type: 'path',
+      passed: success,
+      expected: expectedSequences,
+      actual,
+      message,
+    }
   }
 
   private static assertStateExpectations(
@@ -541,11 +593,8 @@ export class TestAssertions {
     switch (pathMatching) {
       case 'exact':
         return JSON.stringify(expected) === JSON.stringify(actual)
-      case 'contains':
+      case 'includes':
         return TestAssertions.pathContainsSequence(actual, expected)
-      case 'partial':
-        // Partial matching allows for subset comparison
-        return expected.every((expectedState) => actual.includes(expectedState))
       default:
         return JSON.stringify(expected) === JSON.stringify(actual)
     }

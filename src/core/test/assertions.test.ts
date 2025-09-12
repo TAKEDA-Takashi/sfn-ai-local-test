@@ -247,8 +247,8 @@ describe('TestAssertions', () => {
       })
 
       expect(assertions[0]?.passed).toBe(false)
-      expect(assertions[0]?.message).toContain('Expected output:')
-      expect(assertions[0]?.message).toContain('but got:')
+      expect(assertions[0]?.message).toContain('Output mismatch:')
+      expect(assertions[0]?.message).toContain('Changed fields:')
     })
 
     it('should pass with partial matching for subset outputs', () => {
@@ -344,20 +344,26 @@ describe('TestAssertions', () => {
 
       const result: ExecutionResult = {
         output: {},
-        executionPath: ['Start', 'Process', 'End'],
+        executionPath: ['Start', 'Process', 'End', 'Cleanup'],
         success: true,
       }
 
+      // デフォルトは'exact'なので、完全一致でないと失敗する
       const assertions = TestAssertions.performAssertions(testCase, result)
+      expect(assertions[0]?.passed).toBe(false) // 'exact'モードでは失敗
 
-      expect(assertions[0]?.passed).toBe(true)
+      // 'includes'モードを指定すれば成功（Process, Endが連続して現れる）
+      const assertionsIncludes = TestAssertions.performAssertions(testCase, result, {
+        pathMatching: 'includes',
+      })
+      expect(assertionsIncludes[0]?.passed).toBe(true)
     })
 
-    it('should handle sequence path matching', () => {
+    it('should handle includes path matching', () => {
       const testCase: TestCase = {
         name: 'test',
         input: {},
-        expectedPath: ['Process', 'End'],
+        expectedPath: ['Process', 'Middle'],
       }
 
       const result: ExecutionResult = {
@@ -366,9 +372,26 @@ describe('TestAssertions', () => {
         success: true,
       }
 
-      const assertions = TestAssertions.performAssertions(testCase, result)
-
+      // includesモードでは連続して現れれば成功
+      const assertions = TestAssertions.performAssertions(testCase, result, {
+        pathMatching: 'includes',
+      })
       expect(assertions[0]?.passed).toBe(true)
+
+      // 連続していない場合は失敗
+      const testCaseNonConsecutive: TestCase = {
+        name: 'test',
+        input: {},
+        expectedPath: ['Start', 'End'],
+      }
+      const assertionsNonConsecutive = TestAssertions.performAssertions(
+        testCaseNonConsecutive,
+        result,
+        {
+          pathMatching: 'includes',
+        },
+      )
+      expect(assertionsNonConsecutive[0]?.passed).toBe(false)
     })
   })
 
@@ -827,7 +850,7 @@ describe('TestAssertions', () => {
     it('should handle custom assertion settings', () => {
       const settings: AssertionSettings = {
         outputMatching: 'partial',
-        pathMatching: 'sequence',
+        pathMatching: 'includes',
         stateMatching: 'exact',
       }
 

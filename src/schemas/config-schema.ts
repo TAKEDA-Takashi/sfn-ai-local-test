@@ -8,6 +8,21 @@
 import { z } from 'zod'
 
 /**
+ * ExecutionContext configuration schema
+ * Allows overriding default fixed values for test reproducibility
+ */
+export const executionContextSchema = z
+  .object({
+    name: z.string().optional().describe('Execution name (default: test-execution)'),
+    startTime: z.string().optional().describe('Execution start time ISO string'),
+    roleArn: z.string().optional().describe('IAM role ARN'),
+    accountId: z.string().optional().describe('AWS account ID'),
+    region: z.string().optional().describe('AWS region'),
+  })
+  .optional()
+  .describe('ExecutionContext override settings')
+
+/**
  * State machine configuration schema
  */
 export const stateMachineConfigSchema = z.object({
@@ -37,6 +52,7 @@ export const projectConfigSchema = z.object({
     })
     .optional()
     .describe('Custom paths configuration'),
+  executionContext: executionContextSchema,
   stateMachines: z
     .array(stateMachineConfigSchema)
     .default([])
@@ -44,6 +60,7 @@ export const projectConfigSchema = z.object({
 })
 
 // Type exports
+export type ExecutionContextConfig = z.infer<typeof executionContextSchema>
 export type StateMachineConfig = z.infer<typeof stateMachineConfigSchema>
 export type ProjectConfig = z.infer<typeof projectConfigSchema>
 

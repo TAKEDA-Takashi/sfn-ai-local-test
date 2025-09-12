@@ -1,4 +1,5 @@
 import { DEFAULT_TEST_TIMEOUT_MS } from '../../constants/defaults'
+import type { ExecutionContextConfig } from '../../schemas/config-schema'
 import type { MockDefinition } from '../../schemas/mock-schema'
 import type { MockOverride, TestCase, TestSuite } from '../../schemas/test-schema'
 import type { JsonValue, StateMachine } from '../../types/asl'
@@ -13,7 +14,11 @@ export class TestSuiteExecutor {
   private stateMachine: StateMachine
   private mockEngine?: MockEngine
   private coverageTracker?: NestedCoverageTracker
-  private options?: { verbose?: boolean; quiet?: boolean }
+  private options?: {
+    verbose?: boolean
+    quiet?: boolean
+    executionContext?: ExecutionContextConfig
+  }
 
   constructor(suite: TestSuite, stateMachine: StateMachine, mockEngine?: MockEngine) {
     this.suite = suite
@@ -23,7 +28,7 @@ export class TestSuiteExecutor {
 
   async runSuite(
     enableCoverage = false,
-    options?: { verbose?: boolean; quiet?: boolean },
+    options?: { verbose?: boolean; quiet?: boolean; executionContext?: ExecutionContextConfig },
   ): Promise<TestSuiteResult> {
     this.options = options
     const startTime = Date.now()
@@ -81,8 +86,20 @@ export class TestSuiteExecutor {
         timeoutId = setTimeout(() => reject(new Error('Test timeout')), timeout)
       })
 
+      // Merge executionContext with priority: testCase > suite > global
+      const executionContext = {
+        ...this.options?.executionContext,
+        ...this.suite.executionContext,
+        ...testCase.executionContext,
+      }
+
+      const executionOptions = {
+        ...this.options,
+        executionContext: Object.keys(executionContext).length > 0 ? executionContext : undefined,
+      }
+
       // Let StateMachineExecutor handle context creation for proper tracking
-      const executionPromise = executor.execute(testCase.input, this.options)
+      const executionPromise = executor.execute(testCase.input, executionOptions)
 
       let result: ExecutionResult
       try {

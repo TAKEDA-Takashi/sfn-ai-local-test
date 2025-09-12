@@ -438,6 +438,137 @@ testCases:
 
 ---
 
+## ExecutionContextと決定論的テスト
+
+### 固定されたExecutionContext値
+
+決定論的で再現可能なテストを実現するため、sfn-ai-local-testでは動的なタイムスタンプの代わりにExecutionContext変数に固定値を使用します。これにより、時刻依存ロジックの信頼性の高いテストと、異なる環境間での一貫したテスト結果が可能になります。
+
+### デフォルトの固定値
+
+デフォルトでは以下の固定値が使用されます：
+
+| コンテキスト変数 | デフォルト値 | 説明 |
+|-----------------|---------------|------|
+| `$$.Execution.Id` | `arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution` | 実行ARN全体 |
+| `$$.Execution.Name` | `test-execution` | 実行名 |
+| `$$.Execution.StartTime` | `2024-01-01T00:00:00.000Z` | 実行開始時刻 |
+| `$$.Execution.RoleArn` | `arn:aws:iam::123456789012:role/StepFunctionsRole` | IAMロールARN |
+| `$$.State.EnteredTime` | `2024-01-01T00:00:00.000Z` | ステート開始時刻 |
+| `$$.State.Name` | （現在のステート名） | ステートに応じて動的 |
+| `$$.StateMachine.Id` | `arn:aws:states:us-east-1:123456789012:stateMachine:StateMachine` | ステートマシンARN |
+| `$$.StateMachine.Name` | `StateMachine` | ステートマシン名 |
+
+### ExecutionContextの設定
+
+これらの値は異なるレベルで上書きできます：
+
+#### 1. プロジェクトレベルの設定（sfn-test.config.yaml）
+
+```yaml
+version: '1.0'
+executionContext:
+  name: 'my-test-execution'
+  startTime: '2025-01-15T10:00:00.000Z'
+  accountId: '999888777666'
+  region: 'ap-northeast-1'
+  roleArn: 'arn:aws:iam::999888777666:role/CustomRole'
+
+stateMachines:
+  - name: 'workflow'
+    source:
+      type: 'asl'
+      path: './workflow.asl.json'
+```
+
+#### 2. テストスイートレベルの設定
+
+```yaml
+version: "1.0"
+name: "時刻ベースのテスト"
+stateMachine: "workflow"
+executionContext:
+  startTime: '2025-12-31T23:59:59.999Z'  # 年末処理のテスト
+
+testCases:
+  - name: "年末バッチテスト"
+    input: { processType: "year-end" }
+    expectedOutput:
+      yearEndProcessed: true
+```
+
+#### 3. テストケースレベルの設定
+
+```yaml
+testCases:
+  - name: "早朝バッチ"
+    executionContext:
+      startTime: '2025-01-01T03:00:00.000Z'
+    input: { batchType: "daily" }
+    expectedOutput:
+      nightBatch: true
+      
+  - name: "営業時間内処理"
+    executionContext:
+      startTime: '2025-01-01T14:00:00.000Z'
+    input: { batchType: "regular" }
+    expectedOutput:
+      nightBatch: false
+```
+
+### 固定値の利点
+
+1. **再現可能なテスト**: いつ実行してもテストは同じ結果を生成
+2. **時刻ベースロジックのテスト**: 時刻依存の条件（夜間バッチ、年末処理など）をテスト可能
+3. **一貫したCI/CD**: CI環境でのタイミングの違いによるテスト失敗を防止
+4. **デバッグの容易化**: 固定値により問題の追跡とデバッグが容易
+
+### 時刻ベースロジックのテスト
+
+固定されたExecutionContext値により、時刻依存のワークフローを信頼性高くテストできます：
+
+```yaml
+# 例：時刻ベースのChoiceステートのテスト
+testCases:
+  - name: "夜間バッチルート"
+    executionContext:
+      startTime: '2025-01-01T02:00:00.000Z'  # 午前2時
+    input: { checkTime: true }
+    expectedPath: ["CheckTime", "NightBatchProcess"]
+    
+  - name: "日中バッチルート"
+    executionContext:
+      startTime: '2025-01-01T14:00:00.000Z'  # 午後2時
+    input: { checkTime: true }
+    expectedPath: ["CheckTime", "DayBatchProcess"]
+```
+
+### JSONPathとJSONataのコンテキスト変数
+
+JSONPathとJSONata式の両方でこれらの固定値にアクセスできます：
+
+**JSONPathの例:**
+```json
+{
+  "Type": "Pass",
+  "Parameters": {
+    "executionId.$": "$$.Execution.Id",
+    "startedAt.$": "$$.Execution.StartTime"
+  }
+}
+```
+
+**JSONataの例:**
+```json
+{
+  "Type": "Pass",
+  "QueryLanguage": "JSONata",
+  "Output": "{% $states.context.Execution.Name & '-processed' %}"
+}
+```
+
+---
+
 ## ベストプラクティス
 
 ### テスト設計の原則

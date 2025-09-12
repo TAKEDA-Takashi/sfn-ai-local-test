@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { EXECUTION_CONTEXT_DEFAULTS } from '../../constants/execution-context'
 import { type JsonObject, StateFactory } from '../../types/asl.js'
 import { StateMachineExecutor } from './executor.js'
 
@@ -34,11 +35,10 @@ describe('Executor - Fixed ExecutionContext Values', () => {
       // 固定値の検証
       expect(result.output).toEqual({
         context: {
-          executionId:
-            'arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution',
-          executionName: 'test-execution',
-          startTime: '2024-01-01T00:00:00.000Z',
-          roleArn: 'arn:aws:iam::123456789012:role/StepFunctionsRole',
+          executionId: `arn:aws:states:${EXECUTION_CONTEXT_DEFAULTS.REGION}:${EXECUTION_CONTEXT_DEFAULTS.ACCOUNT_ID}:execution:${EXECUTION_CONTEXT_DEFAULTS.STATE_MACHINE_NAME}:${EXECUTION_CONTEXT_DEFAULTS.NAME}`,
+          executionName: EXECUTION_CONTEXT_DEFAULTS.NAME,
+          startTime: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+          roleArn: EXECUTION_CONTEXT_DEFAULTS.ROLE_ARN,
         },
       })
     })
@@ -67,7 +67,7 @@ describe('Executor - Fixed ExecutionContext Values', () => {
         /^arn:aws:states:[a-z\-0-9]+:\d{12}:execution:[^:]+:[^:]+$/,
       )
       expect(output?.executionId).toBe(
-        'arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution',
+        `arn:aws:states:${EXECUTION_CONTEXT_DEFAULTS.REGION}:${EXECUTION_CONTEXT_DEFAULTS.ACCOUNT_ID}:execution:${EXECUTION_CONTEXT_DEFAULTS.STATE_MACHINE_NAME}:${EXECUTION_CONTEXT_DEFAULTS.NAME}`,
       )
     })
 
@@ -101,8 +101,8 @@ describe('Executor - Fixed ExecutionContext Values', () => {
       const output = result.output as JsonObject
       const firstValue = (output?.first as JsonObject)?.value
       const secondValue = (output?.second as JsonObject)?.value
-      expect(firstValue).toBe('test-execution')
-      expect(secondValue).toBe('test-execution')
+      expect(firstValue).toBe(EXECUTION_CONTEXT_DEFAULTS.NAME)
+      expect(secondValue).toBe(EXECUTION_CONTEXT_DEFAULTS.NAME)
       expect(firstValue).toBe(secondValue)
     })
 
@@ -132,8 +132,8 @@ describe('Executor - Fixed ExecutionContext Values', () => {
 
       const output1 = result1.output as JsonObject
       const output2 = result2.output as JsonObject
-      expect(output1?.time).toBe('2024-01-01T00:00:00.000Z')
-      expect(output2?.time).toBe('2024-01-01T00:00:00.000Z')
+      expect(output1?.time).toBe(EXECUTION_CONTEXT_DEFAULTS.START_TIME)
+      expect(output2?.time).toBe(EXECUTION_CONTEXT_DEFAULTS.START_TIME)
       expect(output1?.time).toBe(output2?.time)
     })
 
@@ -226,7 +226,7 @@ describe('Executor - Fixed ExecutionContext Values', () => {
 
       // デフォルトのステートマシン名
       const output = result.output as JsonObject
-      expect(output?.machineName).toBe('StateMachine')
+      expect(output?.machineName).toBe(EXECUTION_CONTEXT_DEFAULTS.STATE_MACHINE_NAME)
     })
 
     it('should provide StateMachine.Id with proper ARN format', async () => {
@@ -250,7 +250,7 @@ describe('Executor - Fixed ExecutionContext Values', () => {
       // StateMachine.IdもARN形式
       const output = result.output as JsonObject
       expect(output?.machineId).toBe(
-        'arn:aws:states:us-east-1:123456789012:stateMachine:StateMachine',
+        `arn:aws:states:${EXECUTION_CONTEXT_DEFAULTS.REGION}:${EXECUTION_CONTEXT_DEFAULTS.ACCOUNT_ID}:stateMachine:${EXECUTION_CONTEXT_DEFAULTS.STATE_MACHINE_NAME}`,
       )
     })
   })
@@ -279,10 +279,10 @@ describe('Executor - Fixed ExecutionContext Values', () => {
       const result = await executor.execute({})
 
       expect(result.output).toEqual({
-        executionId: 'arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution',
-        executionName: 'test-execution',
-        startTime: '2024-01-01T00:00:00.000Z',
-        roleArn: 'arn:aws:iam::123456789012:role/StepFunctionsRole',
+        executionId: `arn:aws:states:${EXECUTION_CONTEXT_DEFAULTS.REGION}:${EXECUTION_CONTEXT_DEFAULTS.ACCOUNT_ID}:execution:${EXECUTION_CONTEXT_DEFAULTS.STATE_MACHINE_NAME}:${EXECUTION_CONTEXT_DEFAULTS.NAME}`,
+        executionName: EXECUTION_CONTEXT_DEFAULTS.NAME,
+        startTime: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+        roleArn: EXECUTION_CONTEXT_DEFAULTS.ROLE_ARN,
       })
     })
 

@@ -7,12 +7,20 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import chalk from 'chalk'
 import inquirer from 'inquirer'
 import { dump } from 'js-yaml'
 import ora from 'ora'
-import { DEFAULT_CONFIG_FILE } from '../../constants/defaults'
+import {
+  DEFAULT_CONFIG_FILE,
+  DEFAULT_COVERAGE_DIR,
+  DEFAULT_EXTRACTED_DIR,
+  DEFAULT_MOCKS_DIR,
+  DEFAULT_TEST_DATA_DIR,
+  DEFAULT_TEST_SUITES_DIR,
+} from '../../constants/defaults'
+import { EXECUTION_CONTEXT_DEFAULTS } from '../../constants/execution-context'
 import type { ProjectConfig, StateMachineConfig } from '../../schemas/config-schema'
 
 interface ProjectInfo {
@@ -302,7 +310,9 @@ function findFiles(
 
   if (currentDepth >= maxDepth) return results
 
-  const ignoreDirs = ['node_modules', '.git', 'dist', 'build', '.sfn-test']
+  // Extract the parent directory from DEFAULT_EXTRACTED_DIR for ignore list
+  const sfnTestParentDir = dirname(DEFAULT_EXTRACTED_DIR).replace('./', '')
+  const ignoreDirs = ['node_modules', '.git', 'dist', 'build', sfnTestParentDir]
 
   try {
     const entries = readdirSync(dir)
@@ -378,11 +388,11 @@ function displayDetectionResult(projectInfo: ProjectInfo): void {
 
 function createDirectoryStructure(): void {
   const dirs = [
-    'sfn-test/mocks',
-    'sfn-test/test-suites',
-    'sfn-test/test-data',
-    '.sfn-test/extracted',
-    '.sfn-test/coverage',
+    DEFAULT_MOCKS_DIR,
+    DEFAULT_TEST_SUITES_DIR,
+    DEFAULT_TEST_DATA_DIR,
+    DEFAULT_EXTRACTED_DIR,
+    DEFAULT_COVERAGE_DIR,
   ]
 
   console.log(chalk.cyan('\n📁 Creating directories:'))
@@ -471,11 +481,19 @@ function generateConfigYaml(config: Omit<ProjectConfig, 'paths'>): string {
   const pathsComment = `
 # Default path configuration (uncomment to customize)
 # paths:
-#   mocks: './sfn-test/mocks'
-#   testSuites: './sfn-test/test-suites'
-#   testData: './sfn-test/test-data'
-#   extracted: './.sfn-test/extracted'
-#   coverage: './.sfn-test/coverage'
+#   mocks: '${DEFAULT_MOCKS_DIR}'
+#   testSuites: '${DEFAULT_TEST_SUITES_DIR}'
+#   testData: '${DEFAULT_TEST_DATA_DIR}'
+#   extracted: '${DEFAULT_EXTRACTED_DIR}'
+#   coverage: '${DEFAULT_COVERAGE_DIR}'
+
+# ExecutionContext configuration for test reproducibility (uncomment to customize)
+# executionContext:
+#   name: '${EXECUTION_CONTEXT_DEFAULTS.NAME}'              # Execution name (default: ${EXECUTION_CONTEXT_DEFAULTS.NAME})
+#   startTime: '${EXECUTION_CONTEXT_DEFAULTS.START_TIME}'  # Fixed start time for tests
+#   roleArn: '${EXECUTION_CONTEXT_DEFAULTS.ROLE_ARN}'
+#   accountId: '${EXECUTION_CONTEXT_DEFAULTS.ACCOUNT_ID}'          # AWS account ID
+#   region: '${EXECUTION_CONTEXT_DEFAULTS.REGION}'                # AWS region
 
 `
 
@@ -523,9 +541,12 @@ function generatePlaceholderStateMachines(type: string): StateMachineConfig[] {
 }
 
 function updateGitignore(): void {
+  // Extract the parent directory from DEFAULT_EXTRACTED_DIR
+  const sfnTestParentDir = dirname(DEFAULT_EXTRACTED_DIR).replace('./', '')
+
   const gitignoreContent = `
 # sfn-test work directory
-.sfn-test/
+${sfnTestParentDir}/
 
 # Environment variables
 .env
@@ -533,7 +554,7 @@ function updateGitignore(): void {
 
   if (existsSync('.gitignore')) {
     const existing = readFileSync('.gitignore', 'utf-8')
-    if (!existing.includes('.sfn-test/')) {
+    if (!existing.includes(`${sfnTestParentDir}/`)) {
       appendFileSync('.gitignore', gitignoreContent)
       console.log(chalk.green('  ✓ Updated .gitignore'))
     } else {

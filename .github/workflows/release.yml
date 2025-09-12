@@ -1,8 +1,8 @@
 name: Release Process
 
 # このワークフローは、mainブランチへのPRがマージされた時に実行されます
-# release:major, release:minor, release:patch のラベルに基づいて
-# 自動的にバージョンを更新し、タグを作成してGitHubリリースを作成します
+# リリースPRでpackage.jsonのバージョンが更新されている場合、
+# 自動的にタグを作成してGitHubリリースを作成します
 # 
 # 重要: タグプッシュで "Publish to npm" ワークフローをトリガーするために
 # RELEASE_PAT (Personal Access Token) をSecretに設定する必要があります
@@ -41,43 +41,42 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-      - name: Check for version bump
+      - name: Check for version change
         id: version
         run: |
-          # PRのラベルからバージョンバンプの種類を判定
-          if ${{ contains(github.event.pull_request.labels.*.name, 'release:major') }}; then
-            echo "bump=major" >> $GITHUB_OUTPUT
-          elif ${{ contains(github.event.pull_request.labels.*.name, 'release:minor') }}; then
-            echo "bump=minor" >> $GITHUB_OUTPUT
-          elif ${{ contains(github.event.pull_request.labels.*.name, 'release:patch') }}; then
-            echo "bump=patch" >> $GITHUB_OUTPUT
+          # mainブランチとの差分でpackage.jsonのバージョン変更を確認
+          git fetch origin main
+          MAIN_VERSION=$(git show origin/main:package.json | grep '"version"' | cut -d'"' -f4)
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          
+          if [ "$MAIN_VERSION" != "$CURRENT_VERSION" ]; then
+            echo "Version changed from $MAIN_VERSION to $CURRENT_VERSION"
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=v$CURRENT_VERSION" >> $GITHUB_OUTPUT
           else
-            echo "No release label found. Skipping release."
-            echo "bump=none" >> $GITHUB_OUTPUT
+            echo "No version change detected. Skipping release."
+            echo "changed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Bump version and create tag
-        if: steps.version.outputs.bump != 'none'
-        id: bump
+      - name: Create tag
+        if: steps.version.outputs.changed == 'true'
         run: |
-          npm version ${{ steps.version.outputs.bump }} -m "chore: release %s"
-          VERSION="v$(node -p "require('./package.json').version")"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          git tag ${{ steps.version.outputs.version }}
+          echo "Tag ${{ steps.version.outputs.version }} created"
           
-      - name: Push changes
-        if: steps.version.outputs.bump != 'none'
+      - name: Push tag
+        if: steps.version.outputs.changed == 'true'
         run: |
-          git push origin main
           git push origin --tags
 
       - name: Create GitHub Release
-        if: steps.version.outputs.bump != 'none'
+        if: steps.version.outputs.changed == 'true'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.bump.outputs.version }}
-          release_name: Release ${{ steps.bump.outputs.version }}
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: Release ${{ steps.version.outputs.version }}
           body: |
             ## Changes in this release
             ${{ github.event.pull_request.body }}

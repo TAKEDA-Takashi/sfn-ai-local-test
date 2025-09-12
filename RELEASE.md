@@ -5,17 +5,16 @@
 
 ## リリースフロー
 
-### 1. 自動リリース（推奨）
+### 1. リリースPRの作成
 
-PRベースの自動リリースフローを使用します：
+リリース時は専用のリリースPRを作成します：
 
-1. **PRを作成** - 変更をfeatureブランチからmainへのPRとして作成
-2. **リリースラベルを付与** - PRに以下のいずれかのラベルを付与：
-   - `release:major` - メジャーバージョンアップ (1.0.0 → 2.0.0)
-   - `release:minor` - マイナーバージョンアップ (1.0.0 → 1.1.0)
-   - `release:patch` - パッチバージョンアップ (1.0.0 → 1.0.1)
-3. **PRをマージ** - マージすると自動的に：
-   - package.jsonのバージョンが更新される
+1. **リリースブランチを作成** - `release/vX.Y.Z`形式のブランチを作成
+2. **バージョンを更新**:
+   - package.jsonのバージョンを更新
+   - CHANGELOG.mdの`[Unreleased]`セクションを`[X.Y.Z]`に変更し、日付を追加
+3. **PRを作成** - mainブランチへのPRを作成
+4. **PRをマージ** - マージすると自動的に：
    - Gitタグが作成される
    - GitHub Releaseが作成される
    - npm publishがトリガーされる
@@ -37,10 +36,9 @@ git push origin main --tags
 ### release.yml
 - **トリガー**: PRがmainにマージされた時
 - **処理**:
-  1. PRのラベルをチェック
-  2. バージョンをバンプ
-  3. タグを作成・プッシュ
-  4. GitHub Releaseを作成
+  1. package.jsonのバージョン変更を検出
+  2. 変更があればタグを作成・プッシュ
+  3. GitHub Releaseを作成
 
 ### publish.yml
 - **トリガー**: `v*`形式のタグがプッシュされた時
@@ -67,19 +65,6 @@ git push origin main --tags
    - GitHubリポジトリのSettings → Secrets → Actions → New repository secret
    - **重要**: このトークンにより、Release ProcessワークフローがタグをプッシュしたときにPublish to npmワークフローが自動的にトリガーされます
 
-### 必要なGitHubラベル
-
-以下のラベルをリポジトリに作成：
-- `release:major` (color: #ff0000)
-- `release:minor` (color: #ffa500)
-- `release:patch` (color: #00ff00)
-
-```bash
-# GitHub CLIでラベルを作成
-gh label create "release:major" --color ff0000 --description "Major version release"
-gh label create "release:minor" --color ffa500 --description "Minor version release"
-gh label create "release:patch" --color 00ff00 --description "Patch version release"
-```
 
 ## バージョン注入の仕組み
 

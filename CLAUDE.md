@@ -380,8 +380,46 @@ sfn-test run
 - メモリ制限: Node.jsのヒープサイズに依存
 - 並列度: CPUコア数に依存
 
+## リリースプロセス（重要）
+
+### リリースPRの作成手順
+
+このプロジェクトでは、リリース時に以下の手順を必ず守ってください：
+
+1. **リリースブランチを作成**
+   ```bash
+   git checkout -b release/vX.Y.Z
+   ```
+
+2. **バージョンを手動で更新**（重要：両方とも更新する）
+   - `package.json`のversionフィールドを更新
+   - `CHANGELOG.md`の`[Unreleased]`を`[X.Y.Z] - YYYY-MM-DD`に変更
+
+3. **変更をコミット**
+   ```bash
+   git add package.json CHANGELOG.md
+   git commit -m "chore: prepare release vX.Y.Z"
+   ```
+
+4. **PRを作成**
+   - タイトル: `Release vX.Y.Z`
+   - 本文にCHANGELOGの内容を含める
+   - **リリースラベルは不要**（package.jsonの変更で自動検出）
+
+5. **マージ後の自動処理**
+   - CIがpackage.jsonの変更を検出
+   - 自動的にタグ作成・GitHub Release作成・npm publish
+
+### ⚠️ 注意事項
+- **package.jsonとCHANGELOG.mdは必ず両方更新する**
+- **CIは自動バージョンアップを行わない**（手動更新が必要）
+- **リリースラベル（release:major等）は使用しない**
+
+詳細は[RELEASE.md](./RELEASE.md)を参照してください。
+
 ## 関連ドキュメント
 
+- [リリースプロセス](./RELEASE.md) - 詳細なリリース手順
 - [クイックスタートガイド](./docs/quick-start-guide.md) - インストールから実行まで
 - [テストガイド](./docs/testing-guide.md) - 詳細なテスト作成方法
 - [トラブルシューティング](./docs/troubleshooting.md) - 問題解決ガイド

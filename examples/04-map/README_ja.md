@@ -102,7 +102,7 @@ mapExpectations:
 mapExpectations:
   - state: "ProcessItems"
     iterationPaths:
-      pathMatching: "exact"  # exact/includes/sequence から選択
+      pathMatching: "exact"  # exact/includes から選択
       all: ["ValidateItem", "CheckValidation", "ProcessValidItem"]  # 全反復が従うパス
 ```
 
@@ -120,13 +120,12 @@ mapExpectations:
 
 ### pathMatchingオプション
 - `exact`: 完全一致
-- `sequence`: 順序保持された部分一致
-- `includes`: 指定されたステートを含む（順序無関係）
+- `includes`: 連続したシーケンス一致
 
 ```yaml
 iterationPaths:
-  pathMatching: "sequence"
-  all: ["ValidateItem", "ProcessValidItem"]  # CheckValidationをスキップしても可
+  pathMatching: "includes"
+  all: ["ValidateItem", "ProcessValidItem"]  # 連続して現れる必要がある
 ```
 
 ## 主要設定オプション

@@ -790,7 +790,7 @@ TestCase4: ⏭️ Skip（実行されない）
 | オプション | 型 | デフォルト | 説明 |
 |----------|-----|----------|------|
 | `outputMatching` | string | "partial" | **出力の比較方式**（exact, partial） |
-| `pathMatching` | string | "exact" | **実行パスの比較方式**（exact, includes, sequence） |
+| `pathMatching` | string | "exact" | **実行パスの比較方式**（exact, includes） |
 
 ### outputMatching の詳細
 
@@ -804,6 +804,9 @@ TestCase4: ⏭️ Skip（実行されない）
 
 #### `"exact"` - 完全一致
 パスが順序も含めて完全に一致する必要があります。
+
+#### `"includes"` - 連続シーケンス一致
+ステートが指定した順序で連続して現れる必要があります。複数のシーケンスを指定した場合（配列の配列）、すべてのシーケンスが実行パスに連続して含まれる必要があります。
 
 **Map/Distributed Mapステートの扱い**:
 MapやDistributed Map自体は実行パスに記録されますが、内部で実行される個々のイテレーションのステートは記録されません。Map/Parallelステートの詳細な検証には専用のフィールド（`mapExpectations`、`parallelExpectations`）を使用してください。
@@ -827,11 +830,11 @@ expectedPath: ["Start", "ProcessMap", "End"]
 expectedPath: ["Start", "Process", "End"]  # このパスと完全一致
 ```
 
-#### 複数条件（AND条件、sequenceモードで有効）
+#### 複数条件（AND条件、includesモードで有効）
 ```yaml
-# sequenceモードでは、複数のシーケンスがすべて含まれることを検証
+# includesモードで複数シーケンスを指定した場合、すべてが含まれることを検証
 assertions:
-  pathMatching: "sequence"  # 各条件はsequenceとして評価
+  pathMatching: "includes"  # 各シーケンスが順序通りに現れる
 expectedPath:
   - ["Task1", "Task2"]     # Task1→Task2が連続して存在
   - ["Task3", "Task4"]     # かつ、Task3→Task4も連続して存在
@@ -840,11 +843,11 @@ expectedPath:
 
 #### 実用例：複雑なフローの検証
 ```yaml
+assertions:
+  pathMatching: "includes"
 testCases:
   - name: "複雑な分岐フローのテスト"
     input: { type: "complex" }
-    assertions:
-      pathMatching: "sequence"
     expectedPath:
       # 初期処理が実行される
       - ["Initialize", "Validate"]
@@ -861,21 +864,9 @@ testCases:
 ```yaml
 # 例：
 expectedPath: ["Task2", "Task3"]
-actualPath: ["Task1", "Task2", "Task3", "Task4"]  # ✅ OK - Task2とTask3が両方含まれる
-actualPath: ["Task1", "Task3", "Task2", "Task4"]  # ✅ OK - 順序は違うが両方含まれる
-actualPath: ["Task3", "Task1", "Task2", "Task4"]  # ✅ OK - 順序は違うが両方含まれる
-actualPath: ["Task1", "Task2", "Task4", "Task5"]  # ❌ NG - Task3が含まれない
-```
-
-#### `"sequence"` - 連続したシーケンス
-期待するステートが連続した順序で含まれていればOK。
-
-```yaml
-# 例：
-expectedPath: ["Task2", "Task3"]
-actualPath: ["Task1", "Task2", "Task3", "Task4"]  # ✅ OK - Task2→Task3が連続して存在
-actualPath: ["Task2", "Task3", "Task1", "Task4"]  # ✅ OK - Task2→Task3が連続して存在
-actualPath: ["Task1", "Task3", "Task2", "Task4"]  # ❌ NG - Task2→Task3の順序が違う
+actualPath: ["Task1", "Task2", "Task3", "Task4"]  # ✅ OK - Task2→Task3が連続
+actualPath: ["Task2", "Task3", "Task1", "Task4"]  # ✅ OK - Task2→Task3が連続
+actualPath: ["Task1", "Task3", "Task2", "Task4"]  # ❌ NG - Task2→Task3が連続していない
 actualPath: ["Task2", "Task1", "Task3", "Task4"]  # ❌ NG - Task2とTask3が連続していない
 ```
 
@@ -1009,7 +1000,7 @@ mapExpectations:
   - state: "ProcessItems"            # Mapステート名
     iterationCount: 5                # 期待するイテレーション数
     iterationPaths:                  # イテレーションのパス検証
-      pathMatching: "exact"           # パス比較方式（exact, includes, sequence）
+      pathMatching: "exact"           # パス比較方式（exact, includes）
       # allとsamplesは独立して使用（同時使用も可能だが要注意）
       all:                            # すべてのイテレーションが通るパス（共通パスの場合のみ）
         - "ValidateItem"
@@ -1034,7 +1025,7 @@ mapExpectations:
 mapExpectations:
   - state: "MapState"
     iterationPaths:
-      pathMatching: "sequence"  # 順序を保証
+      pathMatching: "includes"  # ステートが順序通りに現れる
       all: ["Validate", "Process"]  # すべてがこの順序で実行
 ```
 
@@ -1101,7 +1092,7 @@ parallelExpectations:
 parallelExpectations:
   - state: "ComplexParallel"
     branchPaths:
-      pathMatching: "sequence"
+      pathMatching: "includes"
       0: ["Check", "ProcessA"]    # 条件に応じたパス
       1: ["Check", "ProcessB"]    # 別の条件パス
 ```

@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### 💥 Breaking Changes
+- **pathMatchingモードの統合** - `sequence`モードを`includes`にリネーム（より直感的な名前）
+- **不要なモードの削除** - 存在しない`partial`モードを削除
+
+### 🐛 バグ修正
+- **Choice stateモックフィールド名修正** - AI生成で誤った`nextState`を`Next`に修正
+- **pathMatchingのデフォルト値修正** - 仕様通り`exact`をデフォルトに設定
+
+### ✨ 改善
+- **テスト結果のdiff表示改善** - DiffFormatterとPathDiffFormatterクラスを追加し、より見やすい差分表示を実現
+- **pathMatchingモードの簡素化** - `exact`と`includes`の2モードに統合
+
 ## [1.1.1] - 2025-01-12
 
 ### 🐛 バグ修正

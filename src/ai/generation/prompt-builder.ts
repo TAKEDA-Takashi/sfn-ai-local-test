@@ -1177,17 +1177,17 @@ Example for non-deterministic conditions:
 - state: "RandomChoice"
   type: "stateful"
   responses:
-    - nextState: "PathA"     # First execution
-    - nextState: "PathB"     # Second execution  
-    - nextState: "Complete"  # Force completion
+    - Next: "PathA"     # First execution
+    - Next: "PathB"     # Second execution  
+    - Next: "Complete"  # Force completion
 
 # Structural loop prevention
 - state: "RetryChoice"
   type: "stateful"
   responses:
-    - nextState: "ProcessTask"    # Allow 2 retries
-    - nextState: "ProcessTask"
-    - nextState: "CompleteWork"   # Force exit
+    - Next: "ProcessTask"    # Allow 2 retries
+    - Next: "ProcessTask"
+    - Next: "CompleteWork"   # Force exit
 \`\`\``
   }
 

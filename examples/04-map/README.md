@@ -102,7 +102,7 @@ mapExpectations:
 mapExpectations:
   - state: "ProcessItems"
     iterationPaths:
-      pathMatching: "exact"  # Choose from exact/includes/sequence
+      pathMatching: "exact"  # Choose from exact/includes
       all: ["ValidateItem", "CheckValidation", "ProcessValidItem"]  # Path all iterations follow
 ```
 
@@ -120,13 +120,12 @@ mapExpectations:
 
 ### Path Matching Options
 - `exact`: Complete match
-- `sequence`: Ordered subset matching
-- `includes`: Contains specified states (order independent)
+- `includes`: Consecutive sequence matching
 
 ```yaml
 iterationPaths:
-  pathMatching: "sequence"
-  all: ["ValidateItem", "ProcessValidItem"]  # Can skip CheckValidation
+  pathMatching: "includes"
+  all: ["ValidateItem", "ProcessValidItem"]  # Must appear consecutively
 ```
 
 ## Key Configuration Options

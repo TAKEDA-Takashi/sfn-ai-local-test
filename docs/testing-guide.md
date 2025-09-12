@@ -418,9 +418,8 @@ assertions:
 
 ```yaml
 assertions:
-  pathMatching: "includes"   # Verify inclusion in path
+  pathMatching: "includes"   # Sequence appears consecutively in path
   # pathMatching: "exact"    # Exact matching
-  # pathMatching: "sequence" # Partial matching preserving order
 ```
 
 ### Mock Overrides

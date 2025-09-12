@@ -74,7 +74,7 @@ parallelExpectations:
 ### pathMatching Options
 ```yaml
 branchPaths:
-  pathMatching: "sequence"  # Choose from exact/includes/sequence
+  pathMatching: "includes"  # Choose from exact/includes
   0: ["ValidateOrder"]
 ```
 

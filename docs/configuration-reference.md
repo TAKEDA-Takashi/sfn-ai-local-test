@@ -788,7 +788,7 @@ Settings that control test result verification methods.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `outputMatching` | string | "partial" | **Output comparison method** (exact, partial) |
-| `pathMatching` | string | "exact" | **Execution path comparison method** (exact, includes, sequence) |
+| `pathMatching` | string | "exact" | **Execution path comparison method** (exact, includes) |
 
 ### outputMatching Details
 
@@ -802,6 +802,9 @@ OK if expected output fields are included in actual output. Additional fields ar
 
 #### `"exact"` - Exact Match
 Path must match completely including order.
+
+#### `"includes"` - Consecutive Sequence Match
+States must appear consecutively in the specified order. When multiple sequences are specified (array of arrays), all sequences must be found consecutively in the execution path.
 
 **Map/Distributed Map State Handling**:
 Map and Distributed Map states themselves are recorded in the execution path, but individual iteration states executed internally are not recorded. Use dedicated fields (`mapExpectations`, `parallelExpectations`) for detailed verification of Map/Parallel states.
@@ -825,11 +828,11 @@ expectedPath: ["Start", "ProcessMap", "End"]
 expectedPath: ["Start", "Process", "End"]  # Exact match with this path
 ```
 
-#### Multiple Conditions (AND condition, effective in sequence mode)
+#### Multiple Conditions (AND condition, effective in includes mode)
 ```yaml
-# In sequence mode, verify that all sequences are included
+# In includes mode with multiple sequences, verify that all are included
 assertions:
-  pathMatching: "sequence"  # Each condition evaluated as sequence
+  pathMatching: "includes"  # Each sequence must appear in order
 expectedPath:
   - ["Task1", "Task2"]     # Task1→Task2 exists consecutively
   - ["Task3", "Task4"]     # AND Task3→Task4 also exists consecutively
@@ -838,11 +841,11 @@ expectedPath:
 
 #### Practical Example: Complex Flow Verification
 ```yaml
+assertions:
+  pathMatching: "includes"
 testCases:
   - name: "Complex branch flow test"
     input: { type: "complex" }
-    assertions:
-      pathMatching: "sequence"
     expectedPath:
       # Initial processing executed
       - ["Initialize", "Validate"]
@@ -859,21 +862,9 @@ OK if all expected states are included (order doesn't matter).
 ```yaml
 # Example:
 expectedPath: ["Task2", "Task3"]
-actualPath: ["Task1", "Task2", "Task3", "Task4"]  # ✅ OK - Both Task2 and Task3 included
-actualPath: ["Task1", "Task3", "Task2", "Task4"]  # ✅ OK - Different order but both included
-actualPath: ["Task3", "Task1", "Task2", "Task4"]  # ✅ OK - Different order but both included
-actualPath: ["Task1", "Task2", "Task4", "Task5"]  # ❌ NG - Task3 not included
-```
-
-#### `"sequence"` - Consecutive Sequence
-OK if expected states are included in consecutive order.
-
-```yaml
-# Example:
-expectedPath: ["Task2", "Task3"]
 actualPath: ["Task1", "Task2", "Task3", "Task4"]  # ✅ OK - Task2→Task3 consecutive
-actualPath: ["Task2", "Task3", "Task1", "Task4"]  # ✅ OK - Task2→Task3 consecutive
-actualPath: ["Task1", "Task3", "Task2", "Task4"]  # ❌ NG - Task2→Task3 order wrong
+actualPath: ["Task2", "Task3", "Task1", "Task4"]  # ✅ OK - Task2→Task3 consecutive  
+actualPath: ["Task1", "Task3", "Task2", "Task4"]  # ❌ NG - Task2→Task3 not consecutive
 actualPath: ["Task2", "Task1", "Task3", "Task4"]  # ❌ NG - Task2 and Task3 not consecutive
 ```
 
@@ -1006,7 +997,7 @@ mapExpectations:
   - state: "ProcessItems"            # Map state name
     iterationCount: 5                # Expected iteration count
     iterationPaths:                  # Iteration path verification
-      pathMatching: "exact"           # Path comparison method (exact, includes, sequence)
+      pathMatching: "exact"           # Path comparison method (exact, includes)
       # all and samples used independently (can be used together but be careful)
       all:                            # Path all iterations take (only for common paths)
         - "ValidateItem"
@@ -1031,7 +1022,7 @@ mapExpectations:
 mapExpectations:
   - state: "MapState"
     iterationPaths:
-      pathMatching: "sequence"  # Guarantee order
+      pathMatching: "includes"  # States appear in order
       all: ["Validate", "Process"]  # All execute in this order
 ```
 
@@ -1098,7 +1089,7 @@ parallelExpectations:
 parallelExpectations:
   - state: "ComplexParallel"
     branchPaths:
-      pathMatching: "sequence"
+      pathMatching: "includes"
       0: ["Check", "ProcessA"]    # Condition-dependent path
       1: ["Check", "ProcessB"]    # Different condition path
 ```

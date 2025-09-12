@@ -418,9 +418,8 @@ assertions:
 
 ```yaml
 assertions:
-  pathMatching: "includes"   # パスに含まれることを検証
+  pathMatching: "includes"   # シーケンスが連続して現れる
   # pathMatching: "exact"    # 完全一致
-  # pathMatching: "sequence" # 順序を保った部分一致
 ```
 
 ### モックオーバーライド

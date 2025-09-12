@@ -21,10 +21,7 @@ const mapExpectationSchema = z
     iterationCount: z.number().optional().describe('Expected number of iterations'),
     iterationPaths: z
       .object({
-        pathMatching: z
-          .enum(['exact', 'sequence', 'includes'])
-          .optional()
-          .describe('How to match paths'),
+        pathMatching: z.enum(['exact', 'includes']).optional().describe('How to match paths'),
         all: z.array(z.string()).optional().describe('Path all iterations should follow'),
         samples: z
           .record(z.string(), z.array(z.string()))
@@ -62,10 +59,7 @@ const parallelExpectationSchema = z
     branchCount: z.number().optional().describe('Expected number of branches'),
     branchPaths: z
       .object({
-        pathMatching: z
-          .enum(['exact', 'sequence', 'includes'])
-          .optional()
-          .describe('How to match paths'),
+        pathMatching: z.enum(['exact', 'includes']).optional().describe('How to match paths'),
       })
       .catchall(z.array(z.string())) // Allow numeric string keys for branch indices
       .optional(),
@@ -148,10 +142,7 @@ const settingsSchema = z
 const assertionsSchema = z
   .object({
     outputMatching: z.enum(['exact', 'partial']).optional().describe('Output matching mode'),
-    pathMatching: z
-      .enum(['exact', 'includes', 'sequence'])
-      .optional()
-      .describe('Path matching mode'),
+    pathMatching: z.enum(['exact', 'includes']).optional().describe('Path matching mode'),
     stateMatching: z.enum(['exact', 'partial']).optional().describe('State matching mode'),
   })
   .strict()

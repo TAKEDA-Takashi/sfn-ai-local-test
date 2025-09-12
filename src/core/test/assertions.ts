@@ -7,6 +7,7 @@ import type {
 } from '../../schemas/test-schema'
 import type { JsonObject, JsonValue } from '../../types/asl'
 import type { AssertionResult, StateExecution } from '../../types/test'
+import { DiffFormatter } from '../../utils/diff-formatter'
 import type { ExecutionResult } from '../interpreter/executor'
 
 export class TestAssertions {
@@ -87,17 +88,13 @@ export class TestAssertions {
         success = JSON.stringify(cleanExpected) === JSON.stringify(cleanActual)
         message = success
           ? 'Output matches expected value'
-          : `Expected output: ${JSON.stringify(
-              cleanExpected,
-            )}, but got: ${JSON.stringify(cleanActual)}`
+          : `Output mismatch:\n${DiffFormatter.formatJsonDiff(cleanExpected as JsonValue, cleanActual as JsonValue)}`
         break
       default:
         success = TestAssertions.isPartialMatch(cleanExpected, cleanActual)
         message = success
           ? 'Output partially matches expected value'
-          : `Expected output to contain: ${JSON.stringify(
-              cleanExpected,
-            )}, but got: ${JSON.stringify(cleanActual)}`
+          : `Output partial match failed:\n${DiffFormatter.formatJsonDiff(cleanExpected as JsonValue, cleanActual as JsonValue)}`
         break
     }
 
@@ -262,9 +259,10 @@ export class TestAssertions {
           actual: execution.input,
           message: inputMatch
             ? `State ${expectation.state} input matches expectation`
-            : `State ${expectation.state} input mismatch. Expected: ${JSON.stringify(
+            : `State ${expectation.state} input mismatch:\n${DiffFormatter.formatJsonDiff(
                 expectation.input,
-              )}, Got: ${JSON.stringify(execution.input)}`,
+                execution.input,
+              )}`,
         })
       }
 
@@ -284,9 +282,10 @@ export class TestAssertions {
           actual: execution.output,
           message: outputMatch
             ? `State ${expectation.state} output matches expectation`
-            : `State ${expectation.state} output mismatch. Expected: ${JSON.stringify(
+            : `State ${expectation.state} output mismatch:\n${DiffFormatter.formatJsonDiff(
                 expectation.output,
-              )}, Got: ${JSON.stringify(execution.output)}`,
+                execution.output,
+              )}`,
         })
       }
 
@@ -308,9 +307,10 @@ export class TestAssertions {
             actual: execution,
             message: varMatch
               ? `State ${expectation.state} variable ${key} matches expectation`
-              : `State ${expectation.state} variable ${key} mismatch. Expected: ${JSON.stringify(
+              : `State ${expectation.state} variable ${key} mismatch:\n${DiffFormatter.formatJsonDiff(
                   value,
-                )}, Got: ${JSON.stringify(variablesAfter[key])}`,
+                  variablesAfter[key],
+                )}`,
           })
         }
       }

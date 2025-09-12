@@ -735,7 +735,12 @@ function outputDefaultReport(result: TestSuiteResult, verbose?: boolean): void {
       if (testResult.assertions) {
         for (const assertion of testResult.assertions) {
           if (!assertion.passed) {
-            console.log(chalk.red(`   ❌ ${assertion.message}`))
+            // Handle multi-line messages (e.g., from DiffFormatter)
+            const messageLines = (assertion.message || '').split('\n')
+            console.log(chalk.red(`   ❌ ${messageLines[0]}`))
+            for (let i = 1; i < messageLines.length; i++) {
+              console.log(chalk.red(`      ${messageLines[i]}`))
+            }
             if (verbose) {
               console.log(
                 chalk.gray(`      Expected: ${JSON.stringify(assertion.expected, null, 2)}`),

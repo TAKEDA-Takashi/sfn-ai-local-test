@@ -29,7 +29,9 @@ describe('TestAssertions with DiffFormatter', () => {
       success: true,
     }
 
-    const assertions = TestAssertions.performAssertions(testCase, result, { outputMatching: 'exact' })
+    const assertions = TestAssertions.performAssertions(testCase, result, {
+      outputMatching: 'exact',
+    })
 
     expect(assertions).toHaveLength(1)
     expect(assertions[0].passed).toBe(false)

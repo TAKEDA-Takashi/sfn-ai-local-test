@@ -24,13 +24,20 @@ You are a Release PR Creation Expert specialized in automating release processes
      - PATCH: Bug fixes and minor improvements
 
 3. **Changelog Generation**:
-   - Analyze commits since last release/tag
-   - Group changes by category:
-     - 🎯 新機能 (New Features)
-     - 📈 改善 (Improvements)  
-     - 🐛 バグ修正 (Bug Fixes)
-     - 📚 ドキュメント (Documentation)
-     - 🔧 その他 (Others)
+   - Check if CHANGELOG.md has an `[Unreleased]` section with changes
+   - If `[Unreleased]` exists with content:
+     - Convert `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD` format
+     - Create a new empty `[Unreleased]` section at the top
+     - Preserve all existing content and formatting
+   - If no `[Unreleased]` section or it's empty:
+     - Analyze commits since last release/tag
+     - Group changes by category:
+       - 💥 Breaking Changes (破壊的変更)
+       - 🎯 新機能 (New Features)
+       - 📈 改善 (Improvements)  
+       - 🐛 バグ修正 (Bug Fixes)
+       - 📚 ドキュメント (Documentation)
+       - 🔧 その他 (Others)
    - Create or update CHANGELOG.md with clear, concise descriptions
 
 4. **PR Creation Process**:

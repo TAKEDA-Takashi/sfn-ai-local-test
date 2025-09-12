@@ -56,17 +56,17 @@ Ask yourself:
 - state: "RandomChoice"
   type: "stateful"
   responses:
-    - nextState: "ProcessA"  # First execution
-    - nextState: "ProcessB"  # Second execution
-    - nextState: "Complete"  # Force completion
+    - Next: "ProcessA"  # First execution
+    - Next: "ProcessB"  # Second execution
+    - Next: "Complete"  # Force completion
 
 # Example: Timestamp comparison loop
 - state: "WaitingChoice"
   type: "stateful"
   responses:
-    - nextState: "Wait"  # Loop 1-2 times
-    - nextState: "Wait"  
-    - nextState: "Proceed"  # Force exit on 3rd iteration
+    - Next: "Wait"  # Loop 1-2 times
+    - Next: "Wait"  
+    - Next: "Proceed"  # Force exit on 3rd iteration
 ```
 
 ### 2. Testing Error Paths
@@ -77,7 +77,7 @@ When you need to test error handling branches that are hard to trigger:
 - state: "ValidationChoice"
   type: "fixed"
   response:
-    nextState: "HandleCriticalError"  # Force error path
+    Next: "HandleCriticalError"  # Force error path
 ```
 
 ### 3. Testing Timeout/Deadline Branches
@@ -88,7 +88,7 @@ When testing time-sensitive branches without waiting:
 - state: "TimeoutCheck"
   type: "fixed"
   response:
-    nextState: "HandleTimeout"  # Force timeout branch
+    Next: "HandleTimeout"  # Force timeout branch
 ```
 
 ### 4. Breaking Circular Dependencies in Tests
@@ -103,7 +103,7 @@ When state machine has circular references that need breaking:
         input:
           testMode: true
       response:
-        nextState: "ExitCircle"
+        Next: "ExitCircle"
 ```
 
 ## When NOT to Use Choice Mocks (MOST CASES)
@@ -120,7 +120,7 @@ When state machine has circular references that need breaking:
 - state: "IsAdultCheck"
   type: "fixed"
   response:
-    nextState: "ProcessAdult"
+    Next: "ProcessAdult"
     
 # ✅ GOOD - Just provide appropriate input
 input:
@@ -131,15 +131,15 @@ input:
 
 When a Choice state has a mock:
 1. Mock is checked FIRST before evaluating conditions
-2. If mock returns `nextState`, that branch is taken
-3. If no mock or mock has no `nextState`, normal evaluation occurs
+2. If mock returns `Next`, that branch is taken
+3. If no mock or mock has no `Next`, normal evaluation occurs
 
 ### Mock Response Format:
 ```yaml
 - state: "ChoiceStateName"
   type: "fixed|conditional|stateful"
   response:
-    nextState: "ForcedNextState"  # Required field for Choice mocks
+    Next: "ForcedNextState"  # Required field for Choice mocks
 ```
 
 ## Best Practices
@@ -158,9 +158,9 @@ When a Choice state has a mock:
 - state: "RetryChoice"
   type: "stateful"
   responses:
-    - nextState: "RetryTask"     # Iteration 1
-    - nextState: "RetryTask"     # Iteration 2
-    - nextState: "GiveUp"        # Force exit
+    - Next: "RetryTask"     # Iteration 1
+    - Next: "RetryTask"     # Iteration 2
+    - Next: "GiveUp"        # Force exit
 ```
 
 ### 3. Keep Mock Logic Simple

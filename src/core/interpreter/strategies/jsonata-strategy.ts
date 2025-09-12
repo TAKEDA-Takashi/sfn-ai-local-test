@@ -65,14 +65,8 @@ export class JSONataStrategy implements ProcessingStrategy {
     const statesContext = this.buildStatesContext(context.input, context, result)
 
     for (const [key, value] of Object.entries(assign)) {
-      let assignedValue: JsonValue
-
       // JSONata式の評価
-      if (typeof value === 'string' && value.startsWith('{%') && value.endsWith('%}')) {
-        assignedValue = await this.evaluateJSONataExpression(value, statesContext)
-      } else {
-        assignedValue = value
-      }
+      const assignedValue = await this.evaluateJSONataExpression(value, statesContext)
 
       // 変数に代入
       if (!context.variables) {
@@ -84,38 +78,21 @@ export class JSONataStrategy implements ProcessingStrategy {
 
   /**
    * JSONata式の評価
-   * {%...%}でラップされた文字列のみをJSONata式として評価し、ObjectやArrayは再帰的に処理
+   * {%...%}でラップされた文字列のみをJSONata式として評価
    */
   private async evaluateJSONataExpression(
     expression: JsonValue,
     statesContext: ExecutionContext,
   ): Promise<JsonValue> {
-    // 文字列の場合: {%...%} でラップされている場合のみJSONata式として評価
+    // 文字列の場合
     if (typeof expression === 'string') {
+      // {%...%} でラップされている場合は除去して評価
       if (expression.startsWith('{%') && expression.endsWith('%}')) {
         const jsonataExpr = expression.slice(2, -2).trim()
-
-        // statesコンテキストの構築
-        // $はinputを直接参照、$statesで詳細なコンテキストにアクセス
-        const bindings: JsonObject = {
-          ...statesContext.variables,
-          states: {
-            input: statesContext.input,
-            result: statesContext.result ?? null,
-            context: {
-              Execution: statesContext.Execution || {},
-              StateMachine: statesContext.StateMachine || {},
-              State: statesContext.State || {},
-              Task: statesContext.Task || {},
-            },
-          },
-        }
-
-        const result = await JSONataEvaluator.evaluate(jsonataExpr, statesContext.input, bindings)
-        // JSONataは undefined を返すことがある（例：$partition([],2)）
-        // AWS Step Functionsの仕様では、undefinedはnullとして扱われる
-        return result === undefined ? null : result
+        return await this.executeJSONata(jsonataExpr, statesContext)
       }
+
+      // {%...%}でラップされていない文字列はそのまま返す（AWS仕様準拠）
       return expression
     }
 
@@ -139,6 +116,34 @@ export class JSONataStrategy implements ProcessingStrategy {
 
     // その他（null、number、boolean）はそのまま返す
     return expression
+  }
+
+  /**
+   * JSONata式を実行する共通メソッド
+   */
+  private async executeJSONata(
+    jsonataExpr: string,
+    statesContext: ExecutionContext,
+  ): Promise<JsonValue> {
+    // statesコンテキストの構築
+    const bindings: JsonObject = {
+      ...statesContext.variables,
+      states: {
+        input: statesContext.input,
+        result: statesContext.result ?? null,
+        context: {
+          Execution: statesContext.Execution || {},
+          StateMachine: statesContext.StateMachine || {},
+          State: statesContext.State || {},
+          Task: statesContext.Task || {},
+        },
+      },
+    }
+
+    const result = await JSONataEvaluator.evaluate(jsonataExpr, statesContext.input, bindings)
+    // JSONataは undefined を返すことがある（例：$partition([],2)）
+    // AWS Step Functionsの仕様では、undefinedはnullとして扱われる
+    return result === undefined ? null : result
   }
 
   /**

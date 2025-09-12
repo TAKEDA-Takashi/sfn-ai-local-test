@@ -18,7 +18,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
   /**
    * 前処理: InputPath → Parameters の順で処理
    */
-  preprocess(input: JsonValue, state: State, _context: ExecutionContext): Promise<JsonValue> {
+  preprocess(input: JsonValue, state: State, context: ExecutionContext): Promise<JsonValue> {
     // デバッグアサーション: このStrategyはJSONPathモードでのみ使用されるべき
     if (!state.isJSONPathState()) {
       throw new Error('JSONPathStrategy should only be used with JSONPath mode states')
@@ -30,7 +30,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
     // 2. Parameters の適用
     // Map/DistributedMap states apply Parameters per item, not to the whole input
     if ('Parameters' in state && state.Parameters && !state.isMap()) {
-      processedInput = this.applyParameters(processedInput, state)
+      processedInput = this.applyParameters(processedInput, state, context)
     }
 
     return Promise.resolve(processedInput)
@@ -95,13 +95,17 @@ export class JSONPathStrategy implements ProcessingStrategy {
   /**
    * Parameters の適用（ペイロードテンプレート処理）
    */
-  private applyParameters(input: JsonValue, state: JSONPathState): JsonValue {
+  private applyParameters(
+    input: JsonValue,
+    state: JSONPathState,
+    context: ExecutionContext,
+  ): JsonValue {
     const parameters = state.Parameters
     if (!parameters) {
       return input
     }
 
-    return this.processPayloadTemplate(parameters, input)
+    return this.processPayloadTemplate(parameters, input, undefined, context)
   }
 
   /**
@@ -218,14 +222,29 @@ export class JSONPathStrategy implements ProcessingStrategy {
     template: JsonObject,
     data: JsonValue,
     specialMappings?: JsonObject,
+    executionContext?: ExecutionContext,
   ): JsonValue {
     const options = {
-      context: data,
+      context: executionContext,
       handleIntrinsics: true,
       specialMappings,
+      contextPathHandler: executionContext
+        ? (path: string) => {
+            // Handle context path ($$.*)
+            if (path.startsWith('$$.')) {
+              const contextPath = path.replace(/^\$\$\./, '')
+              return JSONPath({
+                path: `$.${contextPath}`,
+                json: executionContext,
+                wrap: false,
+              })
+            }
+            return null
+          }
+        : undefined,
     }
 
-    return JSONPathProcessor.processEntries(template, data, options)
+    return JSONPathProcessor.processParameters(template, data, options)
   }
 
   /**

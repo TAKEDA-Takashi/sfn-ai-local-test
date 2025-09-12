@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### ✨ 改善
+- **ExecutionContext固定値化** - テストの再現性向上のため、Execution.Id、Execution.Name、Execution.StartTime等を固定値に変更
+- **コンテキスト変数のサポート改善** - JSONPathモードで`$$.`プレフィックスのコンテキスト変数が適切に参照できるよう修正
+- **JSONataモードの文字列評価** - Outputフィールドの文字列がJSONata式として正しく評価されるよう修正
+
 ## [1.3.0] - 2025-01-12
 
 ### 💥 Breaking Changes

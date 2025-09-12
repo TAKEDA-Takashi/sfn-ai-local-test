@@ -88,13 +88,24 @@ export class StateMachineExecutor {
         stateExecutions: [],
         currentStatePath: [],
         mapExecutions: [],
-        // JSONata用のExecutionコンテキストを追加
+        // 固定値のExecutionコンテキスト（テストの再現性のため）
         Execution: {
-          Id: `execution-${Date.now()}`,
+          Id: 'arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution',
           Input: isJsonObject(input) ? input : {},
-          Name: `execution-${Date.now()}`,
+          Name: 'test-execution',
           RoleArn: 'arn:aws:iam::123456789012:role/StepFunctionsRole',
-          StartTime: new Date().toISOString(),
+          StartTime: '2024-01-01T00:00:00.000Z',
+        },
+        // StateMachineコンテキストの追加
+        StateMachine: {
+          Id: 'arn:aws:states:us-east-1:123456789012:stateMachine:StateMachine',
+          Name: 'StateMachine',
+        },
+        // Stateコンテキストの初期値（各ステート実行時に更新）
+        State: {
+          EnteredTime: '2024-01-01T00:00:00.000Z',
+          Name: '',
+          RetryCount: 0,
         },
         parallelExecutions: [],
       }
@@ -115,6 +126,11 @@ export class StateMachineExecutor {
         }
 
         context.executionPath.push(context.currentState)
+
+        // Update State context with current state name
+        if (context.State) {
+          context.State.Name = context.currentState
+        }
 
         if (options.verbose) {
           console.log(`Executing state: ${context.currentState} (${state.Type})`)

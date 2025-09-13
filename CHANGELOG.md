@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2025-01-14
+
 ### ✨ 改善
 - **ExecutionContext固定値化** - テストの再現性向上のため、Execution.Id、Execution.Name、Execution.StartTime等を固定値に変更
 - **組み込み関数の固定値化** - States.UUID()、$uuid()、$now()、$millis()が決定論的な固定値を返すように実装（ADR-001準拠）

@@ -1,6 +1,6 @@
 {
   "name": "sfn-test",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "AI-powered local testing tool for AWS Step Functions",
   "keywords": [
     "aws",

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import * as jsonpathPlus from 'jsonpath-plus'
-import { v4 as uuidv4 } from 'uuid'
+// import { v4 as uuidv4 } from 'uuid'  // For dynamic UUID generation (currently commented out)
+import { EXECUTION_CONTEXT_DEFAULTS } from '../../../constants/execution-context'
 import type { JsonArray, JsonObject, JsonValue } from '../../../types/asl'
 
 const { JSONPath } = jsonpathPlus
@@ -379,7 +380,19 @@ export class JSONPathEvaluator {
     return result
   }
 
+  /**
+   * Generate UUID for States.UUID() function
+   *
+   * Currently returns a fixed UUID for deterministic testing.
+   * In the future, this can be controlled by a configuration option
+   * to switch between fixed and dynamic UUID generation.
+   *
+   * @returns UUID string
+   */
   private static statesUUID(): string {
-    return uuidv4()
+    // Fixed value for deterministic testing (ADR-001)
+    return EXECUTION_CONTEXT_DEFAULTS.FIXED_UUID
+    // Original dynamic implementation:
+    // return uuidv4()
   }
 }

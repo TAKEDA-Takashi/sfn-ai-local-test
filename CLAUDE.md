@@ -270,9 +270,11 @@ chore: ビルド・設定変更
 
 ## Step Functions 実装の重要な知見
 
-### ExecutionContext の固定値化
+### ExecutionContext と組み込み関数の固定値化
 
-テスト実行時、ExecutionContextの値は決定論的テストのため以下の固定値を使用します：
+テスト実行時、決定論的テストのため以下の固定値を使用します：
+
+#### ExecutionContext変数
 
 | コンテキスト変数 | 固定値 |
 |-----------------|--------|
@@ -282,12 +284,22 @@ chore: ビルド・設定変更
 | `$$.Execution.RoleArn` | `arn:aws:iam::123456789012:role/StepFunctionsRole` |
 | `$$.State.EnteredTime` | `2024-01-01T00:00:00.000Z` |
 
+#### 組み込み関数
+
+| 関数 | 固定値 |
+|------|--------|
+| `States.UUID()` | `test-uuid-00000000-0000-4000-8000-000000000001` |
+| `$uuid()` (JSONata) | `test-uuid-00000000-0000-4000-8000-000000000001` |
+| `$now()` (JSONata) | `2024-01-01T00:00:00.000Z` |
+| `$millis()` (JSONata) | `1704067200000` |
+
 これにより：
 - テストの再現性が保証される
 - 時刻ベースのロジックをテスト可能
 - CI/CDで安定したテスト実行
+- UUID生成が予測可能
 
-設定ファイルで値を上書き可能です。詳細は[configuration-reference.md](./docs/configuration-reference.md#executioncontext-セクション)を参照。
+設定ファイルでExecutionContext値を上書き可能です。詳細は[configuration-reference.md](./docs/configuration-reference.md#executioncontext-セクション)を参照。
 
 ### JSONPath vs JSONata モードの違い
 

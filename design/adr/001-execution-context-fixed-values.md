@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented
 
 ## Context
 
@@ -121,3 +121,7 @@ States.UUID() => 'test-uuid-00000000-0000-4000-8000-000000000001'
 ## 更新履歴
 
 - 2025-09-12: 初版作成
+- 2025-09-13: 実装完了
+  - States.UUID() の固定値化実装
+  - JSONata $uuid(), $now(), $millis() の固定値化実装
+  - 動的実装を保持しつつ固定値実装を使用するように変更

@@ -47,6 +47,13 @@ export const EXECUTION_CONTEXT_DEFAULTS = {
    * Default state machine name (used in ARN generation)
    */
   STATE_MACHINE_NAME: 'StateMachine',
+
+  /**
+   * Fixed UUID for deterministic testing
+   * Based on ADR-001: ExecutionContext fixed values
+   * Format follows UUID v4 specification with predictable values
+   */
+  FIXED_UUID: 'test-uuid-00000000-0000-4000-8000-000000000001',
 } as const
 
 /**

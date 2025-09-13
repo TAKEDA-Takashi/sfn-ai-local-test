@@ -516,12 +516,29 @@ testCases:
       nightBatch: false
 ```
 
+### Fixed Intrinsic Functions
+
+In addition to ExecutionContext variables, the following intrinsic functions also return fixed values for deterministic testing:
+
+| Function | Fixed Value | Description |
+|----------|------------|-------------|
+| `States.UUID()` | `test-uuid-00000000-0000-4000-8000-000000000001` | Fixed UUID v4 format |
+| `$uuid()` (JSONata) | `test-uuid-00000000-0000-4000-8000-000000000001` | Same fixed UUID |
+| `$now()` (JSONata) | `2024-01-01T00:00:00.000Z` | Fixed timestamp matching StartTime |
+| `$millis()` (JSONata) | `1704067200000` | Fixed timestamp in milliseconds |
+
+These fixed values ensure that:
+- UUID generation is predictable across test runs
+- Time functions return consistent values
+- Test assertions can reliably check for specific values
+
 ### Benefits of Fixed Values
 
 1. **Reproducible Tests**: Tests produce the same results regardless of when they are run
 2. **Time-based Logic Testing**: Can test time-dependent conditions (e.g., night batches, year-end processing)
 3. **Consistent CI/CD**: Tests don't fail due to timing differences in CI environments
 4. **Easier Debugging**: Fixed values make it easier to trace and debug issues
+5. **Predictable UUIDs**: Can assert exact UUID values in test expectations
 
 ### Testing Time-based Logic
 

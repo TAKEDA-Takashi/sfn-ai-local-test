@@ -93,7 +93,7 @@ describe('PromptBuilder', () => {
       expect(result.problematicStates).toContain('CheckDeadline')
     })
 
-    it('should detect context variables like $$.State.EnteredTime', () => {
+    it('should detect context variables like $$.Task.Token', () => {
       const stateMachine = createStateMachine({
         StartAt: 'CheckState',
         States: {
@@ -101,8 +101,8 @@ describe('PromptBuilder', () => {
             Type: 'Choice',
             Choices: [
               {
-                Variable: '$$.State.EnteredTime',
-                StringGreaterThan: '2024-01-01T00:00:00Z',
+                Variable: '$$.Task.Token',
+                IsPresent: true,
                 Next: 'Process',
               },
             ],
@@ -539,7 +539,7 @@ mocks:
               {
                 And: [
                   { Variable: '$.status', StringEquals: 'PENDING' },
-                  { Variable: '$.timestamp', TimestampLessThanPath: '$$.State.EnteredTime' },
+                  { Variable: '$.timestamp', TimestampLessThanPath: '$.deadline' },
                 ],
                 Next: 'Process',
               },

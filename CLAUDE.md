@@ -2,6 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚨 作業開始前の必須確認事項
+
+**重要**: 作業を開始する前に、必ず以下を実行してください：
+
+1. **メモリの確認**:
+   ```
+   mcp__serena__list_memories でメモリ一覧を確認
+   mcp__serena__read_memory で関連メモリを読む
+   ```
+
+2. **特に重要なメモリ**:
+   - `MUST_CHECK_BEFORE_WORK` - 作業前の必須確認事項
+   - `zod-schema-and-embedded-types-sync` - スキーマ変更時の同期ルール
+   - `task_completion_checklist` - 作業完了時のチェックリスト
+
+3. **スキーマ変更時の必須同期**:
+   - Zodスキーマ（test-schema.ts、mock-schema.ts、config-schema.ts）を変更したら
+   - **必ず** `src/ai/agents/embedded-types.ts` も更新する
+   - これを忘れるとAI生成機能が壊れる
+
 ## プロジェクト概要
 
 **sfn-ai-local-test** - AWS Step Functions用のAI駆動型ローカルテストツール
@@ -249,6 +269,37 @@ chore: ビルド・設定変更
 ```
 
 ## Step Functions 実装の重要な知見
+
+### ExecutionContext と組み込み関数の固定値化
+
+テスト実行時、決定論的テストのため以下の固定値を使用します：
+
+#### ExecutionContext変数
+
+| コンテキスト変数 | 固定値 |
+|-----------------|--------|
+| `$$.Execution.Id` | `arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution` |
+| `$$.Execution.Name` | `test-execution` |
+| `$$.Execution.StartTime` | `2024-01-01T00:00:00.000Z` |
+| `$$.Execution.RoleArn` | `arn:aws:iam::123456789012:role/StepFunctionsRole` |
+| `$$.State.EnteredTime` | `2024-01-01T00:00:00.000Z` |
+
+#### 組み込み関数
+
+| 関数 | 固定値 |
+|------|--------|
+| `States.UUID()` | `test-uuid-00000000-0000-4000-8000-000000000001` |
+| `$uuid()` (JSONata) | `test-uuid-00000000-0000-4000-8000-000000000001` |
+| `$now()` (JSONata) | `2024-01-01T00:00:00.000Z` |
+| `$millis()` (JSONata) | `1704067200000` |
+
+これにより：
+- テストの再現性が保証される
+- 時刻ベースのロジックをテスト可能
+- CI/CDで安定したテスト実行
+- UUID生成が予測可能
+
+設定ファイルでExecutionContext値を上書き可能です。詳細は[configuration-reference.md](./docs/configuration-reference.md#executioncontext-セクション)を参照。
 
 ### JSONPath vs JSONata モードの違い
 

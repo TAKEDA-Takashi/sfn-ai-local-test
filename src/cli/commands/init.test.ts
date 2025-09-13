@@ -1,6 +1,13 @@
 import * as fs from 'node:fs'
 import inquirer from 'inquirer'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  DEFAULT_COVERAGE_DIR,
+  DEFAULT_EXTRACTED_DIR,
+  DEFAULT_MOCKS_DIR,
+  DEFAULT_TEST_DATA_DIR,
+  DEFAULT_TEST_SUITES_DIR,
+} from '../../constants/defaults'
 import { initCommand } from './init'
 
 // Mock modules
@@ -187,11 +194,11 @@ describe('initCommand', () => {
 
       await initCommand()
 
-      expect(fs.mkdirSync).toHaveBeenCalledWith('sfn-test/mocks', expect.any(Object))
-      expect(fs.mkdirSync).toHaveBeenCalledWith('sfn-test/test-suites', expect.any(Object))
-      expect(fs.mkdirSync).toHaveBeenCalledWith('sfn-test/test-data', expect.any(Object))
-      expect(fs.mkdirSync).toHaveBeenCalledWith('.sfn-test/extracted', expect.any(Object))
-      expect(fs.mkdirSync).toHaveBeenCalledWith('.sfn-test/coverage', expect.any(Object))
+      expect(fs.mkdirSync).toHaveBeenCalledWith(DEFAULT_MOCKS_DIR, expect.any(Object))
+      expect(fs.mkdirSync).toHaveBeenCalledWith(DEFAULT_TEST_SUITES_DIR, expect.any(Object))
+      expect(fs.mkdirSync).toHaveBeenCalledWith(DEFAULT_TEST_DATA_DIR, expect.any(Object))
+      expect(fs.mkdirSync).toHaveBeenCalledWith(DEFAULT_EXTRACTED_DIR, expect.any(Object))
+      expect(fs.mkdirSync).toHaveBeenCalledWith(DEFAULT_COVERAGE_DIR, expect.any(Object))
     })
 
     it('should not create directories when user declines', async () => {
@@ -305,8 +312,8 @@ describe('initCommand', () => {
       )
 
       // Directories should be created
-      expect(fs.mkdirSync).toHaveBeenCalledWith('sfn-test/mocks', expect.any(Object))
-      expect(fs.mkdirSync).toHaveBeenCalledWith('sfn-test/test-suites', expect.any(Object))
+      expect(fs.mkdirSync).toHaveBeenCalledWith(DEFAULT_MOCKS_DIR, expect.any(Object))
+      expect(fs.mkdirSync).toHaveBeenCalledWith(DEFAULT_TEST_SUITES_DIR, expect.any(Object))
     })
 
     it('should overwrite existing config file with -y option', async () => {

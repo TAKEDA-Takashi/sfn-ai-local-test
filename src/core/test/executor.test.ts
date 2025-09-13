@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ExecutionContextConfig } from '../../schemas/config-schema'
 import type { TestCase, TestSuite } from '../../schemas/test-schema'
 import type { StateMachine } from '../../types/asl'
 import { StateFactory } from '../../types/asl'
@@ -288,6 +289,148 @@ describe('TestSuiteExecutor', () => {
       expect(result[0]?.state).toBe('TestState')
       expect(result[0]?.type).toBe('fixed')
       expect((result[0] as any)?.response).toEqual({ data: 'test' })
+    })
+  })
+
+  describe('ExecutionContext priority', () => {
+    it('should pass executionContext from options to StateMachineExecutor', async () => {
+      const executionContext: ExecutionContextConfig = {
+        name: 'custom-execution',
+        startTime: '2024-06-01T12:00:00.000Z',
+        roleArn: 'arn:aws:iam::999999999999:role/CustomRole',
+      }
+
+      const mockExecutorInstance = {
+        execute: vi.fn().mockResolvedValue({
+          output: { result: 'success' },
+          executionPath: ['Start'],
+          success: true,
+        }),
+      }
+      vi.mocked(StateMachineExecutor).mockImplementation(
+        () => mockExecutorInstance as unknown as StateMachineExecutor,
+      )
+
+      const options = { executionContext }
+      const result = await executor.runSuite(false, options)
+
+      expect(result.passedTests).toBe(1)
+      expect(mockExecutorInstance.execute).toHaveBeenCalledWith(
+        { test: 'data' },
+        expect.objectContaining({
+          executionContext,
+        }),
+      )
+    })
+
+    it('should prioritize test case executionContext over suite and options', async () => {
+      const optionsContext: ExecutionContextConfig = {
+        name: 'options-execution',
+        startTime: '2024-01-01T00:00:00.000Z',
+      }
+
+      const suiteContext: ExecutionContextConfig = {
+        name: 'suite-execution',
+        startTime: '2024-02-01T00:00:00.000Z',
+        region: 'us-west-2',
+      }
+
+      const testCaseContext: ExecutionContextConfig = {
+        name: 'test-case-execution',
+        startTime: '2024-03-01T00:00:00.000Z',
+        accountId: '777777777777',
+      }
+
+      testSuite.executionContext = suiteContext
+      testSuite.testCases = [
+        {
+          name: 'Test with context',
+          input: { test: 'data' },
+          expectedOutput: { result: 'success' },
+          executionContext: testCaseContext,
+        },
+      ]
+
+      executor = new TestSuiteExecutor(testSuite, mockStateMachine, mockMockEngine)
+
+      const mockExecutorInstance = {
+        execute: vi.fn().mockResolvedValue({
+          output: { result: 'success' },
+          executionPath: ['Start'],
+          success: true,
+        }),
+      }
+      vi.mocked(StateMachineExecutor).mockImplementation(
+        () => mockExecutorInstance as unknown as StateMachineExecutor,
+      )
+
+      const options = { executionContext: optionsContext }
+      await executor.runSuite(false, options)
+
+      // Should merge all three with test case taking precedence
+      expect(mockExecutorInstance.execute).toHaveBeenCalledWith(
+        { test: 'data' },
+        expect.objectContaining({
+          executionContext: {
+            name: 'test-case-execution', // from test case
+            startTime: '2024-03-01T00:00:00.000Z', // from test case
+            accountId: '777777777777', // from test case
+            region: 'us-west-2', // from suite (not overridden)
+          },
+        }),
+      )
+    })
+
+    it('should handle executionContext from suite when test case has none', async () => {
+      const suiteContext: ExecutionContextConfig = {
+        name: 'suite-execution',
+        region: 'eu-west-1',
+      }
+
+      testSuite.executionContext = suiteContext
+      executor = new TestSuiteExecutor(testSuite, mockStateMachine, mockMockEngine)
+
+      const mockExecutorInstance = {
+        execute: vi.fn().mockResolvedValue({
+          output: { result: 'success' },
+          executionPath: ['Start'],
+          success: true,
+        }),
+      }
+      vi.mocked(StateMachineExecutor).mockImplementation(
+        () => mockExecutorInstance as unknown as StateMachineExecutor,
+      )
+
+      await executor.runSuite(false)
+
+      expect(mockExecutorInstance.execute).toHaveBeenCalledWith(
+        { test: 'data' },
+        expect.objectContaining({
+          executionContext: suiteContext,
+        }),
+      )
+    })
+
+    it('should not pass executionContext when none is provided', async () => {
+      const mockExecutorInstance = {
+        execute: vi.fn().mockResolvedValue({
+          output: { result: 'success' },
+          executionPath: ['Start'],
+          success: true,
+        }),
+      }
+      vi.mocked(StateMachineExecutor).mockImplementation(
+        () => mockExecutorInstance as unknown as StateMachineExecutor,
+      )
+
+      await executor.runSuite(false)
+
+      expect(mockExecutorInstance.execute).toHaveBeenCalledWith(
+        { test: 'data' },
+        expect.objectContaining({
+          executionContext: undefined,
+        }),
+      )
     })
   })
 })

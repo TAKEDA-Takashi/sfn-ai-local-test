@@ -62,12 +62,15 @@ describe('StateMachineExecutor - JSONata Execution Context', () => {
 
       const result = await executor.execute({ test: 'data' })
 
-      // Execution メタデータが存在することを確認
-      expect(result.variables?.executionId).toBeDefined()
-      expect(result.variables?.executionId).toContain('execution-')
-      expect(result.variables?.executionName).toBeDefined()
-      expect(result.variables?.executionStartTime).toBeDefined()
-      expect(result.variables?.executionRoleArn).toContain('arn:aws:iam::')
+      // Execution メタデータが存在することを確認（固定値）
+      expect(result.variables?.executionId).toBe(
+        'arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution',
+      )
+      expect(result.variables?.executionName).toBe('test-execution')
+      expect(result.variables?.executionStartTime).toBe('2024-01-01T00:00:00.000Z')
+      expect(result.variables?.executionRoleArn).toBe(
+        'arn:aws:iam::123456789012:role/StepFunctionsRole',
+      )
     })
 
     it('should handle nested field access in Execution.Input', async () => {

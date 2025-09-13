@@ -1,5 +1,6 @@
 import type { ExecutionContext, JsonValue } from '../../../types/asl'
 import type { WaitState } from '../../../types/state-classes'
+import { JSONPathProcessor } from '../utils/jsonpath-processor'
 import { BaseStateExecutor } from './base'
 
 /**
@@ -66,26 +67,10 @@ export class WaitStateExecutor extends BaseStateExecutor<WaitState> {
    * JSONPath値の取得
    */
   private getPathValue(path: string, input: JsonValue): JsonValue | undefined {
-    if (path === '$') {
-      return input
-    }
-
-    // 簡略化のため、単純なパスのみサポート
-    const pathParts = path.replace(/^\$\./, '').split('.')
-    let current = input
-
-    for (const part of pathParts) {
-      if (current === null || current === undefined || typeof current !== 'object') {
-        return undefined
-      }
-      // 配列の場合はインデックスアクセス不可
-      if (Array.isArray(current)) {
-        return undefined
-      }
-      // ここでcurrentは非null、非undefined、非配列のオブジェクト
-      current = current[part]
-    }
-
-    return current
+    // JSONPathProcessorを使用して統一的に評価
+    const result = JSONPathProcessor.evaluateStringValue(path, input, {
+      handleIntrinsics: false,
+    })
+    return result === null ? undefined : result
   }
 }

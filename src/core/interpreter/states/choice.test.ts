@@ -992,5 +992,593 @@ describe('ChoiceStateExecutor', () => {
         }),
       ).rejects.toThrow('No matching choice found and no default specified')
     })
+
+    // Path comparison operators tests
+    describe('Path comparison operators', () => {
+      it('should handle StringEqualsPath', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.firstName',
+              StringEqualsPath: '$.lastName',
+              Next: 'SameName',
+            },
+          ],
+          Default: 'DifferentName',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+
+        // Same strings
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { firstName: 'John', lastName: 'John' },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result1.nextState).toBe('SameName')
+
+        // Different strings
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { firstName: 'John', lastName: 'Smith' },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result2.nextState).toBe('DifferentName')
+      })
+
+      it('should handle StringLessThanPath and StringGreaterThanPath', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.value1',
+              StringLessThanPath: '$.value2',
+              Next: 'Less',
+            },
+            {
+              Variable: '$.value1',
+              StringGreaterThanPath: '$.value2',
+              Next: 'Greater',
+            },
+          ],
+          Default: 'Equal',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+
+        // value1 < value2
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { value1: 'apple', value2: 'banana' },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result1.nextState).toBe('Less')
+
+        // value1 > value2
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { value1: 'zebra', value2: 'apple' },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result2.nextState).toBe('Greater')
+
+        // value1 == value2
+        const result3 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { value1: 'same', value2: 'same' },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result3.nextState).toBe('Equal')
+      })
+
+      it('should handle StringLessThanEqualsPath and StringGreaterThanEqualsPath', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.value1',
+              StringLessThanEqualsPath: '$.value2',
+              Next: 'LessOrEqual',
+            },
+            {
+              Variable: '$.value1',
+              StringGreaterThanEqualsPath: '$.value2',
+              Next: 'GreaterOrEqual',
+            },
+          ],
+          Default: 'NoMatch',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+
+        // value1 <= value2 (less)
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { value1: 'a', value2: 'b' },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result1.nextState).toBe('LessOrEqual')
+
+        // value1 <= value2 (equal)
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { value1: 'same', value2: 'same' },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result2.nextState).toBe('LessOrEqual')
+
+        // value1 >= value2 (greater)
+        const result3 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { value1: 'z', value2: 'a' },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result3.nextState).toBe('GreaterOrEqual')
+      })
+
+      it('should handle NumericEqualsPath and NumericLessThanPath', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.price',
+              NumericEqualsPath: '$.budget',
+              Next: 'ExactBudget',
+            },
+            {
+              Variable: '$.price',
+              NumericLessThanPath: '$.budget',
+              Next: 'UnderBudget',
+            },
+          ],
+          Default: 'OverBudget',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+
+        // price == budget
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { price: 100, budget: 100 },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result1.nextState).toBe('ExactBudget')
+
+        // price < budget
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { price: 80, budget: 100 },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result2.nextState).toBe('UnderBudget')
+
+        // price > budget
+        const result3 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { price: 120, budget: 100 },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result3.nextState).toBe('OverBudget')
+      })
+
+      it('should handle NumericGreaterThanPath and NumericLessThanEqualsPath', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.score',
+              NumericGreaterThanPath: '$.threshold',
+              Next: 'Pass',
+            },
+            {
+              Variable: '$.score',
+              NumericLessThanEqualsPath: '$.threshold',
+              Next: 'Fail',
+            },
+          ],
+          Default: 'Error',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+
+        // score > threshold
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { score: 85, threshold: 80 },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result1.nextState).toBe('Pass')
+
+        // score <= threshold
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { score: 75, threshold: 80 },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result2.nextState).toBe('Fail')
+
+        // score == threshold
+        const result3 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { score: 80, threshold: 80 },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result3.nextState).toBe('Fail')
+      })
+
+      it('should handle NumericGreaterThanEqualsPath', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.current',
+              NumericGreaterThanEqualsPath: '$.minimum',
+              Next: 'MeetsMinimum',
+            },
+          ],
+          Default: 'BelowMinimum',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+
+        // current >= minimum (greater)
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { current: 15, minimum: 10 },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result1.nextState).toBe('MeetsMinimum')
+
+        // current >= minimum (equal)
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { current: 10, minimum: 10 },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result2.nextState).toBe('MeetsMinimum')
+
+        // current < minimum
+        const result3 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { current: 5, minimum: 10 },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result3.nextState).toBe('BelowMinimum')
+      })
+
+      it('should handle BooleanEqualsPath', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.isActive',
+              BooleanEqualsPath: '$.isEnabled',
+              Next: 'SameState',
+            },
+          ],
+          Default: 'DifferentState',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+
+        // Both true
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { isActive: true, isEnabled: true },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result1.nextState).toBe('SameState')
+
+        // Both false
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { isActive: false, isEnabled: false },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result2.nextState).toBe('SameState')
+
+        // Different values
+        const result3 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { isActive: true, isEnabled: false },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result3.nextState).toBe('DifferentState')
+      })
+
+      it('should handle TimestampEqualsPath', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.startTime',
+              TimestampEqualsPath: '$.endTime',
+              Next: 'SameTime',
+            },
+          ],
+          Default: 'DifferentTime',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+
+        const timestamp = '2024-01-01T12:00:00.000Z'
+        const timestamp2 = '2024-01-01T13:00:00.000Z'
+
+        // Same timestamp
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { startTime: timestamp, endTime: timestamp },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result1.nextState).toBe('SameTime')
+
+        // Different timestamps
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { startTime: timestamp, endTime: timestamp2 },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result2.nextState).toBe('DifferentTime')
+      })
+
+      it('should handle TimestampLessThanPath and TimestampGreaterThanPath', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.createdAt',
+              TimestampLessThanPath: '$.expiresAt',
+              Next: 'NotExpired',
+            },
+            {
+              Variable: '$.createdAt',
+              TimestampGreaterThanPath: '$.expiresAt',
+              Next: 'Expired',
+            },
+          ],
+          Default: 'SameTime',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+
+        // createdAt < expiresAt
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: {
+            createdAt: '2024-01-01T10:00:00.000Z',
+            expiresAt: '2024-01-01T12:00:00.000Z',
+          },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result1.nextState).toBe('NotExpired')
+
+        // createdAt > expiresAt
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: {
+            createdAt: '2024-01-01T14:00:00.000Z',
+            expiresAt: '2024-01-01T12:00:00.000Z',
+          },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result2.nextState).toBe('Expired')
+      })
+
+      it('should handle TimestampLessThanEqualsPath and TimestampGreaterThanEqualsPath', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.requestTime',
+              TimestampLessThanEqualsPath: '$.deadline',
+              Next: 'OnTime',
+            },
+            {
+              Variable: '$.requestTime',
+              TimestampGreaterThanEqualsPath: '$.deadline',
+              Next: 'Late',
+            },
+          ],
+          Default: 'Error',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+
+        // requestTime <= deadline (less)
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: {
+            requestTime: '2024-01-01T09:00:00.000Z',
+            deadline: '2024-01-01T10:00:00.000Z',
+          },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result1.nextState).toBe('OnTime')
+
+        // requestTime <= deadline (equal)
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: {
+            requestTime: '2024-01-01T10:00:00.000Z',
+            deadline: '2024-01-01T10:00:00.000Z',
+          },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result2.nextState).toBe('OnTime')
+
+        // requestTime >= deadline (greater)
+        const result3 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: {
+            requestTime: '2024-01-01T11:00:00.000Z',
+            deadline: '2024-01-01T10:00:00.000Z',
+          },
+          Execution: { Id: 'test', StartTime: new Date().toISOString() } as any,
+        })
+        expect(result3.nextState).toBe('Late')
+      })
+
+      it('should handle Path operators with context paths', async () => {
+        const state = StateFactory.createState({
+          Type: 'Choice',
+          Choices: [
+            {
+              Variable: '$.timestamp',
+              TimestampEqualsPath: '$$.Execution.StartTime',
+              Next: 'SameAsExecutionStart',
+            },
+          ],
+          Default: 'Different',
+        }) as ChoiceState
+
+        const executor = new ChoiceStateExecutor(state)
+        const executionStartTime = '2024-01-01T00:00:00.000Z'
+
+        // Same as execution start time
+        const result1 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { timestamp: executionStartTime },
+          Execution: {
+            Id: 'test',
+            StartTime: executionStartTime,
+            Input: {},
+            Name: 'test-execution',
+            RoleArn: 'arn:aws:iam::123456789012:role/test',
+          },
+        })
+        expect(result1.nextState).toBe('SameAsExecutionStart')
+
+        // Different from execution start time
+        const result2 = await executor.execute({
+          executionPath: [],
+          variables: {},
+          originalInput: {},
+          stateExecutions: [],
+          currentState: 'ChoiceState',
+          input: { timestamp: '2024-01-01T12:00:00.000Z' },
+          Execution: {
+            Id: 'test',
+            StartTime: executionStartTime,
+            Input: {},
+            Name: 'test-execution',
+            RoleArn: 'arn:aws:iam::123456789012:role/test',
+          },
+        })
+        expect(result2.nextState).toBe('Different')
+      })
+    })
   })
 })

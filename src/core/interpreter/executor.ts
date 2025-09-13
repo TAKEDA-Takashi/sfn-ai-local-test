@@ -1,3 +1,9 @@
+import {
+  buildExecutionId,
+  buildStateMachineId,
+  EXECUTION_CONTEXT_DEFAULTS,
+} from '../../constants/execution-context'
+import type { ExecutionContextConfig } from '../../schemas/config-schema'
 import type { ExecutionContext, JsonObject, JsonValue, StateMachine } from '../../types/asl'
 import type { StateExecution } from '../../types/test'
 import { isJsonObject } from '../../types/type-guards'
@@ -10,6 +16,7 @@ export interface ExecutionOptions {
   verbose?: boolean
   quiet?: boolean
   maxSteps?: number
+  executionContext?: ExecutionContextConfig
 }
 
 export interface ExecutionResult {
@@ -88,13 +95,25 @@ export class StateMachineExecutor {
         stateExecutions: [],
         currentStatePath: [],
         mapExecutions: [],
-        // JSONata用のExecutionコンテキストを追加
+        // 固定値のExecutionコンテキスト（テストの再現性のため）
+        // 設定値があれば上書き、なければデフォルト値
         Execution: {
-          Id: `execution-${Date.now()}`,
+          Id: this.createExecutionId(options.executionContext),
           Input: isJsonObject(input) ? input : {},
-          Name: `execution-${Date.now()}`,
-          RoleArn: 'arn:aws:iam::123456789012:role/StepFunctionsRole',
-          StartTime: new Date().toISOString(),
+          Name: options.executionContext?.name || EXECUTION_CONTEXT_DEFAULTS.NAME,
+          RoleArn: options.executionContext?.roleArn || EXECUTION_CONTEXT_DEFAULTS.ROLE_ARN,
+          StartTime: options.executionContext?.startTime || EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+        },
+        // StateMachineコンテキストの追加
+        StateMachine: {
+          Id: this.createStateMachineId(options.executionContext),
+          Name: EXECUTION_CONTEXT_DEFAULTS.STATE_MACHINE_NAME,
+        },
+        // Stateコンテキストの初期値（各ステート実行時に更新）
+        State: {
+          EnteredTime: options.executionContext?.startTime || EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+          Name: '',
+          RetryCount: 0,
         },
         parallelExecutions: [],
       }
@@ -115,6 +134,11 @@ export class StateMachineExecutor {
         }
 
         context.executionPath.push(context.currentState)
+
+        // Update State context with current state name
+        if (context.State) {
+          context.State.Name = context.currentState
+        }
 
         if (options.verbose) {
           console.log(`Executing state: ${context.currentState} (${state.Type})`)
@@ -267,5 +291,24 @@ export class StateMachineExecutor {
         error: error instanceof Error ? error.message : String(error),
       }
     }
+  }
+
+  /**
+   * Create Execution.Id ARN with config values
+   */
+  private createExecutionId(config?: ExecutionContextConfig): string {
+    const name = config?.name || EXECUTION_CONTEXT_DEFAULTS.NAME
+    const accountId = config?.accountId || EXECUTION_CONTEXT_DEFAULTS.ACCOUNT_ID
+    const region = config?.region || EXECUTION_CONTEXT_DEFAULTS.REGION
+    return buildExecutionId(name, accountId, region, EXECUTION_CONTEXT_DEFAULTS.STATE_MACHINE_NAME)
+  }
+
+  /**
+   * Create StateMachine.Id ARN with config values
+   */
+  private createStateMachineId(config?: ExecutionContextConfig): string {
+    const accountId = config?.accountId || EXECUTION_CONTEXT_DEFAULTS.ACCOUNT_ID
+    const region = config?.region || EXECUTION_CONTEXT_DEFAULTS.REGION
+    return buildStateMachineId(accountId, region, EXECUTION_CONTEXT_DEFAULTS.STATE_MACHINE_NAME)
   }
 }

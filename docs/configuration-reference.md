@@ -7,23 +7,24 @@ This document provides detailed information about configuration files for sfn-ai
 ### Project Configuration (sfn-test.config.yaml)
 1. [Project Configuration File](#project-configuration-file)
 2. [stateMachines Section](#statemachines-section)
-3. [paths Section](#paths-section)
+3. [executionContext Section](#executioncontext-section)
+4. [paths Section](#paths-section)
 
 ### Mock Configuration File (mock.yaml)
-4. [Mock File Structure](#mock-file-structure)
-5. [Mock Type Specifications](#mock-type-specifications)
+5. [Mock File Structure](#mock-file-structure)
+6. [Mock Type Specifications](#mock-type-specifications)
 
 ### Test Suite Configuration (test-suite.yaml)
-6. [Test Suite Structure](#test-suite-structure)
-7. [settings Section](#settings-section)
-8. [assertions Section](#assertions-section)
-9. [testCases Section](#testcases-section)
-10. [mockOverrides Section](#mockoverrides-section)
-11. [ItemReader Support](#itemreader-support)
+7. [Test Suite Structure](#test-suite-structure)
+8. [settings Section](#settings-section)
+9. [assertions Section](#assertions-section)
+10. [testCases Section](#testcases-section)
+11. [mockOverrides Section](#mockoverrides-section)
+12. [ItemReader Support](#itemreader-support)
 
 ### File Resolution Specifications
-12. [Automatic File Name Inference](#automatic-file-name-inference)
-13. [Path Resolution Rules](#path-resolution-rules)
+13. [Automatic File Name Inference](#automatic-file-name-inference)
+14. [Path Resolution Rules](#path-resolution-rules)
 
 ## Project Configuration File
 
@@ -63,6 +64,7 @@ stateMachines:
 | `version` | ✅ | Configuration file version. Currently only `'1.0'` is supported |
 | `paths` | ❌ | Directory path customization. Uses default paths if omitted |
 | `stateMachines` | ✅ | Array of state machine definitions. At least one is required |
+| `executionContext` | ❌ | Execution context values for testing. Uses fixed defaults if omitted |
 
 ## stateMachines Section
 
@@ -186,6 +188,69 @@ stateMachines:
       type: 'cdk'
       path: './cdk.out/AppStack.template.json'
       stateMachineName: 'MainStateMachine'
+```
+
+## executionContext Section
+
+Configure fixed values for ExecutionContext used during test execution. This enables deterministic testing with predictable values.
+
+### Available Fields
+
+```yaml
+executionContext:
+  name: 'test-execution'           # Execution name (default: 'test-execution')
+  startTime: '2024-01-01T00:00:00.000Z'  # Start time in ISO 8601 format
+  roleArn: 'arn:aws:iam::123456789012:role/MyRole'  # IAM role ARN
+  accountId: '123456789012'         # AWS account ID (used in Execution.Id)
+  region: 'us-east-1'              # AWS region (used in Execution.Id)
+```
+
+### Default Values
+
+When not specified, the following defaults are used:
+
+| Field | Default Value |
+|-------|---------------|
+| `name` | `'test-execution'` |
+| `startTime` | `'2024-01-01T00:00:00.000Z'` |
+| `roleArn` | `'arn:aws:iam::123456789012:role/StepFunctionsRole'` |
+| `accountId` | `'123456789012'` |
+| `region` | `'us-east-1'` |
+
+### How These Values Are Used
+
+- **Execution.Id**: Automatically generated as `arn:aws:states:{region}:{accountId}:execution:StateMachine:{name}`
+- **Execution.Name**: Uses the `name` value
+- **Execution.StartTime**: Uses the `startTime` value
+- **Execution.RoleArn**: Uses the `roleArn` value
+- **$$.Execution.\*** Context variables**: Available in JSONPath expressions
+
+### Configuration Hierarchy
+
+ExecutionContext values can be overridden at multiple levels:
+
+1. **Test case level** (highest priority) - in test suite files
+2. **Test suite level** - in test suite files
+3. **Project level** - in sfn-test.config.yaml
+4. **Default values** (lowest priority)
+
+### Example Configuration
+
+```yaml
+# sfn-test.config.yaml
+version: '1.0'
+executionContext:
+  name: 'my-test-run'
+  startTime: '2025-01-01T09:00:00.000Z'
+  accountId: '999888777666'
+  region: 'ap-northeast-1'
+  # roleArn uses default if not specified
+  
+stateMachines:
+  - name: 'workflow'
+    source:
+      type: 'asl'
+      path: './workflow.asl.json'
 ```
 
 ## paths Section

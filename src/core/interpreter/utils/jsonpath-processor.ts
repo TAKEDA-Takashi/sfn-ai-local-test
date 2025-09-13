@@ -6,6 +6,7 @@
  */
 
 import { JSONPath } from 'jsonpath-plus'
+import { buildExecutionId, EXECUTION_CONTEXT_DEFAULTS } from '../../../constants/execution-context'
 import type { ExecutionContext, JsonObject, JsonValue } from '../../../types/asl'
 import { JSONPathEvaluator } from '../expressions/jsonpath'
 
@@ -26,11 +27,9 @@ export class JSONPathProcessor {
     data: JsonValue,
     options?: {
       /** Custom context for intrinsic functions */
-      context?: JsonValue
+      context?: { variables?: JsonObject }
       /** Whether to handle intrinsic functions (States.*) */
       handleIntrinsics?: boolean
-      /** Special data mappings for ResultSelector ($._result, $._input) */
-      specialMappings?: JsonObject
     },
   ): ProcessedEntry {
     const finalKey = key.endsWith('.$') ? key.slice(0, -2) : key
@@ -69,9 +68,8 @@ export class JSONPathProcessor {
     entries: JsonObject,
     data: JsonValue,
     options?: {
-      context?: JsonValue
+      context?: { variables?: JsonObject }
       handleIntrinsics?: boolean
-      specialMappings?: JsonObject
     },
   ): JsonObject {
     const result: JsonObject = {}
@@ -91,34 +89,91 @@ export class JSONPathProcessor {
     value: string,
     data: JsonValue,
     options?: {
-      context?: JsonValue
+      context?: ExecutionContext | { variables?: JsonObject }
       handleIntrinsics?: boolean
-      specialMappings?: JsonObject
     },
   ): JsonValue {
     if (options?.handleIntrinsics && value.startsWith('States.')) {
-      return JSONPathEvaluator.evaluate(value, data)
+      const variables =
+        options.context && 'variables' in options.context ? options.context.variables : undefined
+      return JSONPathEvaluator.evaluate(value, data, variables)
+    }
+
+    // Handle context path ($$.)
+    if (value.startsWith('$$.') && options?.context && 'Execution' in options.context) {
+      const contextPath = value.slice(3) // Remove $$. prefix
+      const contextObj: JsonObject = {
+        Execution: options.context.Execution || {
+          StartTime: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+          Id: buildExecutionId(),
+          Name: EXECUTION_CONTEXT_DEFAULTS.NAME,
+          RoleArn: EXECUTION_CONTEXT_DEFAULTS.ROLE_ARN,
+          Input: options.context.originalInput || data,
+        },
+        State: options.context.State || {
+          EnteredTime: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+          Name: options.context.currentState || 'UnknownState',
+        },
+        StateMachine: options.context.StateMachine || {},
+        Map: options.context.Map || {},
+        Task: options.context.Task || {},
+      }
+
+      const pathResult = JSONPath({
+        path: `$.${contextPath}`,
+        json: contextObj,
+      })
+      return Array.isArray(pathResult) && pathResult.length > 0 ? pathResult[0] : null
     }
 
     if (value.startsWith('$')) {
-      // Check for special mappings (e.g., $._result, $._input)
-      if (options?.specialMappings) {
-        for (const [prefix, mappedData] of Object.entries(options.specialMappings)) {
-          if (value.startsWith(prefix)) {
-            const adjustedPath = value.replace(prefix, '$')
+      // Handle variable references ($variableName or $variableName.path or $variableName[index])
+      const variables =
+        options?.context && 'variables' in options.context ? options.context.variables : undefined
+      if (!(value.startsWith('$.') || value.startsWith('$[')) && variables) {
+        const varPath = value.slice(1) // Remove the leading $
+
+        // Find the variable name (everything before the first . or [)
+        const firstDotIndex = varPath.indexOf('.')
+        const firstBracketIndex = varPath.indexOf('[')
+        let variableName: string
+        let remainingPath: string
+
+        if (firstDotIndex === -1 && firstBracketIndex === -1) {
+          // Simple variable reference
+          variableName = varPath
+          remainingPath = ''
+        } else if (
+          firstBracketIndex === -1 ||
+          (firstDotIndex !== -1 && firstDotIndex < firstBracketIndex)
+        ) {
+          // Dot comes first
+          variableName = varPath.substring(0, firstDotIndex)
+          remainingPath = varPath.substring(firstDotIndex)
+        } else {
+          // Bracket comes first
+          variableName = varPath.substring(0, firstBracketIndex)
+          remainingPath = varPath.substring(firstBracketIndex)
+        }
+
+        // Check if the variable exists
+        if (variableName in variables) {
+          const variableValue = variables[variableName]
+
+          if (remainingPath) {
+            // Evaluate the remaining path on the variable value
             const pathResult = JSONPath({
-              path: adjustedPath,
-              json: mappedData,
+              path: `$${remainingPath}`,
+              json: variableValue,
             })
-            if (Array.isArray(pathResult) && pathResult.length > 0) {
-              const result = pathResult[0]
-              return result !== undefined ? result : null
-            }
-            return null
+            return Array.isArray(pathResult) && pathResult.length > 0 ? pathResult[0] : null
           }
+
+          return variableValue
         }
       }
 
+      // Regular JSONPath on data
       const pathResult = JSONPath({
         path: value,
         json: data,
@@ -138,7 +193,6 @@ export class JSONPathProcessor {
     options?: {
       context?: ExecutionContext
       handleIntrinsics?: boolean
-      specialMappings?: JsonObject
       contextPathHandler?: (path: string) => JsonValue
       evaluateIntrinsicWithVariables?: (
         value: string,
@@ -158,8 +212,8 @@ export class JSONPathProcessor {
 
       if (params.endsWith('.$')) {
         return JSONPathProcessor.evaluateStringValue(params.slice(0, -2), data, {
+          context: options?.context,
           handleIntrinsics: options?.handleIntrinsics,
-          specialMappings: options?.specialMappings,
         })
       }
 
@@ -192,14 +246,24 @@ export class JSONPathProcessor {
                   options.context,
                 )
               } else if (options?.handleIntrinsics) {
-                processedEntries[newKey] = JSONPathEvaluator.evaluate(value, dataContext)
+                processedEntries[newKey] = JSONPathEvaluator.evaluate(
+                  value,
+                  dataContext,
+                  options.context?.variables,
+                )
               } else {
                 processedEntries[newKey] = value
               }
             } else if (value.startsWith('$')) {
-              if (options?.context?.variables && value.match(/^\$[a-zA-Z_][a-zA-Z0-9_]*$/)) {
-                const varName = value.substring(1)
-                processedEntries[newKey] = options.context.variables[varName] ?? null
+              // $ alone refers to the entire input, not a variable
+              if (value === '$') {
+                // For ResultSelector, $ references the result
+                let dataContext = data
+                if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+                  const inputObj = data
+                  dataContext = inputObj.$ !== undefined ? inputObj.$ : data
+                }
+                processedEntries[newKey] = dataContext
               } else {
                 // For ResultSelector, $ references the result
                 let dataContext = data
@@ -211,8 +275,8 @@ export class JSONPathProcessor {
                   value,
                   dataContext,
                   {
+                    context: options?.context,
                     handleIntrinsics: options?.handleIntrinsics,
-                    specialMappings: options?.specialMappings,
                   },
                 )
               }

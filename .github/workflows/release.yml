@@ -44,15 +44,27 @@ jobs:
       - name: Check for version change
         id: version
         run: |
-          # mainブランチとの差分でpackage.jsonのバージョン変更を確認
-          git fetch origin main
-          MAIN_VERSION=$(git show origin/main:package.json | grep '"version"' | cut -d'"' -f4)
+          # PRのベースブランチ（マージ前のmain）とのバージョン比較
+          # マージコミットの親コミット（^1）を使用してマージ前の状態を取得
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           
-          if [ "$MAIN_VERSION" != "$CURRENT_VERSION" ]; then
-            echo "Version changed from $MAIN_VERSION to $CURRENT_VERSION"
+          # マージコミットの場合、最初の親（マージ前のmain）のバージョンを取得
+          if git rev-parse HEAD^2 >/dev/null 2>&1; then
+            # これはマージコミット
+            BASE_VERSION=$(git show HEAD^1:package.json | grep '"version"' | cut -d'"' -f4)
+          else
+            # 通常のコミット（fallback）
+            BASE_VERSION=$(git show HEAD^:package.json 2>/dev/null | grep '"version"' | cut -d'"' -f4 || echo "")
+          fi
+          
+          echo "Base version: $BASE_VERSION"
+          echo "Current version: $CURRENT_VERSION"
+          
+          if [ "$BASE_VERSION" != "$CURRENT_VERSION" ] && [ -n "$CURRENT_VERSION" ]; then
+            echo "Version changed from $BASE_VERSION to $CURRENT_VERSION"
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "version=v$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           else
             echo "No version change detected. Skipping release."
             echo "changed=false" >> $GITHUB_OUTPUT

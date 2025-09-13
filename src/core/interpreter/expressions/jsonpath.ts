@@ -3,6 +3,7 @@ import * as jsonpathPlus from 'jsonpath-plus'
 // import { v4 as uuidv4 } from 'uuid'  // For dynamic UUID generation (currently commented out)
 import { EXECUTION_CONTEXT_DEFAULTS } from '../../../constants/execution-context'
 import type { JsonArray, JsonObject, JsonValue } from '../../../types/asl'
+import { JSONPathProcessor } from '../utils/jsonpath-processor'
 
 const { JSONPath } = jsonpathPlus
 
@@ -10,9 +11,40 @@ export class JSONPathEvaluator {
   /**
    * Evaluate a JSONPath expression with Step Functions intrinsic functions
    */
-  static evaluate(expression: string, data: JsonValue): JsonValue {
+  static evaluate(expression: string, data: JsonValue, variables?: JsonObject): JsonValue {
     if (JSONPathEvaluator.containsIntrinsicFunction(expression)) {
-      return JSONPathEvaluator.evaluateIntrinsicFunction(expression, data)
+      return JSONPathEvaluator.evaluateIntrinsicFunction(expression, data, variables)
+    }
+
+    // Handle variable references ($varName)
+    if (
+      variables &&
+      expression.startsWith('$') &&
+      !expression.startsWith('$.') &&
+      !expression.startsWith('$[')
+    ) {
+      const varName = expression.substring(1)
+
+      // Handle nested variable paths (e.g., $config.database.host)
+      if (varName.includes('.')) {
+        const parts = varName.split('.')
+        let current: JsonValue = variables[parts[0]]
+
+        for (let i = 1; i < parts.length; i++) {
+          if (current === null || current === undefined) {
+            return null
+          }
+          if (typeof current === 'object' && !Array.isArray(current)) {
+            current = (current as JsonObject)[parts[i]]
+          } else {
+            return null
+          }
+        }
+        return current ?? null
+      }
+
+      // Simple variable reference
+      return variables[varName] ?? null
     }
 
     const result = JSONPath({
@@ -34,14 +66,18 @@ export class JSONPathEvaluator {
   /**
    * Evaluate intrinsic function
    */
-  private static evaluateIntrinsicFunction(expression: string, data: JsonValue): JsonValue {
+  private static evaluateIntrinsicFunction(
+    expression: string,
+    data: JsonValue,
+    variables?: JsonObject,
+  ): JsonValue {
     const match = expression.match(/States\.(\w+)\((.*)\)/)
     if (!match) {
       throw new Error(`Invalid intrinsic function syntax: ${expression}`)
     }
 
     const [, functionName, args] = match
-    const parsedArgs = JSONPathEvaluator.parseArguments(args || '', data)
+    const parsedArgs = JSONPathEvaluator.parseArguments(args || '', data, variables)
 
     switch (functionName) {
       case 'Array':
@@ -119,7 +155,11 @@ export class JSONPathEvaluator {
   /**
    * Parse function arguments
    */
-  private static parseArguments(argsString: string, data: JsonValue): JsonArray {
+  private static parseArguments(
+    argsString: string,
+    data: JsonValue,
+    variables?: JsonObject,
+  ): JsonArray {
     if (!argsString.trim()) return []
 
     const args: JsonArray = []
@@ -155,7 +195,7 @@ export class JSONPathEvaluator {
         } else if (char === ')' || char === ']' || char === '}') {
           depth--
         } else if (char === ',' && depth === 0) {
-          args.push(JSONPathEvaluator.evaluateArgument(current.trim(), data))
+          args.push(JSONPathEvaluator.evaluateArgument(current.trim(), data, variables))
           current = ''
           continue
         }
@@ -165,7 +205,7 @@ export class JSONPathEvaluator {
     }
 
     if (current.trim()) {
-      args.push(JSONPathEvaluator.evaluateArgument(current.trim(), data))
+      args.push(JSONPathEvaluator.evaluateArgument(current.trim(), data, variables))
     }
 
     return args
@@ -174,16 +214,18 @@ export class JSONPathEvaluator {
   /**
    * Evaluate a single argument
    */
-  private static evaluateArgument(arg: string, data: JsonValue): JsonValue {
-    if (arg === '$') {
-      return data
-    }
-    if (arg.startsWith('$.') || arg.startsWith('$[')) {
-      return JSONPathEvaluator.evaluate(arg, data)
+  private static evaluateArgument(arg: string, data: JsonValue, variables?: JsonObject): JsonValue {
+    // Check if it's a States.* intrinsic function first
+    if (arg.includes('States.')) {
+      return JSONPathEvaluator.evaluateIntrinsicFunction(arg, data, variables)
     }
 
-    if (arg.includes('States.')) {
-      return JSONPathEvaluator.evaluateIntrinsicFunction(arg, data)
+    // Check if it's a JSONPath expression (starts with $)
+    if (arg.startsWith('$')) {
+      return JSONPathProcessor.evaluateStringValue(arg, data, {
+        context: { variables },
+        handleIntrinsics: false,
+      })
     }
 
     try {

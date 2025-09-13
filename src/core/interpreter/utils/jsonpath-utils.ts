@@ -4,7 +4,7 @@
  */
 
 import * as jsonpathPlus from 'jsonpath-plus'
-import type { JsonValue } from '../../../types/asl'
+import type { JsonObject, JsonValue } from '../../../types/asl'
 
 const { JSONPath } = jsonpathPlus
 
@@ -116,12 +116,55 @@ export class JSONPathUtils {
   /**
    * Extract ItemsPath data for Map/DistributedMap states
    */
-  static extractItemsArray(itemsPath: string, input: JsonValue): JsonValue[] {
+  static extractItemsArray(
+    itemsPath: string,
+    input: JsonValue,
+    variables?: JsonObject,
+  ): JsonValue[] {
     if (itemsPath === '$') {
       if (!Array.isArray(input)) {
         throw new Error('Input must be an array when ItemsPath is "$"')
       }
       return input
+    }
+
+    // Handle variable references ($varName)
+    if (
+      variables &&
+      itemsPath.startsWith('$') &&
+      !itemsPath.startsWith('$.') &&
+      !itemsPath.startsWith('$[')
+    ) {
+      const varName = itemsPath.substring(1)
+
+      // Handle nested variable paths (e.g., $config.items)
+      if (varName.includes('.')) {
+        const parts = varName.split('.')
+        let current: JsonValue = variables[parts[0]]
+
+        for (let i = 1; i < parts.length; i++) {
+          if (current === null || current === undefined) {
+            throw new Error(`ItemsPath "${itemsPath}" references undefined variable`)
+          }
+          if (typeof current === 'object' && !Array.isArray(current)) {
+            current = (current as JsonObject)[parts[i]]
+          } else {
+            throw new Error(`ItemsPath "${itemsPath}" references invalid path`)
+          }
+        }
+
+        if (!Array.isArray(current)) {
+          throw new Error(`ItemsPath "${itemsPath}" must resolve to an array`)
+        }
+        return current
+      }
+
+      // Simple variable reference
+      const items = variables[varName]
+      if (!Array.isArray(items)) {
+        throw new Error(`ItemsPath "${itemsPath}" must resolve to an array`)
+      }
+      return items
     }
 
     const result = JSONPath({

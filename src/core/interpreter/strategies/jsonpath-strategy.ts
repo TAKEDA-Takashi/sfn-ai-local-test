@@ -6,6 +6,7 @@ import type {
   JsonValue,
   State,
 } from '../../../types/asl'
+import { isJsonObject } from '../../../types/type-guards'
 import { deepClone } from '../../../utils/deep-clone'
 import type { ProcessingStrategy } from '../processing-strategy'
 import { JSONPathProcessor } from '../utils/jsonpath-processor'
@@ -53,7 +54,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
     // 1. ResultSelector の適用
     let processedResult = result
     if ('ResultSelector' in state && state.ResultSelector) {
-      processedResult = this.applyResultSelector(result, originalInput, state)
+      processedResult = this.applyResultSelector(result, state)
     }
 
     // 2. ResultPath の適用
@@ -105,28 +106,20 @@ export class JSONPathStrategy implements ProcessingStrategy {
       return input
     }
 
-    return this.processPayloadTemplate(parameters, input, undefined, context)
+    return this.processPayloadTemplate(parameters, input, context)
   }
 
   /**
    * ResultSelector の適用（ペイロードテンプレート処理）
    */
-  private applyResultSelector(
-    result: JsonValue,
-    originalInput: JsonValue,
-    state: JSONPathState,
-  ): JsonValue {
+  private applyResultSelector(result: JsonValue, state: JSONPathState): JsonValue {
     const resultSelector = state.ResultSelector
     if (!resultSelector) {
       return result
     }
 
-    const specialMappings: JsonObject = {
-      '$._result': result,
-      '$._input': originalInput,
-    }
-
-    return this.processPayloadTemplate(resultSelector, result, specialMappings)
+    // AWS仕様: ResultSelector内の $ はタスクの結果を参照
+    return this.processPayloadTemplate(resultSelector, result)
   }
 
   /**
@@ -146,51 +139,32 @@ export class JSONPathStrategy implements ProcessingStrategy {
     }
 
     // ResultPathが指定されている場合、元の入力にresultを挿入
-    if (typeof originalInput !== 'object' || originalInput === null) {
+    if (!isJsonObject(originalInput)) {
       // 元の入力がオブジェクトでない場合は、新しいオブジェクトを作成
       const pathParts = resultPath.slice(2).split('.')
-      const newObj: JsonObject = {}
-      let current: JsonObject = newObj
 
-      for (let i = 0; i < pathParts.length - 1; i++) {
-        current[pathParts[i]] = {}
-        const next = current[pathParts[i]]
-        if (typeof next === 'object' && next !== null && !Array.isArray(next)) {
-          current = next
-        }
-      }
-      current[pathParts[pathParts.length - 1]] = result
-
-      return newObj
+      // pathParts.reduceRightを使ってネストしたオブジェクトを作成
+      return pathParts.reduceRight<JsonValue>(
+        (value, key) => ({ [key]: value }),
+        result,
+      ) as JsonObject
     }
 
     // 元の入力がオブジェクトの場合はディープコピーして挿入
-    const output = deepClone(originalInput)
+    const output = deepClone(originalInput as JsonObject)
     const pathParts = resultPath.slice(2).split('.')
 
-    // outputは既にオブジェクトであることが確認済み
-    if (typeof output !== 'object' || output === null || Array.isArray(output)) {
-      throw new Error('Unexpected output type in ResultPath processing')
-    }
+    // 最後の要素以外をたどって、必要に応じてオブジェクトを作成
     let current = output
-
     for (let i = 0; i < pathParts.length - 1; i++) {
-      if (!(pathParts[i] in current)) {
+      if (!isJsonObject(current[pathParts[i]])) {
         current[pathParts[i]] = {}
       }
-      const next = current[pathParts[i]]
-      if (typeof next !== 'object' || next === null || Array.isArray(next)) {
-        current[pathParts[i]] = {}
-      }
-      // 上記のチェックで current[pathParts[i]] は必ずオブジェクトになることが保証されている
-      const nextObj = current[pathParts[i]]
-      if (typeof nextObj !== 'object' || nextObj === null || Array.isArray(nextObj)) {
-        throw new Error('Unexpected state in ResultPath processing')
-      }
-      current = nextObj
+      current = current[pathParts[i]] as JsonObject
     }
-    current[pathParts[pathParts.length - 1]] = result
 
+    // 最後の要素に値を設定
+    current[pathParts[pathParts.length - 1]] = result
     return output
   }
 
@@ -221,13 +195,11 @@ export class JSONPathStrategy implements ProcessingStrategy {
   private processPayloadTemplate(
     template: JsonObject,
     data: JsonValue,
-    specialMappings?: JsonObject,
     executionContext?: ExecutionContext,
   ): JsonValue {
     const options = {
       context: executionContext,
       handleIntrinsics: true,
-      specialMappings,
       contextPathHandler: executionContext
         ? (path: string) => {
             // Handle context path ($$.*)
@@ -262,7 +234,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
     }
 
     // First, evaluate all expressions with the current variable state
-    const evaluatedValues: Record<string, JsonValue> = {}
+    const evaluatedValues: JsonObject = {}
 
     for (const [key, value] of Object.entries(assign)) {
       // Check if this is a JSONPath assignment (key ends with .$)
@@ -310,7 +282,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
       // Now evaluate the intrinsic function
       return JSONPathProcessor.evaluateStringValue(expandedValue, output, {
         handleIntrinsics: true,
-        context: output,
+        context: { variables: context.variables },
       })
     }
 

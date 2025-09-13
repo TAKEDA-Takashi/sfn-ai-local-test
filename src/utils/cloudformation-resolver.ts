@@ -23,11 +23,9 @@ export function resolveCloudFormationIntrinsics(
   }
 
   if (isJsonObject(value)) {
-    const obj = value
-
     // Handle Fn::Join
-    if ('Fn::Join' in obj) {
-      const joinParams = obj['Fn::Join']
+    if ('Fn::Join' in value) {
+      const joinParams = value['Fn::Join']
       if (Array.isArray(joinParams) && joinParams.length === 2) {
         const delimiter = joinParams[0] as string
         const values = joinParams[1]
@@ -41,8 +39,8 @@ export function resolveCloudFormationIntrinsics(
     }
 
     // Handle Ref
-    if ('Ref' in obj) {
-      const refName = obj.Ref as string
+    if ('Ref' in value) {
+      const refName = value.Ref as string
 
       // Common AWS pseudo parameters
       if (refName === 'AWS::Partition') {
@@ -81,8 +79,8 @@ export function resolveCloudFormationIntrinsics(
     }
 
     // Handle Fn::GetAtt
-    if ('Fn::GetAtt' in obj) {
-      const getAttParams = obj['Fn::GetAtt']
+    if ('Fn::GetAtt' in value) {
+      const getAttParams = value['Fn::GetAtt']
       if (Array.isArray(getAttParams) && getAttParams.length === 2) {
         const resourceName = getAttParams[0] as string
         const attributeName = getAttParams[1] as string
@@ -103,8 +101,8 @@ export function resolveCloudFormationIntrinsics(
     }
 
     // Handle Fn::Sub
-    if ('Fn::Sub' in obj) {
-      const subValue = obj['Fn::Sub']
+    if ('Fn::Sub' in value) {
+      const subValue = value['Fn::Sub']
       if (typeof subValue === 'string') {
         // Simple string substitution with AWS pseudo parameters
         return subValue
@@ -137,7 +135,7 @@ export function resolveCloudFormationIntrinsics(
 
     // Recursively resolve nested objects
     const resolved: JsonObject = {}
-    for (const [key, val] of Object.entries(obj)) {
+    for (const [key, val] of Object.entries(value)) {
       resolved[key] = resolveCloudFormationIntrinsics(val, resources, parameters)
     }
     return resolved

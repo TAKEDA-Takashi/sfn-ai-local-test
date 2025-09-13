@@ -18,7 +18,6 @@ export class MockEngine {
   private responseCache: Map<string, JsonValue> = new Map()
 
   constructor(config: unknown, options: MockEngineOptions = {}) {
-    // Validate config with Zod
     const parseResult = mockConfigSchema.safeParse(config)
     if (!parseResult.success) {
       throw new Error(`Invalid mock config: ${parseResult.error.message}`)
@@ -42,6 +41,14 @@ export class MockEngine {
     this.overrides.clear()
   }
 
+  /**
+   * Reset the call counts for all stateful mocks.
+   * This should be called between test cases to ensure each test starts fresh.
+   */
+  resetCallCounts(): void {
+    this.state.callCount.clear()
+  }
+
   getMockData(params: {
     state: string
     type: string
@@ -53,15 +60,14 @@ export class MockEngine {
     const mock = this.findMock(params.state)
 
     if (mock && mock.type === 'itemReader') {
-      const itemReaderMock = mock
-      let data: JsonValue | undefined = itemReaderMock.data
+      let data: JsonValue | undefined = mock.data
 
-      if (!data && itemReaderMock.dataFile) {
-        const format = itemReaderMock.dataFormat || this.getFormatFromItemReader(params.itemReader)
-        const loadedData = this.loadResponseFromFile(itemReaderMock.dataFile, format)
+      if (!data && mock.dataFile) {
+        const format = mock.dataFormat || this.getFormatFromItemReader(params.itemReader)
+        const loadedData = this.loadResponseFromFile(mock.dataFile, format)
         if (!Array.isArray(loadedData)) {
           throw new Error(
-            `ItemReader mock data must be an array, got ${typeof loadedData} from file: ${itemReaderMock.dataFile}`,
+            `ItemReader mock data must be an array, got ${typeof loadedData} from file: ${mock.dataFile}`,
           )
         }
         data = loadedData
@@ -82,12 +88,11 @@ export class MockEngine {
     }
 
     if (mock && mock.type === 'fixed') {
-      const fixedMock = mock
-      let data: JsonValue | undefined = fixedMock.response
+      let data: JsonValue | undefined = mock.response
 
-      if (!data && fixedMock.responseFile) {
-        const format = this.getFormatFromItemReader(params.itemReader) || fixedMock.responseFormat
-        data = this.loadResponseFromFile(fixedMock.responseFile, format)
+      if (!data && mock.responseFile) {
+        const format = this.getFormatFromItemReader(params.itemReader) || mock.responseFormat
+        data = this.loadResponseFromFile(mock.responseFile, format)
       }
 
       if (params.itemReader && data) {
@@ -209,9 +214,8 @@ export class MockEngine {
         response = this.handleItemReaderMock(mock)
         break
       default: {
-        // Exhaustiveness check - this should never be reached
+        // Exhaustiveness check for TypeScript
         const _exhaustiveCheck: never = mock
-        // Return never to satisfy TypeScript, but this code is unreachable
         return _exhaustiveCheck
       }
     }
@@ -236,6 +240,10 @@ export class MockEngine {
 
     if (error) {
       throw error
+    }
+
+    if (process.env.DEBUG_OUTPUT_PATH) {
+      console.log(`Mock response for ${stateName}:`, JSON.stringify(response, null, 2))
     }
 
     return response
@@ -330,9 +338,15 @@ export class MockEngine {
     const index = callCount % responses.length
     const response = responses[index]
 
+    if (process.env.DEBUG_OUTPUT_PATH) {
+      console.log(
+        `Stateful mock for ${mock.state}: returning response #${index + 1} of ${responses.length}`,
+      )
+      console.log('Response:', JSON.stringify(response, null, 2))
+    }
+
     if (response && typeof response === 'object' && 'error' in response && response.error) {
       const errorObj = response.error
-      // Extract error properties with type checking
       const message =
         typeof errorObj === 'object' &&
         errorObj !== null &&
@@ -381,7 +395,7 @@ export class MockEngine {
   }
 
   private matchesCondition(input: JsonValue, condition: Record<string, JsonValue>): boolean {
-    // 明示的にinputフィールドを要求（実パラメータにinputキーを含む場合の曖昧さ回避）
+    // Require explicit 'input' field to avoid ambiguity when actual parameters contain 'input' key
     if (!condition.input) {
       throw new Error(
         `Mock condition must use explicit 'input' field. ` +
@@ -397,23 +411,19 @@ export class MockEngine {
     if (typeof expected !== typeof actual) return false
     if (typeof expected !== 'object' || expected === null || actual === null) return false
 
-    // Handle arrays separately
     if (Array.isArray(expected)) {
       if (!Array.isArray(actual)) return false
       if (expected.length !== actual.length) return false
       return expected.every((item, index) => this.partialDeepEqual(item, actual[index]))
     }
 
-    // 部分一致：expectedの全キーがactualに存在し、値が一致すればOK
+    // Partial deep equal: all keys in expected must exist in actual with matching values
     if (!(isJsonObject(expected) && isJsonObject(actual))) return false
 
-    const expectedObj = expected
-    const actualObj = actual
-
-    for (const key of Object.keys(expectedObj)) {
-      if (!(key in actualObj)) return false
-      const expectedValue = expectedObj[key]
-      const actualValue = actualObj[key]
+    for (const key of Object.keys(expected)) {
+      if (!(key in actual)) return false
+      const expectedValue = expected[key]
+      const actualValue = actual[key]
       if (expectedValue === undefined || actualValue === undefined) {
         if (expectedValue !== actualValue) return false
       } else if (!this.partialDeepEqual(expectedValue, actualValue)) {

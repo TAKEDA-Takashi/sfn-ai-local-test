@@ -35,7 +35,7 @@ export class TestSuiteExecutor {
     const testCases = this.getTestCasesToRun()
     const results: TestResult[] = []
 
-    // Initialize coverage tracker if requested - shared across all tests
+    // Share coverage tracker across all tests in the suite for aggregate metrics
     if (enableCoverage) {
       this.coverageTracker = new NestedCoverageTracker(this.stateMachine)
     }
@@ -72,6 +72,11 @@ export class TestSuiteExecutor {
     const startTime = Date.now()
 
     try {
+      // Stateful mocks must reset between tests to avoid cross-test contamination
+      if (this.mockEngine) {
+        this.mockEngine.resetCallCounts()
+      }
+
       if (testCase.mockOverrides && this.mockEngine) {
         const mockDefinitions = this.convertMockOverrides(testCase.mockOverrides)
         this.mockEngine.setMockOverrides(mockDefinitions)
@@ -86,7 +91,7 @@ export class TestSuiteExecutor {
         timeoutId = setTimeout(() => reject(new Error('Test timeout')), timeout)
       })
 
-      // Merge executionContext with priority: testCase > suite > global
+      // Priority: testCase overrides suite, suite overrides global defaults
       const executionContext = {
         ...this.options?.executionContext,
         ...this.suite.executionContext,
@@ -98,14 +103,12 @@ export class TestSuiteExecutor {
         executionContext: Object.keys(executionContext).length > 0 ? executionContext : undefined,
       }
 
-      // Let StateMachineExecutor handle context creation for proper tracking
       const executionPromise = executor.execute(testCase.input, executionOptions)
 
       let result: ExecutionResult
       try {
         result = await Promise.race([executionPromise, timeoutPromise])
       } finally {
-        // Always clear the timeout, even if an error occurred
         if (timeoutId) {
           clearTimeout(timeoutId)
         }
@@ -121,10 +124,9 @@ export class TestSuiteExecutor {
                 throw new Error('Invalid map execution data')
               }
               const execObj = exec
-              // iterationPathsを安全に取得して型を保証
               let iterationPaths: string[][] = []
               if (Array.isArray(execObj.iterationPaths)) {
-                // string[][]として安全に変換
+                // Type-safe conversion to string[][]
                 iterationPaths = execObj.iterationPaths.filter(
                   (path): path is string[] =>
                     Array.isArray(path) && path.every((p) => typeof p === 'string'),
@@ -145,10 +147,9 @@ export class TestSuiteExecutor {
                 throw new Error('Invalid parallel execution data')
               }
               const execObj = exec
-              // branchPathsを安全に取得して型を保証
               let branchPaths: string[][] = []
               if (Array.isArray(execObj.branchPaths)) {
-                // string[][]として安全に変換
+                // Type-safe conversion to string[][]
                 branchPaths = execObj.branchPaths.filter(
                   (path): path is string[] =>
                     Array.isArray(path) && path.every((p) => typeof p === 'string'),

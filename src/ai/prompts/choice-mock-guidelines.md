@@ -22,16 +22,16 @@ Choice states should evaluate naturally based on their conditions. Mocking a Cho
 
 **Common Examples in JSONPath Mode:**
 - Timestamp comparisons: `TimestampEquals`, `TimestampEqualsPath`, `TimestampLessThanPath`
-- Context variables: `$$.State.EnteredTime`, `$$.Execution.StartTime`, `$$.Task.Token`
+- Dynamic context variables: `$$.Task.Token` (changes per task)
+- Note: `$$.State.EnteredTime` and `$$.Execution.StartTime` are FIXED during tests (not non-deterministic)
 - But also consider: ANY custom comparison that might involve time or external state
 
 **Common Examples in JSONata Mode:**
 - Random functions: `$random()`, `$uuid()` (AWS extension)
 - Time functions: `$now()`, `$millis()` (returns current timestamp/milliseconds)
-- Context functions: 
-  - `$states.context.State.EnteredTime` - Changes every state entry
+- Dynamic context functions: 
   - `$states.context.State.RetryCount` - Increments with each retry
-  - `$states.context.Execution.StartTime` - Fixed but test-dependent
+  - Note: `$states.context.State.EnteredTime` and `$states.context.Execution.StartTime` are FIXED during tests
 - But also consider: ANY custom function that might be non-deterministic
 
 **Structural Loops:**

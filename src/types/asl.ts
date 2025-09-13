@@ -227,8 +227,21 @@ export interface JSONPathChoiceRule {
   IsBoolean?: boolean
   IsTimestamp?: boolean
   StringEqualsPath?: string
+  StringLessThanPath?: string
+  StringGreaterThanPath?: string
+  StringLessThanEqualsPath?: string
+  StringGreaterThanEqualsPath?: string
   NumericEqualsPath?: string
   BooleanEqualsPath?: string
+  TimestampEqualsPath?: string
+  TimestampLessThanPath?: string
+  TimestampGreaterThanPath?: string
+  TimestampLessThanEqualsPath?: string
+  TimestampGreaterThanEqualsPath?: string
+  NumericLessThanPath?: string
+  NumericGreaterThanPath?: string
+  NumericLessThanEqualsPath?: string
+  NumericGreaterThanEqualsPath?: string
   And?: JSONPathChoiceRule[]
   Or?: JSONPathChoiceRule[]
   Not?: JSONPathChoiceRule

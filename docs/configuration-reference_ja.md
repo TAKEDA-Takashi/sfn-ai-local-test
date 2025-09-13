@@ -7,23 +7,24 @@
 ### プロジェクト設定（sfn-test.config.yaml）
 1. [プロジェクト設定ファイル](#プロジェクト設定ファイル)
 2. [stateMachines セクション](#statemachines-セクション)
-3. [paths セクション](#paths-セクション)
+3. [executionContext セクション](#executioncontext-セクション)
+4. [paths セクション](#paths-セクション)
 
 ### モック設定ファイル（mock.yaml）
-4. [モックファイル構造](#モックファイル構造)
-5. [モックタイプ仕様](#モックタイプ仕様)
+5. [モックファイル構造](#モックファイル構造)
+6. [モックタイプ仕様](#モックタイプ仕様)
 
 ### テストスイート設定（test-suite.yaml）
-6. [テストスイート構造](#テストスイート構造)
-7. [settings セクション](#settings-セクション)
-8. [assertions セクション](#assertions-セクション)
-9. [testCases セクション](#testcases-セクション)
-10. [mockOverrides セクション](#mockoverrides-セクション)
-11. [ItemReader対応](#itemreader対応)
+7. [テストスイート構造](#テストスイート構造)
+8. [settings セクション](#settings-セクション)
+9. [assertions セクション](#assertions-セクション)
+10. [testCases セクション](#testcases-セクション)
+11. [mockOverrides セクション](#mockoverrides-セクション)
+12. [ItemReader対応](#itemreader対応)
 
 ### ファイル解決仕様
-12. [自動ファイル名類推](#自動ファイル名類推)
-13. [パス解決ルール](#パス解決ルール)
+13. [自動ファイル名類推](#自動ファイル名類推)
+14. [パス解決ルール](#パス解決ルール)
 
 ## プロジェクト設定ファイル
 
@@ -63,6 +64,7 @@ stateMachines:
 | `version` | ✅ | 設定ファイルのバージョン。現在は`'1.0'`のみサポート |
 | `paths` | ❌ | ディレクトリパスのカスタマイズ。省略時はデフォルトパスを使用 |
 | `stateMachines` | ✅ | ステートマシン定義の配列。最低1つ必要 |
+| `executionContext` | ❌ | テスト用の実行コンテキスト値。省略時は固定のデフォルト値を使用 |
 
 ## stateMachines セクション
 
@@ -186,6 +188,69 @@ stateMachines:
       type: 'cdk'
       path: './cdk.out/AppStack.template.json'
       stateMachineName: 'MainStateMachine'
+```
+
+## executionContext セクション
+
+テスト実行時に使用するExecutionContextの固定値を設定します。これにより、決定論的で再現性のあるテストが可能になります。
+
+### 設定可能なフィールド
+
+```yaml
+executionContext:
+  name: 'test-execution'           # 実行名（デフォルト: 'test-execution'）
+  startTime: '2024-01-01T00:00:00.000Z'  # 開始時刻（ISO 8601形式）
+  roleArn: 'arn:aws:iam::123456789012:role/MyRole'  # IAMロールARN
+  accountId: '123456789012'         # AWSアカウントID（Execution.Idで使用）
+  region: 'us-east-1'              # AWSリージョン（Execution.Idで使用）
+```
+
+### デフォルト値
+
+指定されない場合、以下のデフォルト値が使用されます：
+
+| フィールド | デフォルト値 |
+|-----------|-------------|
+| `name` | `'test-execution'` |
+| `startTime` | `'2024-01-01T00:00:00.000Z'` |
+| `roleArn` | `'arn:aws:iam::123456789012:role/StepFunctionsRole'` |
+| `accountId` | `'123456789012'` |
+| `region` | `'us-east-1'` |
+
+### これらの値の使用方法
+
+- **Execution.Id**: `arn:aws:states:{region}:{accountId}:execution:StateMachine:{name}` として自動生成
+- **Execution.Name**: `name`の値を使用
+- **Execution.StartTime**: `startTime`の値を使用
+- **Execution.RoleArn**: `roleArn`の値を使用
+- **$$.Execution.\*** コンテキスト変数**: JSONPath式で利用可能
+
+### 設定の階層
+
+ExecutionContextの値は複数のレベルで上書き可能です：
+
+1. **テストケースレベル**（最優先）- テストスイートファイル内
+2. **テストスイートレベル** - テストスイートファイル内
+3. **プロジェクトレベル** - sfn-test.config.yaml内
+4. **デフォルト値**（最低優先）
+
+### 設定例
+
+```yaml
+# sfn-test.config.yaml
+version: '1.0'
+executionContext:
+  name: 'my-test-run'
+  startTime: '2025-01-01T09:00:00.000Z'
+  accountId: '999888777666'
+  region: 'ap-northeast-1'
+  # roleArnは指定しない場合デフォルト値を使用
+  
+stateMachines:
+  - name: 'workflow'
+    source:
+      type: 'asl'
+      path: './workflow.asl.json'
 ```
 
 ## paths セクション

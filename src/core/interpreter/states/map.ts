@@ -60,7 +60,7 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
     // It's handled in applyItemSelector
 
     try {
-      const items = this.getItemsArray(processedInput)
+      const items = this.getItemsArray(processedInput, context)
 
       const maxConcurrency = this.state.MaxConcurrency || items.length
       const results: JsonArray = []
@@ -179,7 +179,7 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
     }
   }
 
-  protected getItemsArray(input: JsonValue): JsonArray {
+  protected getItemsArray(input: JsonValue, context?: ExecutionContext): JsonArray {
     // JSONataモードでは Items フィールドを優先
     if (this.state.isJSONataState() && 'Items' in this.state && this.state.Items !== undefined) {
       if (Array.isArray(this.state.Items)) {
@@ -204,7 +204,7 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
     }
 
     try {
-      return JSONPathUtils.extractItemsArray(itemsPath, input)
+      return JSONPathUtils.extractItemsArray(itemsPath, input, context?.variables)
     } catch (_error) {
       // Fallback to single item array if extraction fails
       const result = JSONPathUtils.evaluateFirst(itemsPath, input, []) ?? []

@@ -64,14 +64,12 @@ export class StateHierarchyAnalyzer {
       allStates: [],
     }
 
-    const sm = stateMachine
-
     // Analyze top-level states
-    if (sm.States) {
-      hierarchy.topLevelStates = Object.keys(sm.States)
+    if (stateMachine.States) {
+      hierarchy.topLevelStates = Object.keys(stateMachine.States)
 
       // Use unified traversal to build hierarchy
-      traverseStates(sm, (stateName, state, context) => {
+      traverseStates(stateMachine, (stateName, state, context) => {
         // Add to allStates
         hierarchy.allStates.push(context.path)
 

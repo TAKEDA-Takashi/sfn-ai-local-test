@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import jsonata from 'jsonata'
+import { EXECUTION_CONTEXT_DEFAULTS } from '../../../constants/execution-context'
 import type { JsonArray, JsonObject, JsonValue } from '../../../types/asl'
 import { isJsonValue } from '../../../types/type-guards'
 
@@ -127,11 +128,26 @@ export class JSONataEvaluator {
 
     // $uuid - equivalent of States.UUID
     expression.registerFunction('uuid', () => {
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0
-        const v = c === 'x' ? r : (r & 0x3) | 0x8
-        return v.toString(16)
-      })
+      // Fixed value for deterministic testing (ADR-001)
+      return EXECUTION_CONTEXT_DEFAULTS.FIXED_UUID
+      // Original dynamic implementation:
+      // return crypto.randomUUID()
+    })
+
+    // $now - returns current timestamp in ISO format
+    expression.registerFunction('now', () => {
+      // Fixed value for deterministic testing (ADR-001)
+      return EXECUTION_CONTEXT_DEFAULTS.START_TIME
+      // Original dynamic implementation:
+      // return new Date().toISOString()
+    })
+
+    // $millis - returns current timestamp in milliseconds
+    expression.registerFunction('millis', () => {
+      // Fixed value for deterministic testing (ADR-001)
+      return new Date(EXECUTION_CONTEXT_DEFAULTS.START_TIME).getTime()
+      // Original dynamic implementation:
+      // return Date.now()
     })
 
     expression.registerFunction('parse', (...args: JsonValue[]) => {

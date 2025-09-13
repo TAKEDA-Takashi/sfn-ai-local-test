@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { EXECUTION_CONTEXT_DEFAULTS } from '../../../constants/execution-context'
 import type { JsonValue } from '../../../types/asl'
 import { JSONPathEvaluator } from './jsonpath'
 
@@ -425,17 +426,19 @@ describe('JSONPathEvaluator', () => {
   })
 
   describe('States.UUID', () => {
-    it('should generate UUID', () => {
+    it('should generate fixed UUID for deterministic testing', () => {
       const result = JSONPathEvaluator.evaluate('States.UUID()', {})
-      expect(result).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-      )
+      // Now returns fixed UUID for deterministic testing
+      expect(result).toBe(EXECUTION_CONTEXT_DEFAULTS.FIXED_UUID)
     })
 
-    it('should generate unique UUIDs', () => {
+    it('should return same UUID for multiple calls (deterministic mode)', () => {
       const result1 = JSONPathEvaluator.evaluate('States.UUID()', {})
       const result2 = JSONPathEvaluator.evaluate('States.UUID()', {})
-      expect(result1).not.toBe(result2)
+      // In deterministic mode, returns same UUID
+      // TODO: In future, implement counter for unique but predictable UUIDs
+      expect(result1).toBe(result2)
+      expect(result1).toBe(EXECUTION_CONTEXT_DEFAULTS.FIXED_UUID)
     })
   })
 

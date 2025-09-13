@@ -1,4 +1,5 @@
 import { DEFAULT_TEST_TIMEOUT_MS } from '../../constants/defaults'
+import type { ExecutionContextConfig } from '../../schemas/config-schema'
 import type { MockDefinition } from '../../schemas/mock-schema'
 import type { MockOverride, TestCase, TestSuite } from '../../schemas/test-schema'
 import type { JsonValue, StateMachine } from '../../types/asl'
@@ -13,7 +14,11 @@ export class TestSuiteExecutor {
   private stateMachine: StateMachine
   private mockEngine?: MockEngine
   private coverageTracker?: NestedCoverageTracker
-  private options?: { verbose?: boolean; quiet?: boolean }
+  private options?: {
+    verbose?: boolean
+    quiet?: boolean
+    executionContext?: ExecutionContextConfig
+  }
 
   constructor(suite: TestSuite, stateMachine: StateMachine, mockEngine?: MockEngine) {
     this.suite = suite
@@ -23,14 +28,14 @@ export class TestSuiteExecutor {
 
   async runSuite(
     enableCoverage = false,
-    options?: { verbose?: boolean; quiet?: boolean },
+    options?: { verbose?: boolean; quiet?: boolean; executionContext?: ExecutionContextConfig },
   ): Promise<TestSuiteResult> {
     this.options = options
     const startTime = Date.now()
     const testCases = this.getTestCasesToRun()
     const results: TestResult[] = []
 
-    // Initialize coverage tracker if requested - shared across all tests
+    // Share coverage tracker across all tests in the suite for aggregate metrics
     if (enableCoverage) {
       this.coverageTracker = new NestedCoverageTracker(this.stateMachine)
     }
@@ -67,6 +72,11 @@ export class TestSuiteExecutor {
     const startTime = Date.now()
 
     try {
+      // Stateful mocks must reset between tests to avoid cross-test contamination
+      if (this.mockEngine) {
+        this.mockEngine.resetCallCounts()
+      }
+
       if (testCase.mockOverrides && this.mockEngine) {
         const mockDefinitions = this.convertMockOverrides(testCase.mockOverrides)
         this.mockEngine.setMockOverrides(mockDefinitions)
@@ -81,14 +91,24 @@ export class TestSuiteExecutor {
         timeoutId = setTimeout(() => reject(new Error('Test timeout')), timeout)
       })
 
-      // Let StateMachineExecutor handle context creation for proper tracking
-      const executionPromise = executor.execute(testCase.input, this.options)
+      // Priority: testCase overrides suite, suite overrides global defaults
+      const executionContext = {
+        ...this.options?.executionContext,
+        ...this.suite.executionContext,
+        ...testCase.executionContext,
+      }
+
+      const executionOptions = {
+        ...this.options,
+        executionContext: Object.keys(executionContext).length > 0 ? executionContext : undefined,
+      }
+
+      const executionPromise = executor.execute(testCase.input, executionOptions)
 
       let result: ExecutionResult
       try {
         result = await Promise.race([executionPromise, timeoutPromise])
       } finally {
-        // Always clear the timeout, even if an error occurred
         if (timeoutId) {
           clearTimeout(timeoutId)
         }
@@ -104,10 +124,9 @@ export class TestSuiteExecutor {
                 throw new Error('Invalid map execution data')
               }
               const execObj = exec
-              // iterationPathsを安全に取得して型を保証
               let iterationPaths: string[][] = []
               if (Array.isArray(execObj.iterationPaths)) {
-                // string[][]として安全に変換
+                // Type-safe conversion to string[][]
                 iterationPaths = execObj.iterationPaths.filter(
                   (path): path is string[] =>
                     Array.isArray(path) && path.every((p) => typeof p === 'string'),
@@ -128,10 +147,9 @@ export class TestSuiteExecutor {
                 throw new Error('Invalid parallel execution data')
               }
               const execObj = exec
-              // branchPathsを安全に取得して型を保証
               let branchPaths: string[][] = []
               if (Array.isArray(execObj.branchPaths)) {
-                // string[][]として安全に変換
+                // Type-safe conversion to string[][]
                 branchPaths = execObj.branchPaths.filter(
                   (path): path is string[] =>
                     Array.isArray(path) && path.every((p) => typeof p === 'string'),

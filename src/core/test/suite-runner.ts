@@ -11,6 +11,7 @@ import {
   DEFAULT_MOCKS_DIR,
   DEFAULT_TEST_DATA_DIR,
 } from '../../constants/defaults'
+import type { ExecutionContextConfig } from '../../schemas/config-schema'
 import { mockConfigSchema } from '../../schemas/mock-schema'
 import type { TestSuite } from '../../schemas/test-schema'
 import type { StateMachine } from '../../types/asl'
@@ -271,7 +272,7 @@ export class TestSuiteRunner {
 
   runSuite(
     enableCoverage = false,
-    options?: { verbose?: boolean; quiet?: boolean },
+    options?: { verbose?: boolean; quiet?: boolean; executionContext?: ExecutionContextConfig },
   ): Promise<TestSuiteResult> {
     return this.executor.runSuite(enableCoverage, options)
   }

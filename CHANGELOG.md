@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### ✨ 改善
+- **ExecutionContext固定値化** - テストの再現性向上のため、Execution.Id、Execution.Name、Execution.StartTime等を固定値に変更
+- **組み込み関数の固定値化** - States.UUID()、$uuid()、$now()、$millis()が決定論的な固定値を返すように実装（ADR-001準拠）
+- **コンテキスト変数のサポート改善** - JSONPathモードで`$$.`プレフィックスのコンテキスト変数が適切に参照できるよう修正
+- **JSONataモードの文字列評価** - Outputフィールドの文字列がJSONata式として正しく評価されるよう修正
+- **固定値の定数化** - ExecutionContextとUUIDの固定値を`constants/execution-context.ts`に集約
+
+### 📝 ドキュメント
+- **ADR-001追加** - ExecutionContext固定値化の設計決定記録を追加
+- **テストガイド更新** - 組み込み関数の固定値に関する説明を追加
+
 ## [1.3.0] - 2025-01-12
 
 ### 💥 Breaking Changes

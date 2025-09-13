@@ -438,6 +438,152 @@ testCases:
 
 ---
 
+## ExecutionContext and Deterministic Testing
+
+### Fixed ExecutionContext Values
+
+To ensure deterministic and reproducible tests, sfn-ai-local-test uses fixed values for ExecutionContext variables instead of dynamic timestamps. This enables reliable testing of time-dependent logic and consistent test results across different environments.
+
+### Default Fixed Values
+
+The following fixed values are used by default:
+
+| Context Variable | Default Value | Description |
+|-----------------|---------------|-------------|
+| `$$.Execution.Id` | `arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution` | Full execution ARN |
+| `$$.Execution.Name` | `test-execution` | Execution name |
+| `$$.Execution.StartTime` | `2024-01-01T00:00:00.000Z` | Execution start time |
+| `$$.Execution.RoleArn` | `arn:aws:iam::123456789012:role/StepFunctionsRole` | IAM role ARN |
+| `$$.State.EnteredTime` | `2024-01-01T00:00:00.000Z` | State entry time |
+| `$$.State.Name` | (Current state name) | Dynamic based on state |
+| `$$.StateMachine.Id` | `arn:aws:states:us-east-1:123456789012:stateMachine:StateMachine` | State machine ARN |
+| `$$.StateMachine.Name` | `StateMachine` | State machine name |
+
+### Configuring ExecutionContext
+
+You can override these values at different levels:
+
+#### 1. Project-level Configuration (sfn-test.config.yaml)
+
+```yaml
+version: '1.0'
+executionContext:
+  name: 'my-test-execution'
+  startTime: '2025-01-15T10:00:00.000Z'
+  accountId: '999888777666'
+  region: 'ap-northeast-1'
+  roleArn: 'arn:aws:iam::999888777666:role/CustomRole'
+
+stateMachines:
+  - name: 'workflow'
+    source:
+      type: 'asl'
+      path: './workflow.asl.json'
+```
+
+#### 2. Test Suite-level Configuration
+
+```yaml
+version: "1.0"
+name: "Time-based Tests"
+stateMachine: "workflow"
+executionContext:
+  startTime: '2025-12-31T23:59:59.999Z'  # Test year-end processing
+
+testCases:
+  - name: "Year-end batch test"
+    input: { processType: "year-end" }
+    expectedOutput:
+      yearEndProcessed: true
+```
+
+#### 3. Test Case-level Configuration
+
+```yaml
+testCases:
+  - name: "Early morning batch"
+    executionContext:
+      startTime: '2025-01-01T03:00:00.000Z'
+    input: { batchType: "daily" }
+    expectedOutput:
+      nightBatch: true
+      
+  - name: "Business hours processing"
+    executionContext:
+      startTime: '2025-01-01T14:00:00.000Z'
+    input: { batchType: "regular" }
+    expectedOutput:
+      nightBatch: false
+```
+
+### Fixed Intrinsic Functions
+
+In addition to ExecutionContext variables, the following intrinsic functions also return fixed values for deterministic testing:
+
+| Function | Fixed Value | Description |
+|----------|------------|-------------|
+| `States.UUID()` | `test-uuid-00000000-0000-4000-8000-000000000001` | Fixed UUID v4 format |
+| `$uuid()` (JSONata) | `test-uuid-00000000-0000-4000-8000-000000000001` | Same fixed UUID |
+| `$now()` (JSONata) | `2024-01-01T00:00:00.000Z` | Fixed timestamp matching StartTime |
+| `$millis()` (JSONata) | `1704067200000` | Fixed timestamp in milliseconds |
+
+These fixed values ensure that:
+- UUID generation is predictable across test runs
+- Time functions return consistent values
+- Test assertions can reliably check for specific values
+
+### Benefits of Fixed Values
+
+1. **Reproducible Tests**: Tests produce the same results regardless of when they are run
+2. **Time-based Logic Testing**: Can test time-dependent conditions (e.g., night batches, year-end processing)
+3. **Consistent CI/CD**: Tests don't fail due to timing differences in CI environments
+4. **Easier Debugging**: Fixed values make it easier to trace and debug issues
+5. **Predictable UUIDs**: Can assert exact UUID values in test expectations
+
+### Testing Time-based Logic
+
+With fixed ExecutionContext values, you can reliably test time-dependent workflows:
+
+```yaml
+# Example: Testing time-based Choice state
+testCases:
+  - name: "Night batch route"
+    executionContext:
+      startTime: '2025-01-01T02:00:00.000Z'  # 2 AM
+    input: { checkTime: true }
+    expectedPath: ["CheckTime", "NightBatchProcess"]
+    
+  - name: "Day batch route"
+    executionContext:
+      startTime: '2025-01-01T14:00:00.000Z'  # 2 PM
+    input: { checkTime: true }
+    expectedPath: ["CheckTime", "DayBatchProcess"]
+```
+
+### JSONPath and JSONata Context Variables
+
+Both JSONPath and JSONata expressions can access these fixed values:
+
+**JSONPath Example:**
+```json
+{
+  "Type": "Pass",
+  "Parameters": {
+    "executionId.$": "$$.Execution.Id",
+    "startedAt.$": "$$.Execution.StartTime"
+  }
+}
+```
+
+**JSONata Example:**
+```json
+{
+  "Type": "Pass",
+  "QueryLanguage": "JSONata",
+  "Output": "{% $states.context.Execution.Name & '-processed' %}"
+}
+```
+
 ## Best Practices
 
 ### Test Design Principles

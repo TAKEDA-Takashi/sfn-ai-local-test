@@ -423,11 +423,10 @@ export class StateMachineValidator {
 
       for (const mock of parsed.mocks) {
         if (!isJsonObject(mock)) continue
-        const mockObj = mock
 
         // Find the state, supporting nested states
         const state = this.findStateByPath(
-          typeof mockObj.state === 'string' ? mockObj.state : '',
+          typeof mock.state === 'string' ? mock.state : '',
           stateMachine.States,
         )
 
@@ -438,11 +437,11 @@ export class StateMachineValidator {
             // Skip array validation for this case
           } else {
             // Check if response is an array
-            if (mockObj.response && !Array.isArray(mockObj.response)) {
+            if (mock.response && !Array.isArray(mock.response)) {
               const stateType = state.isDistributedMap() ? 'DistributedMap' : 'Map'
               issues.push({
                 level: 'error',
-                message: `${stateType} state "${mockObj.state}" must return an array`,
+                message: `${stateType} state "${mock.state}" must return an array`,
                 suggestion: `Change response to an array of results. Example:\nresponse:\n  - item1Result\n  - item2Result`,
               })
             }
@@ -450,12 +449,12 @@ export class StateMachineValidator {
 
           // For conditional mocks, check each response (unless ResultWriter is present)
           if (
-            mockObj.type === 'conditional' &&
-            mockObj.conditions &&
-            isJsonArray(mockObj.conditions) &&
+            mock.type === 'conditional' &&
+            mock.conditions &&
+            isJsonArray(mock.conditions) &&
             !(state.isDistributedMap() && state.ResultWriter)
           ) {
-            for (const condition of mockObj.conditions) {
+            for (const condition of mock.conditions) {
               if (!isJsonObject(condition)) continue
               const response =
                 'response' in condition
@@ -467,7 +466,7 @@ export class StateMachineValidator {
                 const stateType = state.isDistributedMap() ? 'DistributedMap' : 'Map'
                 issues.push({
                   level: 'error',
-                  message: `${stateType} state "${mockObj.state}" conditional response must return an array`,
+                  message: `${stateType} state "${mock.state}" conditional response must return an array`,
                   suggestion:
                     'Each condition response should be an array for Map/DistributedMap states',
                 })
@@ -477,17 +476,17 @@ export class StateMachineValidator {
 
           // For stateful mocks, check each response (unless ResultWriter is present)
           if (
-            mockObj.type === 'stateful' &&
-            mockObj.responses &&
-            Array.isArray(mockObj.responses) &&
+            mock.type === 'stateful' &&
+            mock.responses &&
+            Array.isArray(mock.responses) &&
             !(state.isDistributedMap() && state.ResultWriter)
           ) {
-            for (let i = 0; i < mockObj.responses.length; i++) {
-              if (!Array.isArray(mockObj.responses[i])) {
+            for (let i = 0; i < mock.responses.length; i++) {
+              if (!Array.isArray(mock.responses[i])) {
                 const stateType = state.isDistributedMap() ? 'DistributedMap' : 'Map'
                 issues.push({
                   level: 'error',
-                  message: `${stateType} state "${mockObj.state}" stateful response #${i + 1} must return an array`,
+                  message: `${stateType} state "${mock.state}" stateful response #${i + 1} must return an array`,
                   suggestion: 'All responses should be arrays for Map/DistributedMap states',
                 })
               }
@@ -518,9 +517,8 @@ export class StateMachineValidator {
 
       for (const mock of parsed.mocks) {
         if (!isJsonObject(mock)) continue
-        const mockObj = mock
         const state = this.findStateByPath(
-          typeof mockObj.state === 'string' ? mockObj.state : '',
+          typeof mock.state === 'string' ? mock.state : '',
           stateMachine.States,
         )
 
@@ -531,12 +529,8 @@ export class StateMachineValidator {
           stateResource.includes('lambda:invoke')
         ) {
           // Check conditional mocks
-          if (
-            mockObj.type === 'conditional' &&
-            'conditions' in mockObj &&
-            isJsonArray(mockObj.conditions)
-          ) {
-            for (const condition of mockObj.conditions) {
+          if (mock.type === 'conditional' && 'conditions' in mock && isJsonArray(mock.conditions)) {
+            for (const condition of mock.conditions) {
               if (!isJsonObject(condition)) continue
               if (
                 condition.when &&
@@ -546,7 +540,7 @@ export class StateMachineValidator {
                 !condition.when.input.Payload
               ) {
                 const detailedMessage = this.formatLambdaError(
-                  typeof mockObj.state === 'string' ? mockObj.state : '',
+                  typeof mock.state === 'string' ? mock.state : '',
                   condition.when || null,
                   condition.response || null,
                 )
@@ -606,16 +600,15 @@ export class StateMachineValidator {
           if (testCase.stateExpectations && isJsonArray(testCase.stateExpectations)) {
             for (const expectation of testCase.stateExpectations) {
               if (!isJsonObject(expectation)) continue
-              const exp = expectation
               if (
-                exp.state &&
-                typeof exp.state === 'string' &&
-                !availableStates.includes(exp.state)
+                expectation.state &&
+                typeof expectation.state === 'string' &&
+                !availableStates.includes(expectation.state)
               ) {
-                const suggestion = this.findSimilarStateName(exp.state, availableStates)
+                const suggestion = this.findSimilarStateName(expectation.state, availableStates)
                 issues.push({
                   level: 'error',
-                  message: `Test case #${i + 1}: State "${exp.state}" in stateExpectations does not exist`,
+                  message: `Test case #${i + 1}: State "${expectation.state}" in stateExpectations does not exist`,
                   suggestion: suggestion
                     ? `Did you mean "${suggestion}"?`
                     : `Available states: ${availableStates.slice(0, 5).join(', ')}...`,

@@ -17,8 +17,8 @@ export interface ItemProcessorContext {
 }
 
 /**
- * Independent runner for ItemProcessor execution
- * This avoids circular dependency with StateMachineExecutor
+ * ItemProcessor execution runner for Map/Parallel states
+ * Implemented as a separate class to avoid circular dependency with StateMachineExecutor
  */
 export class ItemProcessorRunner {
   private itemProcessor: ItemProcessor
@@ -55,33 +55,29 @@ export class ItemProcessorRunner {
       while (executionContext.currentState && steps < maxSteps) {
         steps++
 
-        const stateData = this.itemProcessor.States[executionContext.currentState]
-        if (!stateData) {
+        const state = this.itemProcessor.States[executionContext.currentState]
+        if (!state) {
           throw new Error(`State "${executionContext.currentState}" not found in ItemProcessor`)
         }
 
-        // Inherit QueryLanguage from ItemProcessor if not specified on the state
-        // IMPORTANT: Don't use spread operator as it removes class methods
+        // AWS Step Functions allows QueryLanguage to be inherited from ItemProcessor
+        // Direct mutation is required here because spread operator would strip class methods
         const processor = this.itemProcessor
         if ('QueryLanguage' in processor) {
           const queryLanguage = processor.QueryLanguage
           if (
             queryLanguage &&
             (queryLanguage === 'JSONPath' || queryLanguage === 'JSONata') &&
-            !stateData.QueryLanguage
+            !state.QueryLanguage
           ) {
-            // Directly mutate the state object to preserve class methods
-            stateData.QueryLanguage = queryLanguage
+            state.QueryLanguage = queryLanguage
           }
         }
 
         executionContext.executionPath.push(executionContext.currentState)
 
-        // stateData is already a State instance from itemProcessor.States
-        const state = stateData
-
-        // Use the StateExecutorFactory directly
-        // No stateMachine parameter for ItemProcessor execution
+        // ItemProcessor doesn't have access to the parent StateMachine context
+        // so we pass undefined for the stateMachine parameter
         const executor = StateExecutorFactory.create(state, this.mockEngine)
         const result = await executor.execute(executionContext)
 

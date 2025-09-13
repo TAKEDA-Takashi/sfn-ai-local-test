@@ -108,6 +108,7 @@ interface TestSuite {
   testCases: TestCase[]  // Array of test cases to execute
   settings?: TestSettings  // Optional test execution settings
   assertions?: TestAssertions  // Default assertion behavior
+  executionContext?: ExecutionContextConfig  // Override ExecutionContext fixed values
 }
 
 interface TestSettings {
@@ -122,6 +123,16 @@ interface TestAssertions {
   outputMatching?: 'exact' | 'partial'  // How to compare outputs
   pathMatching?: 'exact' | 'includes' | 'sequence' | 'contains'  // How to compare execution paths
   stateMatching?: 'exact' | 'partial'  // How to compare state inputs/outputs
+}
+
+// ==================== EXECUTION CONTEXT CONFIGURATION ====================
+
+interface ExecutionContextConfig {
+  name?: string  // Override execution name (default: test-execution)
+  startTime?: string  // Override execution start time ISO string (default: 2024-01-01T00:00:00.000Z)
+  roleArn?: string  // Override IAM role ARN (default: arn:aws:iam::123456789012:role/TestRole)
+  accountId?: string  // Override AWS account ID (default: 123456789012)
+  region?: string  // Override AWS region (default: us-east-1)
 }
 
 // ==================== TEST CASE DEFINITION ====================
@@ -142,6 +153,7 @@ interface TestCase {
   mockOverrides?: MockOverride[]  // Override mocks for this specific test
   outputMatching?: 'exact' | 'partial'  // How to compare outputs
   pathMatching?: 'exact' | 'includes' | 'sequence' | 'contains'  // How to compare paths
+  executionContext?: ExecutionContextConfig  // Override ExecutionContext fixed values for this test
 }
 
 // ==================== TEST EXPECTATIONS ====================

@@ -31,13 +31,12 @@ describe('Pass State JSONata - Default Value Handling', () => {
       // report_month が指定されていない場合
       const result = await executor.execute({})
 
-      // 現在の年月形式（YYYY-MM）になることを確認
+      // 固定値（2024-01-01T00:00:00.000Z）から年月形式（YYYY-MM）になることを確認
       expect(result.variables?.reportMonth).toMatch(/^\d{4}-\d{2}$/)
 
-      // 現在の年月と一致することを確認
-      const now = new Date()
-      const expectedMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-      expect(result.variables?.reportMonth).toBe(expectedMonth)
+      // $now()は固定値を返すため、'2024-01'になることを確認
+      // ADR-001: ExecutionContext固定値化により、$now()は'2024-01-01T00:00:00.000Z'を返す
+      expect(result.variables?.reportMonth).toBe('2024-01')
     })
 
     it('should use provided date when specified', async () => {

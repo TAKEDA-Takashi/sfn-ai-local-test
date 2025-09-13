@@ -115,6 +115,9 @@ export class PromptBuilder {
       sections.push(this.getChoiceMockGuidelines(analysis))
     }
 
+    // Add ExecutionContext information for mocks
+    sections.push(this.getExecutionContextInfo())
+
     // Add data flow analysis for improved mock generation
     this.dataFlowAnalyzer = new DataFlowAnalyzer(stateMachine)
     const dataFlowAnalysis = this.dataFlowAnalyzer?.analyzeDataFlowConsistency() || {
@@ -416,6 +419,15 @@ stateExpectations:
 
 **WHY:** Timestamps change on every execution. Including them causes tests to fail.
 **SOLUTION:** Use outputMatching: "partial" and omit all timestamp fields from expectations.
+
+## EXECUTION CONTEXT - FIXED VALUES IN TESTS
+**IMPORTANT:** ExecutionContext values are FIXED during tests for deterministic behavior:
+- \`$$.Execution.Id\` = \`arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution\`
+- \`$$.Execution.Name\` = \`test-execution\`
+- \`$$.Execution.StartTime\` = \`2024-01-01T00:00:00.000Z\`
+- \`$$.State.EnteredTime\` = \`2024-01-01T00:00:00.000Z\`
+
+These values do NOT change during test execution, making them safe for assertions.
 
 ## REQUIRED TEST FILE STRUCTURE
 \`\`\`yaml
@@ -928,12 +940,11 @@ The executor handles this automatically based on ItemReader processing.
         'TimestampLessThanEquals',
         'TimestampGreaterThanEquals',
         // Context variables that change
-        '$$.State.EnteredTime',
-        '$$.Execution.StartTime',
         '$$.State.Name',
         '$$.Task.Token',
         '$$.State.RetryCount',
         '$$.Map.Item.Index',
+        // Note: $$.State.EnteredTime and $$.Execution.StartTime are FIXED in tests
       ],
       jsonata: [
         // JSONata non-deterministic functions
@@ -942,10 +953,9 @@ The executor handles this automatically based on ItemReader processing.
         '$now',
         '$millis',
         // Context functions (correct paths)
-        '$states.context.State.EnteredTime',
         '$states.context.State.RetryCount',
-        '$states.context.Execution.StartTime',
         '$states.context.State.Name',
+        // Note: $states.context.State.EnteredTime and $states.context.Execution.StartTime are FIXED in tests
         // Also check for general patterns (case-insensitive)
         'random',
         'uuid',
@@ -1477,6 +1487,29 @@ stateExpectations:
 - Map item indices (when dynamic)
 
 **Why?** These values are different every time the test runs, causing false failures.
+`
+  }
+
+  /**
+   * Get ExecutionContext fixed values information
+   */
+  private getExecutionContextInfo(): string {
+    return `## IMPORTANT: ExecutionContext Fixed Values
+
+During test execution, ExecutionContext values are FIXED for deterministic testing:
+
+- **$$.Execution.Id** = \`arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution\`
+- **$$.Execution.Name** = \`test-execution\`
+- **$$.Execution.StartTime** = \`2024-01-01T00:00:00.000Z\`
+- **$$.Execution.RoleArn** = \`arn:aws:iam::123456789012:role/StepFunctionsRole\`
+- **$$.State.EnteredTime** = \`2024-01-01T00:00:00.000Z\`
+
+**IMPLICATIONS FOR MOCKING:**
+1. These values do NOT need to be mocked - they are predictable
+2. Choice states using these values will always get the same result
+3. You can rely on these fixed values when creating conditional mocks
+
+**Example:** If a Choice state checks \`$$.Execution.StartTime\`, it will always see "2024-01-01T00:00:00.000Z"
 `
   }
 }

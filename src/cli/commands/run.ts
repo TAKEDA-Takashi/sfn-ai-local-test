@@ -171,6 +171,7 @@ async function runDefaultMode(options: RunOptions): Promise<void> {
           const result = await runner.runSuite(enableCoverage, {
             verbose: options.verbose,
             quiet: options.quiet,
+            executionContext: config?.executionContext,
           })
           const elapsed = Date.now() - startTime
           console.log(chalk.gray(`  ⏱  Completed in ${elapsed}ms`))
@@ -672,6 +673,9 @@ async function runTestSuite(options: RunOptions): Promise<void> {
   const spinner = ora('Loading test suite...').start()
 
   try {
+    // Load config file if it exists to get executionContext
+    const config = existsSync(DEFAULT_CONFIG_FILE) ? loadProjectConfig() : null
+
     const runner = new TestSuiteRunner(options.suite || '')
     spinner.text = 'Running tests...'
 
@@ -679,6 +683,7 @@ async function runTestSuite(options: RunOptions): Promise<void> {
     const result = await runner.runSuite(enableCoverage, {
       verbose: options.verbose,
       quiet: options.quiet,
+      executionContext: config?.executionContext,
     })
     spinner.stop()
 

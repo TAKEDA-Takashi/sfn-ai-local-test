@@ -79,10 +79,8 @@ export class NestedCoverageTracker {
     const states = this.stateMachine.States || { SingleState: this.stateMachine }
 
     // Count only top-level states
-    for (const [stateName, stateData] of Object.entries(states)) {
+    for (const [stateName, state] of Object.entries(states)) {
       totalStates++
-      // stateData is already typed as State from the Record<string, State>
-      const state = stateData
 
       // Count branches for Choice states
       if (state.isChoice()) {
@@ -405,20 +403,18 @@ export class NestedCoverageTracker {
     // Check nested choice branches
     for (const [parentState, nestedStateMachine] of this.nestedStateMachines.entries()) {
       if (nestedStateMachine?.States) {
-        for (const [stateName, stateData] of Object.entries(nestedStateMachine.States)) {
-          const stateObj = stateData
-          if (stateObj.isChoice()) {
-            // stateObj.isChoice() is a type predicate, so stateObj is now ChoiceState
-            if (stateObj.Choices) {
-              for (const choice of stateObj.Choices) {
+        for (const [stateName, state] of Object.entries(nestedStateMachine.States)) {
+          if (state.isChoice()) {
+            if (state.Choices) {
+              for (const choice of state.Choices) {
                 const branchId = `${parentState}.${stateName}->${choice.Next}`
                 if (!this.coverage.coveredBranches.has(branchId)) {
                   uncovered.push(branchId)
                 }
               }
             }
-            if (stateObj.Default) {
-              const branchId = `${parentState}.${stateName}->${stateObj.Default}`
+            if (state.Default) {
+              const branchId = `${parentState}.${stateName}->${state.Default}`
               if (!this.coverage.coveredBranches.has(branchId)) {
                 uncovered.push(branchId)
               }

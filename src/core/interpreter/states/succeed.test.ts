@@ -108,7 +108,7 @@ describe('SucceedStateExecutor', () => {
       expect(result.output).toEqual({ status: 'success', message: 'Workflow completed' })
     })
 
-    it('should evaluate JSONata expression in Output field', async () => {
+    it('should NOT evaluate JSONata expression without {% %} wrapper', async () => {
       const stateData = {
         Type: 'Succeed',
         QueryLanguage: 'JSONata',
@@ -125,9 +125,29 @@ describe('SucceedStateExecutor', () => {
       const result = await executor.execute(context as any)
 
       expect(result.success).toBe(true)
-      // JSONata expressions might not be fully evaluated in the base implementation
-      expect(typeof result.output).toBe('string')
-      expect(result.output).toContain('$states.input.userId')
+      // Without {% %} wrapper, string should be returned as-is
+      expect(result.output).toBe('$states.input.userId & " processed"')
+    })
+
+    it('should evaluate JSONata expression with {% %} wrapper', async () => {
+      const stateData = {
+        Type: 'Succeed',
+        QueryLanguage: 'JSONata',
+        Output: '{% $states.input.userId & " processed" %}',
+      }
+      const state = StateFactory.createState(stateData)
+      const executor = new SucceedStateExecutor(state as any)
+
+      const context = {
+        input: { userId: 'test-123' },
+        context: {},
+      }
+
+      const result = await executor.execute(context as any)
+
+      expect(result.success).toBe(true)
+      // With {% %} wrapper, JSONata expression should be evaluated
+      expect(result.output).toBe('test-123 processed')
     })
 
     it('should throw error when OutputPath is used in JSONata mode', () => {
@@ -165,24 +185,75 @@ describe('SucceedStateExecutor', () => {
       const stateData = {
         Type: 'Succeed',
         QueryLanguage: 'JSONata',
-        Output: '{ "processedBy": $states.context.StateMachine.Name, "input": $states.input }',
+        Output:
+          '{% { "processedBy": $states.context.StateMachine.Name, "input": $states.input } %}',
       }
       const state = StateFactory.createState(stateData)
       const executor = new SucceedStateExecutor(state as any)
 
       const context = {
         input: { value: 123 },
-        context: {
-          StateMachine: { Name: 'MyWorkflow' },
+        currentState: 'SucceedState',
+        executionPath: [],
+        variables: {},
+        // ExecutionContext に直接 StateMachine を設定
+        StateMachine: {
+          Name: 'MyWorkflow',
+          Id: 'arn:aws:states:us-east-1:123456789012:stateMachine:MyWorkflow',
         },
       }
 
       const result = await executor.execute(context as any)
 
       expect(result.success).toBe(true)
-      // JSONata expressions might not be fully evaluated in the base implementation
-      expect(typeof result.output).toBe('string')
-      expect(result.output).toContain('$states.context.StateMachine.Name')
+      // JSONata式が正しく評価されることを確認
+      expect(result.output).toEqual({
+        processedBy: 'MyWorkflow',
+        input: { value: 123 },
+      })
+    })
+
+    it('should handle object with embedded JSONata expressions in each field', async () => {
+      const stateData = {
+        Type: 'Succeed',
+        QueryLanguage: 'JSONata',
+        Output: {
+          status: '{% $states.input.completed ? "success" : "pending" %}',
+          processedCount: '{% $count($states.input.items) %}',
+          totalAmount: '{% $sum($states.input.items.price) %}',
+          message: 'Static message',
+          timestamp: '{% $now() %}',
+        },
+      }
+      const state = StateFactory.createState(stateData)
+      const executor = new SucceedStateExecutor(state as any)
+
+      const context = {
+        input: {
+          completed: true,
+          items: [
+            { id: 1, price: 100 },
+            { id: 2, price: 200 },
+            { id: 3, price: 300 },
+          ],
+        },
+        currentState: 'SucceedState',
+        executionPath: [],
+        variables: {},
+      }
+
+      const result = await executor.execute(context as any)
+
+      expect(result.success).toBe(true)
+      // オブジェクトの各フィールドのJSONata式が評価されることを確認
+      expect(result.output).toMatchObject({
+        status: 'success',
+        processedCount: 3,
+        totalAmount: 600,
+        message: 'Static message', // 静的な文字列はそのまま
+      })
+      // timestampは動的な値なので、存在確認のみ
+      expect(result.output).toHaveProperty('timestamp')
     })
   })
 

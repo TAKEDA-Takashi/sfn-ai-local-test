@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { JsonValue } from '../types/asl'
+import { executionContextSchema } from './config-schema'
 
 // JSON value schema - matches JsonValue type from asl.ts
 // Using a type annotation to handle the recursive type
@@ -92,6 +93,7 @@ const testCaseSchema = z
     timeout: z.number().optional().describe('Test-specific timeout in ms'),
     skip: z.boolean().optional().describe('Skip this test'),
     only: z.boolean().optional().describe('Run only this test (for debugging)'),
+    executionContext: executionContextSchema.describe('Test-specific ExecutionContext overrides'),
     mockOverrides: z
       .array(
         z
@@ -156,6 +158,7 @@ export const testSuiteSchema = z
     description: z.string().optional().describe('Test suite description'),
     stateMachine: z.string().optional().describe('State machine name or path to ASL JSON file'),
     baseMock: z.string().optional().describe('Mock configuration name or path to YAML file'),
+    executionContext: executionContextSchema.describe('Suite-wide ExecutionContext defaults'),
     testCases: z.array(testCaseSchema).describe('Test cases to run'),
     settings: settingsSchema.optional().describe('Test suite settings'),
     assertions: assertionsSchema.optional().describe('Default assertion settings'),

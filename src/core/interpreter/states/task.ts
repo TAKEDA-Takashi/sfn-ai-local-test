@@ -39,7 +39,7 @@ export class TaskStateExecutor extends BaseStateExecutor<TaskState> {
   private async invokeTask(input: JsonValue, context: ExecutionContext): Promise<JsonValue> {
     // モックエンジンがある場合はモックレスポンスを返す
     if (this.mockEngine) {
-      return await this.mockEngine.getMockResponse(context.currentState, input)
+      return await this.mockEngine.getMockResponse(context.currentState, input, this.state)
     }
 
     // 実際のタスク実行（簡略化実装）

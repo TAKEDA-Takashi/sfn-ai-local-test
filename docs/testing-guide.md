@@ -145,6 +145,28 @@ Mocks data source for Distributed Map states.
   dataFormat: "csv"         # Optional (auto-detected from extension)
 ```
 
+### Default Mock Behavior
+
+When no mock is defined for a state, the tool automatically generates a default mock:
+
+- **Task States**: Returns input as-is (wraps in `Payload` for Lambda invoke integration)
+- **Map/DistributedMap States**: Returns empty array `[]`
+- **Parallel States**: Returns array with input copy for each branch
+
+This feature allows you to start testing immediately without defining all mocks upfront.
+
+**Example**: Testing without explicit mocks
+```yaml
+# test.yaml - No mock definitions needed for initial testing
+name: "Quick Test"
+stateMachine: "my-workflow"
+# mock: not specified - default mocks will be used
+testCases:
+  - name: "Initial flow test"
+    input: { orderId: "123" }
+    output: { status: "completed" }
+```
+
 ### Delay Configuration
 
 All mock types can delay responses using the `delay` field:

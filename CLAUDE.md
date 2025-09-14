@@ -412,6 +412,16 @@ export DEBUG_OUTPUT_PATH=true
 sfn-test run
 ```
 
+### デフォルトモック機能
+
+モック定義がないステートに対しては、自動的にデフォルトモックが生成されます：
+
+- **Task状態**: 入力をそのまま返す（Lambda invoke統合の場合は`Payload`でラップ）
+- **Map/DistributedMap状態**: 空配列を返す  
+- **Parallel状態**: 各ブランチに対して入力のコピーを配列で返す
+
+この機能により、初期のテスト開発時に全てのモックを定義する必要がなくなります。
+
 ## 環境変数
 
 - `ANTHROPIC_API_KEY`: Claude API キー（Claude Code環境では不要）

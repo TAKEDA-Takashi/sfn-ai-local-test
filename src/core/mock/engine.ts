@@ -5,7 +5,7 @@ import type {
   MockState,
 } from '../../schemas/mock-schema'
 import { mockConfigSchema } from '../../schemas/mock-schema'
-import type { ItemReader, JsonArray, JsonValue } from '../../types/asl'
+import type { ItemReader, JsonArray, JsonValue, State } from '../../types/asl'
 import { isJsonObject, isJsonValue } from '../../types/type-guards'
 import { MockFileLoader } from './file-loader'
 import { ItemReaderValidator } from './item-reader-validator'
@@ -129,21 +129,18 @@ export class MockEngine {
     }
 
     if (itemReader.Resource === 'arn:aws:states:::s3:getObject') {
-      switch (config.InputType) {
-        case 'CSV':
-          return 'csv'
-        case 'JSON':
-          return 'json'
-        case 'JSONL':
-          return 'jsonl'
-        case 'MANIFEST':
-          return 'json'
-        default:
-          if (config.CSVHeaderLocation) {
-            return 'csv'
-          }
-          return 'json'
-      }
+      const formatMap = {
+        CSV: 'csv',
+        JSON: 'json',
+        JSONL: 'jsonl',
+        MANIFEST: 'json',
+      } as const
+
+      return config.InputType
+        ? formatMap[config.InputType]
+        : config.CSVHeaderLocation
+          ? 'csv'
+          : 'json'
     }
 
     return 'json'
@@ -165,15 +162,19 @@ export class MockEngine {
     })
   }
 
-  async getMockResponse(stateName: string, input: JsonValue): Promise<JsonValue> {
+  async getMockResponse(stateName: string, input: JsonValue, state?: State): Promise<JsonValue> {
     const mock = this.findMock(stateName)
     if (!mock) {
       if (process.env.DEBUG_OUTPUT_PATH) {
-        console.log(`No mock found for state: ${stateName}`)
+        console.log(`No mock found for state: ${stateName}, using default mock`)
         console.log(
           'Available mocks:',
           this.config.mocks.map((m) => m.state),
         )
+      }
+      // Generate default mock if no explicit mock is defined
+      if (state) {
+        return this.generateDefaultMock(state, input)
       }
       throw new Error(`No mock defined for state: ${stateName}`)
     }
@@ -345,29 +346,19 @@ export class MockEngine {
       console.log('Response:', JSON.stringify(response, null, 2))
     }
 
-    if (response && typeof response === 'object' && 'error' in response && response.error) {
+    if (isJsonObject(response) && 'error' in response && response.error) {
       const errorObj = response.error
+
       const message =
-        typeof errorObj === 'object' &&
-        errorObj !== null &&
-        'message' in errorObj &&
-        typeof errorObj.message === 'string'
+        isJsonObject(errorObj) && typeof errorObj.message === 'string'
           ? errorObj.message
           : undefined
+
       const cause =
-        typeof errorObj === 'object' &&
-        errorObj !== null &&
-        'cause' in errorObj &&
-        typeof errorObj.cause === 'string'
-          ? errorObj.cause
-          : undefined
+        isJsonObject(errorObj) && typeof errorObj.cause === 'string' ? errorObj.cause : undefined
+
       const type =
-        typeof errorObj === 'object' &&
-        errorObj !== null &&
-        'type' in errorObj &&
-        typeof errorObj.type === 'string'
-          ? errorObj.type
-          : undefined
+        isJsonObject(errorObj) && typeof errorObj.type === 'string' ? errorObj.type : undefined
 
       const error = new Error(message || cause || 'Mock error')
       if (type) Object.assign(error, { type })
@@ -484,5 +475,47 @@ export class MockEngine {
   reset(): void {
     this.state.callCount.clear()
     this.state.history = []
+  }
+
+  private generateDefaultMock(state: State, input: JsonValue): JsonValue {
+    // Map and DistributedMap states return empty array
+    if (state.isMap()) {
+      const isDistributed = state.isDistributedMap()
+      if (process.env.DEBUG_OUTPUT_PATH) {
+        console.log(
+          `Generating default mock for ${isDistributed ? 'DistributedMap' : 'Map'} state: []`,
+        )
+      }
+      return []
+    }
+
+    // Parallel states return array with input for each branch
+    if (state.isParallel()) {
+      const result = state.Branches.map(() => input)
+      if (process.env.DEBUG_OUTPUT_PATH) {
+        console.log(
+          `Generating default mock for Parallel state with ${state.Branches.length} branches`,
+        )
+      }
+      return result
+    }
+
+    // Lambda invoke integration wraps in Payload
+    // Pattern: arn:aws:states:::lambda:invoke or arn:aws:states:::lambda:invoke.waitForTaskToken
+    if (state.isTask() && state.Resource?.includes('lambda:invoke')) {
+      if (process.env.DEBUG_OUTPUT_PATH) {
+        console.log('Generating default mock for Lambda invoke: wrapping in Payload')
+      }
+      return {
+        Payload: input,
+        StatusCode: 200,
+      }
+    }
+
+    // Default: return input as-is
+    if (process.env.DEBUG_OUTPUT_PATH) {
+      console.log('Generating default mock: returning input as-is')
+    }
+    return input
   }
 }

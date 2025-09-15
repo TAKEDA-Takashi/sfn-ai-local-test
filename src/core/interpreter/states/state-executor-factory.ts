@@ -34,7 +34,6 @@ export class StateExecutorFactory {
     if (state.isChoice()) {
       return new ChoiceStateExecutor(state, mockEngine, stateMachine)
     }
-    // Check for DistributedMap first (it's a subtype of Map)
     if (state.isDistributedMap()) {
       return new DistributedMapStateExecutor(state, mockEngine, stateMachine)
     }

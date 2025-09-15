@@ -48,37 +48,29 @@ export class PassVariableAnalyzer {
     const producedFields: string[] = []
 
     if (isJSONata) {
-      // JSONataモード：Assign, Output を分析
       if (passState.Assign) {
-        // Assignの値を安全に文字列に変換
         for (const [key, value] of Object.entries(passState.Assign)) {
           variables[key] = typeof value === 'string' ? value : JSON.stringify(value)
         }
         producedFields.push(...Object.keys(passState.Assign))
       }
 
-      // JSONataStateでのOutput処理 - 型ガードを使用
       if (passState.isJSONataState()) {
         if ('Output' in passState && passState.Output && typeof passState.Output === 'string') {
           outputPath = passState.Output
-          // Outputから生成されるフィールドを分析
           const outputFields = this.extractOutputFields(passState.Output, true)
           producedFields.push(...outputFields)
         }
       }
     } else {
-      // JSONPathモード - 型ガードを使用してアクセス
       if (passState.isJSONPathState()) {
         if ('InputPath' in passState) {
           inputPath = passState.InputPath
         }
 
         if ('Parameters' in passState && passState.Parameters) {
-          // Parametersから生成されるフィールドを抽出
           const paramFields = Object.keys(passState.Parameters)
           producedFields.push(...paramFields)
-
-          // Parameters内の値も変数として記録
           for (const [key, value] of Object.entries(passState.Parameters)) {
             if (typeof value === 'string') {
               variables[key] = value
@@ -97,7 +89,6 @@ export class PassVariableAnalyzer {
       }
     }
 
-    // Choice状態との互換性を分析
     const choiceCompatibility = this.analyzeChoiceCompatibility(
       stateName,
       producedFields,
@@ -121,7 +112,6 @@ export class PassVariableAnalyzer {
     const fields: string[] = []
 
     if (isJSONata) {
-      // JSONata式から生成されるフィールドを推測
       // 一般的なパターン：{ "field1": $variable, "field2": $states.input.value }
       const objectPattern = /["']([a-zA-Z_][a-zA-Z0-9_]*)["']\s*:/g
       let match = objectPattern.exec(output)
@@ -170,7 +160,6 @@ export class PassVariableAnalyzer {
       } else {
         missingFields.push(...missingInThisChoice)
 
-        // 推奨変更を生成
         for (const missingField of missingInThisChoice) {
           const fieldType = choiceDep.fieldTypes[missingField] || 'any'
           const sampleValue = DataFlowHelpers.generateSampleValueForFieldType(

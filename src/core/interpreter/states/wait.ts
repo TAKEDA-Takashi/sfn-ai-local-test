@@ -13,7 +13,6 @@ export class WaitStateExecutor extends BaseStateExecutor<WaitState> {
    */
   protected async executeState(input: JsonValue, context: ExecutionContext): Promise<JsonValue> {
     // JSONata mode validationはStateFactoryで実施済み
-    // 待機時間の計算
     const waitTimeMs = this.calculateWaitTime(input, context)
 
     // 待機処理（ローカルテストツールなので最大100ms）
@@ -23,7 +22,6 @@ export class WaitStateExecutor extends BaseStateExecutor<WaitState> {
       await new Promise((resolve) => setTimeout(resolve, actualWaitTime))
     }
 
-    // Waitステートは入力をそのまま返す
     return Promise.resolve(input)
   }
 

@@ -33,11 +33,15 @@ import {
 } from './state-classes.js'
 import { isJsonObject, isString } from './type-guards.js'
 
-// Type for State constructors
 type StateConstructor = new (config: JsonObject) => State
 
-// QueryLanguageのバリデーションと正規化
-// AWS Step FunctionsはJSONPathがデフォルト、JSONataはオプショナル
+/**
+ * QueryLanguage値を検証して有効な値を返す
+ * @param value 検証対象の値
+ * @returns 有効なQueryLanguage値（'JSONPath' または 'JSONata'）
+ * @throws {Error} 無効な値の場合
+ */
+// AWS defaults to JSONPath when QueryLanguage not specified
 function getValidQueryLanguage(value: unknown): 'JSONPath' | 'JSONata' {
   if (value === undefined) {
     return 'JSONPath'
@@ -58,7 +62,7 @@ function getStateClass(
   queryLanguage: 'JSONPath' | 'JSONata',
   config?: JsonObject,
 ): StateConstructor {
-  // Mapステートは ProcessorMode によって4つのクラスに分岐
+  // Map states require ProcessorMode detection for class selection
   if (stateType === 'Map') {
     let processorMode: 'DISTRIBUTED' | 'INLINE' = 'INLINE'
     if (config) {
@@ -79,7 +83,6 @@ function getStateClass(
     }
   }
 
-  // その他のステートは QueryLanguage のみで決定
   const stateClasses: Record<string, { JSONPath: StateConstructor; JSONata: StateConstructor }> = {
     Parallel: { JSONPath: JSONPathParallelState, JSONata: JSONataParallelState },
     Choice: { JSONPath: JSONPathChoiceState, JSONata: JSONataChoiceState },
@@ -98,6 +101,9 @@ function getStateClass(
   return classes[queryLanguage]
 }
 
+/**
+ * ASL定義からStateクラスインスタンスを生成するファクトリークラス
+ */
 export class StateFactory {
   /**
    * Create a single State instance from ASL definition
@@ -106,12 +112,12 @@ export class StateFactory {
     aslState: JsonObject,
     stateMachineQueryLanguage?: 'JSONPath' | 'JSONata',
   ): State {
-    // ASL仕様: すべてのStateはTypeフィールドが必須
+    // Type field is mandatory for all States per AWS spec
     if (!isString(aslState.Type)) {
       throw new Error('State must have a Type field')
     }
 
-    // QueryLanguageの優先順位: State定義 > StateMachine定義 > デフォルト
+    // QueryLanguage priority: State > StateMachine > default (JSONPath)
     const queryLanguage =
       aslState.QueryLanguage !== undefined
         ? getValidQueryLanguage(aslState.QueryLanguage)
@@ -135,7 +141,6 @@ export class StateFactory {
   ): Record<string, State> {
     const states: Record<string, State> = {}
 
-    // 空のステート定義を許容する（エッジケース対応）
     if (!statesData) {
       return states
     }
@@ -145,11 +150,9 @@ export class StateFactory {
         throw new Error(`State ${stateName} must be an object`)
       }
 
-      // 元のASL定義を変更しないため浅いコピーを作成
-      // QueryLanguageプロパティを追加する可能性があるため不変性を保証
+      // Shallow copy to avoid mutating original ASL definition
       const stateData = { ...stateValue }
 
-      // QueryLanguageの継承階層: State > StateMachine > デフォルト(JSONPath)
       if (!stateData.QueryLanguage && defaultQueryLanguage) {
         stateData.QueryLanguage = defaultQueryLanguage
       }
@@ -179,15 +182,12 @@ export class StateFactory {
       throw new Error('StateMachine must have a StartAt field')
     }
 
-    // StateMachineレベルのQueryLanguageを決定
-    // 無効な値の場合はエラー、undefinedは許可（デフォルトを使用）
+    // undefined is allowed here to enable default behavior
     const queryLanguage = getValidQueryLanguage(stateMachineDefinition.QueryLanguage)
 
-    // すべてのStateを再帰的に変換
     const states = StateFactory.createStates(stateMachineDefinition.States, queryLanguage)
 
-    // StateMachineオブジェクトを構築
-    // QueryLanguageは明示的に指定された場合のみ含める
+    // Only include QueryLanguage if explicitly specified to avoid forcing JSONPath
     const result: StateMachine = {
       ...stateMachineDefinition,
       StartAt: stateMachineDefinition.StartAt,

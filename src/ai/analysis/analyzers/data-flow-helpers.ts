@@ -39,7 +39,6 @@ export class DataFlowHelpers {
   static extractFieldFromPath(path: string): string | null {
     if (!path?.startsWith('$')) return null
 
-    // Handle paths like $.field, $.field.subfield, $[0], etc.
     const match = path.match(/^\$\.?([a-zA-Z_][a-zA-Z0-9_]*)/)
     return match?.[1] ?? null
   }
@@ -51,7 +50,6 @@ export class DataFlowHelpers {
     // Common field patterns
     const lowerField = field.toLowerCase()
 
-    // Check more specific patterns first
     if (lowerField.includes('email')) {
       return 'user@example.com'
     }
@@ -118,7 +116,6 @@ export class DataFlowHelpers {
       }
     }
 
-    // Set the final property
     const lastPart = parts[parts.length - 1]
     if (lastPart) {
       current[lastPart] = DataFlowHelpers.generateSampleValue(lastPart)

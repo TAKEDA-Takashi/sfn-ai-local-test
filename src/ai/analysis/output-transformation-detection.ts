@@ -32,7 +32,6 @@ export function getOutputTransformationDetails(
   const details: OutputTransformationDetails[] = []
 
   for (const [stateName, state] of Object.entries(stateMachine.States || {})) {
-    // Task ステートのみを対象
     if (!state.isTask()) {
       continue
     }
@@ -40,7 +39,6 @@ export function getOutputTransformationDetails(
     // state.isTask() is a type predicate, so state is now TaskState
     const resource = state.Resource || 'unknown'
 
-    // JSONPath: ResultSelector による変換
     if ('ResultSelector' in state && state.ResultSelector) {
       details.push({
         stateName,
@@ -51,7 +49,6 @@ export function getOutputTransformationDetails(
       })
     }
 
-    // JSONPath: OutputPath による変換
     if ('OutputPath' in state && state.OutputPath && state.OutputPath !== '$') {
       details.push({
         stateName,
@@ -62,7 +59,7 @@ export function getOutputTransformationDetails(
       })
     }
 
-    // JSONPath: ResultPath による変換（デフォルト '$' 以外）
+    // ResultPath default is '$' - only track non-default values
     if ('ResultPath' in state && state.ResultPath && state.ResultPath !== '$') {
       details.push({
         stateName,
@@ -73,7 +70,6 @@ export function getOutputTransformationDetails(
       })
     }
 
-    // JSONata: Output による変換
     if (state.isJSONataState()) {
       if ('Output' in state && state.Output) {
         details.push({

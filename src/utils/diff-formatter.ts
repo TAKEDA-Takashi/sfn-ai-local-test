@@ -13,7 +13,6 @@ export class DiffFormatter {
    */
   static formatJsonDiff(expected: JsonValue, actual: JsonValue): string {
     if (typeof expected !== 'object' || typeof actual !== 'object') {
-      // Simple values
       return `Expected: ${JSON.stringify(expected)}\nActual: ${JSON.stringify(actual)}`
     }
 

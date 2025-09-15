@@ -57,7 +57,6 @@ export class PathDiffFormatter {
   static formatSequenceDiff(expected: string[], actual: string[]): string {
     const lines: string[] = []
 
-    // Check if sequence exists
     const sequenceIndex = PathDiffFormatter.findSequence(expected, actual)
 
     if (sequenceIndex !== -1) {

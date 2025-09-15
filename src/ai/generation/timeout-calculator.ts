@@ -51,9 +51,7 @@ export class TimeoutCalculator {
       return userTimeout
     }
 
-    // Validate that we have a proper StateMachine structure
     if (!this.isStateMachine(stateMachine)) {
-      // Return a default timeout for invalid structures
       return this.BASE_TIMEOUT
     }
 
@@ -65,13 +63,10 @@ export class TimeoutCalculator {
    * Compute timeout based on metrics
    */
   private computeTimeout(metrics: ComplexityMetrics): number {
-    // Start with base timeout
     let timeout = this.BASE_TIMEOUT
 
-    // Add time per state
     timeout += metrics.totalStates * this.PER_STATE_TIMEOUT
 
-    // Apply complexity multipliers
     if (metrics.mapStates > 0) {
       timeout *= this.COMPLEXITY_MULTIPLIERS.map ** Math.min(metrics.mapStates, 3)
     }

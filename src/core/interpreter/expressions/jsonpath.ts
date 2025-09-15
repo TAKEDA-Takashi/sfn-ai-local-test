@@ -1,6 +1,5 @@
 import crypto from 'node:crypto'
 import * as jsonpathPlus from 'jsonpath-plus'
-// import { v4 as uuidv4 } from 'uuid'  // For dynamic UUID generation (currently commented out)
 import { EXECUTION_CONTEXT_DEFAULTS } from '../../../constants/execution-context'
 import type { JsonArray, JsonObject, JsonValue } from '../../../types/asl'
 import { JSONPathProcessor } from '../utils/jsonpath-processor'
@@ -16,7 +15,6 @@ export class JSONPathEvaluator {
       return JSONPathEvaluator.evaluateIntrinsicFunction(expression, data, variables)
     }
 
-    // Handle variable references ($varName)
     if (
       variables &&
       expression.startsWith('$') &&
@@ -25,7 +23,6 @@ export class JSONPathEvaluator {
     ) {
       const varName = expression.substring(1)
 
-      // Handle nested variable paths (e.g., $config.database.host)
       if (varName.includes('.')) {
         const parts = varName.split('.')
         let current: JsonValue = variables[parts[0]]
@@ -43,7 +40,6 @@ export class JSONPathEvaluator {
         return current ?? null
       }
 
-      // Simple variable reference
       return variables[varName] ?? null
     }
 
@@ -215,12 +211,10 @@ export class JSONPathEvaluator {
    * Evaluate a single argument
    */
   private static evaluateArgument(arg: string, data: JsonValue, variables?: JsonObject): JsonValue {
-    // Check if it's a States.* intrinsic function first
     if (arg.includes('States.')) {
       return JSONPathEvaluator.evaluateIntrinsicFunction(arg, data, variables)
     }
 
-    // Check if it's a JSONPath expression (starts with $)
     if (arg.startsWith('$')) {
       return JSONPathProcessor.evaluateStringValue(arg, data, {
         context: { variables },
@@ -365,7 +359,6 @@ export class JSONPathEvaluator {
     end = Math.round(end)
 
     if (seed !== undefined) {
-      // Simple seeded random for consistency
       const x = Math.sin(seed) * 10000
       const random = x - Math.floor(x)
       return Math.floor(random * (end - start)) + start

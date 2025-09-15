@@ -38,7 +38,6 @@ export class CoverageReporter {
     lines.push(`   Total executions: ${this.coverage.paths.total}`)
     lines.push(`   Unique paths: ${this.coverage.paths.unique}`)
 
-    // Add nested coverage if present
     if (this.coverage.nested) {
       lines.push(chalk.bold('\n📦 Nested States Coverage:'))
       for (const [parentState, nested] of Object.entries(this.coverage.nested)) {

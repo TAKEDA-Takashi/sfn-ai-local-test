@@ -57,7 +57,6 @@ export class JSONPathUtils {
       if (Array.isArray(result) && result.length === 0) {
         return defaultValue
       }
-      // Return first element if result is array, otherwise return result itself
       return Array.isArray(result) ? result[0] : result
     } catch (_error) {
       return defaultValue
@@ -128,7 +127,6 @@ export class JSONPathUtils {
       return input
     }
 
-    // Handle variable references ($varName)
     if (
       variables &&
       itemsPath.startsWith('$') &&
@@ -137,7 +135,6 @@ export class JSONPathUtils {
     ) {
       const varName = itemsPath.substring(1)
 
-      // Handle nested variable paths (e.g., $config.items)
       if (varName.includes('.')) {
         const parts = varName.split('.')
         let current: JsonValue = variables[parts[0]]

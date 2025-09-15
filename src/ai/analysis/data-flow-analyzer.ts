@@ -6,18 +6,26 @@ import { PassVariableAnalyzer } from './analyzers/pass-variable-analyzer'
 
 interface DataFlowNode {
   stateName: string
-  type: string // State.Type can be any state type string
-  produces: string[] // このステートが生成する変数・フィールド
-  consumes: string[] // このステートが使用する変数・フィールド
-  outputExtraction: string[] // Outputフィールドで抽出される部分
+  /** State.Type can be any state type string */
+  type: string
+  /** Variables and fields this state generates */
+  produces: string[]
+  /** Variables and fields this state uses */
+  consumes: string[]
+  /** Parts extracted in Output field */
+  outputExtraction: string[]
 }
 
 interface MockRequirement {
   stateName: string
-  required: boolean // モックが必要かどうか
-  minimalFields: string[] // 最低限必要なフィールド
-  complexity: 'none' | 'fixed' | 'conditional' // 推奨モック複雑度
-  reason: string // 判断理由
+  /** Whether mock is required */
+  required: boolean
+  /** Minimum required fields */
+  minimalFields: string[]
+  /** Recommended mock complexity */
+  complexity: 'none' | 'fixed' | 'conditional'
+  /** Reasoning for the decision */
+  reason: string
 }
 
 export interface InputRequirement {
@@ -34,38 +42,50 @@ export interface ItemProcessorAnalysis {
   sampleInput: JsonObject
 }
 
-// Choice状態の依存関係分析用の型定義
+/** Choice state dependency analysis type definitions */
 export interface ChoiceDependency {
   choiceStateName: string
-  requiredFields: string[] // Choice評価に必要なフィールド名（例: 'notify', 'items'）
+  /** Field names required for Choice evaluation (e.g., 'notify', 'items') */
+  requiredFields: string[]
   fieldTypes: Record<string, 'string' | 'number' | 'boolean' | 'object' | 'array' | 'any'>
-  upstreamRequirements: UpstreamStateRequirement[] // 前段状態への要求
-  branches: ChoiceBranch[] // 各分岐の情報
+  /** Requirements for upstream states */
+  upstreamRequirements: UpstreamStateRequirement[]
+  /** Information for each branch */
+  branches: ChoiceBranch[]
 }
 
 export interface UpstreamStateRequirement {
-  targetStateName: string // 要求対象の状態名（空文字列の場合は任意の前段状態）
-  requiredOutputFields: string[] // 出力すべきフィールド
-  reason: string // 要求理由
+  /** Target state name (empty string means any upstream state) */
+  targetStateName: string
+  /** Fields that should be output */
+  requiredOutputFields: string[]
+  /** Reason for the requirement */
+  reason: string
 }
 
 export interface ChoiceBranch {
-  condition: string // 分岐条件の説明
-  nextState: string // 次の状態名
-  requiredInput: JsonObject // この分岐を通るのに必要な入力値
-  expectedVariables?: JsonObject // この分岐で期待される変数値
+  /** Description of the branch condition */
+  condition: string
+  /** Next state name */
+  nextState: string
+  /** Required input values to take this branch */
+  requiredInput: JsonObject
+  /** Expected variable values for this branch */
+  expectedVariables?: JsonObject
 }
 
-// Map状態のAWS仕様準拠出力分析用の型定義
+/** Type definitions for AWS-compliant Map state output analysis */
 export interface MapOutputSpec {
   stateName: string
   requiredFields: MapOutputField[]
   dynamicFields: DynamicField[]
-  conditionalLogic: string // 条件分岐が必要な場合の説明
+  /** Description when conditional logic is needed */
+  conditionalLogic: string
 }
 
 export interface MapOutputField {
-  field: string // フィールド名（例: 'ProcessedItemCount'）
+  /** Field name (e.g., 'ProcessedItemCount') */
+  field: string
   type: 'number' | 'string' | 'object'
   required: boolean
   description: string
@@ -73,24 +93,34 @@ export interface MapOutputField {
 
 export interface DynamicField {
   field: string
-  calculation: string // 計算式の説明（例: 'input.items.length'）
-  fallbackValue: JsonValue // 計算できない場合の代替値
+  /** Description of calculation formula (e.g., 'input.items.length') */
+  calculation: string
+  /** Fallback value when calculation is not possible */
+  fallbackValue: JsonValue
 }
 
-// Pass状態の変数フロー分析用の型定義
+/** Type definitions for Pass state variable flow analysis */
 export interface PassVariableFlow {
   passStateName: string
-  inputPath?: string // InputPath指定
-  variables: Record<string, string> // Variables設定
-  outputPath?: string // OutputPath指定
-  producedFields: string[] // 最終的に出力されるフィールド
-  choiceCompatibility: ChoiceCompatibilityInfo // Choice状態との互換性
+  /** InputPath specification */
+  inputPath?: string
+  /** Variables configuration */
+  variables: Record<string, string>
+  /** OutputPath specification */
+  outputPath?: string
+  /** Fields that are ultimately output */
+  producedFields: string[]
+  /** Compatibility with Choice states */
+  choiceCompatibility: ChoiceCompatibilityInfo
 }
 
 export interface ChoiceCompatibilityInfo {
-  compatibleChoiceStates: string[] // 互換性のあるChoice状態名
-  missingFields: string[] // 不足しているフィールド
-  recommendedChanges: string[] // 推奨される変更
+  /** Compatible Choice state names */
+  compatibleChoiceStates: string[]
+  /** Missing fields */
+  missingFields: string[]
+  /** Recommended changes */
+  recommendedChanges: string[]
 }
 
 export class DataFlowAnalyzer {
@@ -107,7 +137,7 @@ export class DataFlowAnalyzer {
   }
 
   /**
-   * 各ステートのデータフローを分析
+   * Analyzes data flow for each state
    */
   analyzeDataFlow(): DataFlowNode[] {
     const nodes: DataFlowNode[] = []
@@ -122,12 +152,10 @@ export class DataFlowAnalyzer {
         outputExtraction: [],
       }
 
-      // Assignで生成される変数は後続ステートで参照可能
       if ('Assign' in state && state.Assign) {
         const assignKeys = Object.keys(state.Assign)
         node.produces.push(...assignKeys.map((k) => `$${k}`))
 
-        // Assign内で他の変数を参照する場合を追跡
         for (const assignValue of Object.values(state.Assign)) {
           if (typeof assignValue === 'string') {
             node.consumes.push(...DataFlowHelpers.extractVariableReferences(assignValue))
@@ -135,21 +163,17 @@ export class DataFlowAnalyzer {
         }
       }
 
-      // Lambda呼び出し等で変数参照を検出
       if ('Arguments' in state && state.Arguments) {
         const argsStr = JSON.stringify(state.Arguments)
         node.consumes.push(...DataFlowHelpers.extractVariableReferences(argsStr))
       }
 
-      // Parameters フィールドでの変数参照を検出（JSONPathモード）
       if ('Parameters' in state && state.Parameters) {
         const paramsStr = JSON.stringify(state.Parameters)
         node.consumes.push(...DataFlowHelpers.extractVariableReferences(paramsStr))
       }
 
-      // Choice分岐条件での変数依存を解析
       if (state.isChoice() && state.isJSONataState()) {
-        // JSONataモードのChoice stateの場合
         const choices = state.Choices || []
         for (const choice of choices) {
           if ('Condition' in choice && choice.Condition) {
@@ -158,7 +182,6 @@ export class DataFlowAnalyzer {
         }
       }
 
-      // JSONata Outputで特定フィールドのみ抽出するパターンを検出
       if ('Output' in state && state.Output) {
         const outputStr = state.Output
         if (typeof outputStr === 'string') {
@@ -173,7 +196,7 @@ export class DataFlowAnalyzer {
   }
 
   /**
-   * モック要件を分析
+   * Analyzes mock requirements
    */
   analyzeMockRequirements(): MockRequirement[] {
     const dataFlow = this.analyzeDataFlow()
@@ -189,7 +212,6 @@ export class DataFlowAnalyzer {
           reason: 'Task state requires mock response',
         }
 
-        // Payloadフィールドが必要かどうか後続の参照パターンから判断
         const usesResultPayload = node.outputExtraction.some((ref) =>
           ref.includes('$states.result.Payload'),
         )
@@ -198,7 +220,6 @@ export class DataFlowAnalyzer {
           requirement.minimalFields.push('Payload')
         }
 
-        // 後続ステートでの使用を分析
         const subsequentUsage = this.findSubsequentUsage(node.stateName, dataFlow)
 
         if (subsequentUsage.length === 0) {
@@ -220,7 +241,7 @@ export class DataFlowAnalyzer {
   }
 
   /**
-   * 後続ステートでの変数使用を検出
+   * Detects variable usage in subsequent states
    */
   private findSubsequentUsage(targetStateName: string, dataFlow: DataFlowNode[]): string[] {
     const subsequentUsage: string[] = []
@@ -228,7 +249,6 @@ export class DataFlowAnalyzer {
 
     if (targetIndex === -1) return subsequentUsage
 
-    // 後続ステートで $states.result を使用している箇所を検索
     for (let i = targetIndex + 1; i < dataFlow.length; i++) {
       const node = dataFlow[i]
       if (!node) continue
@@ -240,7 +260,7 @@ export class DataFlowAnalyzer {
   }
 
   /**
-   * ステートマシン全体のデータフロー整合性を分析
+   * Analyzes data flow consistency for the entire state machine
    */
   analyzeDataFlowConsistency(): {
     choiceDependencies: ChoiceDependency[]
@@ -256,7 +276,6 @@ export class DataFlowAnalyzer {
     const consistencyIssues: string[] = []
     const recommendations: string[] = []
 
-    // Pass状態とChoice状態の整合性チェック
     for (const passFlow of passVariableFlows) {
       if (passFlow.choiceCompatibility.missingFields.length > 0) {
         consistencyIssues.push(
@@ -266,7 +285,6 @@ export class DataFlowAnalyzer {
       }
     }
 
-    // Map状態の動的値計算チェック
     for (const mapSpec of mapOutputSpecs) {
       if (mapSpec.dynamicFields.length === 0) {
         consistencyIssues.push(

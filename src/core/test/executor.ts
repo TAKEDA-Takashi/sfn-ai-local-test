@@ -9,6 +9,9 @@ import { type ExecutionResult, StateMachineExecutor } from '../interpreter/execu
 import type { MockEngine } from '../mock/engine'
 import { TestAssertions } from './assertions'
 
+/**
+ * テストスイート実行エンジン
+ */
 export class TestSuiteExecutor {
   private suite: TestSuite
   private stateMachine: StateMachine
@@ -26,6 +29,12 @@ export class TestSuiteExecutor {
     this.mockEngine = mockEngine
   }
 
+  /**
+   * テストスイートを実行
+   * @param enableCoverage カバレッジ測定を有効化するか
+   * @param options 実行オプション
+   * @returns テストスイート実行結果
+   */
   async runSuite(
     enableCoverage = false,
     options?: { verbose?: boolean; quiet?: boolean; executionContext?: ExecutionContextConfig },
@@ -59,6 +68,9 @@ export class TestSuiteExecutor {
     return this.buildSuiteResult(results, duration)
   }
 
+  /**
+   * 実行すべきテストケースを取得（only/skipを考慮）
+   */
   private getTestCasesToRun(): TestCase[] {
     const onlyTests = this.suite.testCases.filter((tc) => tc.only)
     if (onlyTests.length > 0) {
@@ -68,11 +80,13 @@ export class TestSuiteExecutor {
     return this.suite.testCases.filter((tc) => !tc.skip)
   }
 
+  /**
+   * 単一のテストケースを実行
+   */
   private async runTestCase(testCase: TestCase): Promise<TestResult> {
     const startTime = Date.now()
 
     try {
-      // Stateful mocks must reset between tests to avoid cross-test contamination
       if (this.mockEngine) {
         this.mockEngine.resetCallCounts()
       }
@@ -91,7 +105,6 @@ export class TestSuiteExecutor {
         timeoutId = setTimeout(() => reject(new Error('Test timeout')), timeout)
       })
 
-      // Priority: testCase overrides suite, suite overrides global defaults
       const executionContext = {
         ...this.options?.executionContext,
         ...this.suite.executionContext,
@@ -126,7 +139,6 @@ export class TestSuiteExecutor {
               const execObj = exec
               let iterationPaths: string[][] = []
               if (Array.isArray(execObj.iterationPaths)) {
-                // Type-safe conversion to string[][]
                 iterationPaths = execObj.iterationPaths.filter(
                   (path): path is string[] =>
                     Array.isArray(path) && path.every((p) => typeof p === 'string'),

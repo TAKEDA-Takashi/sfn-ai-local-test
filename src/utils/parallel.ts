@@ -46,7 +46,6 @@ export async function processInParallel<T, R>(
     await processNext()
   }
 
-  // Start initial concurrent operations
   for (let i = 0; i < Math.min(concurrency, items.length); i++) {
     executing.push(processNext())
   }

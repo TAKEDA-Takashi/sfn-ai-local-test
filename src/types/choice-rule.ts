@@ -49,7 +49,7 @@ export class JSONPathChoiceRule {
   TimestampLessThanEqualsPath?: string
   TimestampGreaterThanEqualsPath?: string
 
-  // 論理演算子（クラス型）
+  // Logical operators require recursive instantiation as class types
   And?: JSONPathChoiceRule[]
   Or?: JSONPathChoiceRule[]
   Not?: JSONPathChoiceRule
@@ -57,10 +57,9 @@ export class JSONPathChoiceRule {
   Next?: string
 
   constructor(data: Partial<JSONPathChoiceRule>) {
-    // 基本プロパティをコピー
     Object.assign(this, data)
 
-    // 論理演算子内を再帰的にインスタンス化
+    // Recursively instantiate logical operators to enable proper evaluation
     if (data.And && Array.isArray(data.And)) {
       this.And = data.And.map((r) => new JSONPathChoiceRule(r))
     }
@@ -85,7 +84,6 @@ export class JSONPathChoiceRule {
 
     const result: Partial<JSONPathChoiceRule> = {}
 
-    // 基本フィールドをコピー
     if ('Variable' in value && typeof value.Variable === 'string') {
       result.Variable = value.Variable
     }
@@ -93,7 +91,6 @@ export class JSONPathChoiceRule {
       result.Next = value.Next
     }
 
-    // 文字列比較
     if ('StringEquals' in value && typeof value.StringEquals === 'string') {
       result.StringEquals = value.StringEquals
     }
@@ -113,7 +110,6 @@ export class JSONPathChoiceRule {
       result.StringMatches = value.StringMatches
     }
 
-    // 数値比較
     if ('NumericEquals' in value && typeof value.NumericEquals === 'number') {
       result.NumericEquals = value.NumericEquals
     }
@@ -130,12 +126,10 @@ export class JSONPathChoiceRule {
       result.NumericGreaterThanEquals = value.NumericGreaterThanEquals
     }
 
-    // ブール値比較
     if ('BooleanEquals' in value && typeof value.BooleanEquals === 'boolean') {
       result.BooleanEquals = value.BooleanEquals
     }
 
-    // タイムスタンプ比較
     if ('TimestampEquals' in value && typeof value.TimestampEquals === 'string') {
       result.TimestampEquals = value.TimestampEquals
     }
@@ -155,7 +149,6 @@ export class JSONPathChoiceRule {
       result.TimestampGreaterThanEquals = value.TimestampGreaterThanEquals
     }
 
-    // 型チェック
     if ('IsNull' in value && typeof value.IsNull === 'boolean') {
       result.IsNull = value.IsNull
     }
@@ -175,7 +168,6 @@ export class JSONPathChoiceRule {
       result.IsTimestamp = value.IsTimestamp
     }
 
-    // パス比較（Path suffix）
     if ('StringEqualsPath' in value && typeof value.StringEqualsPath === 'string') {
       result.StringEqualsPath = value.StringEqualsPath
     }
@@ -240,7 +232,7 @@ export class JSONPathChoiceRule {
       result.TimestampGreaterThanEqualsPath = value.TimestampGreaterThanEqualsPath
     }
 
-    // 論理演算子（再帰的に変換） - 静的ファクトリメソッドを活用
+    // Recursively transform logical operators using static factory method for type safety
     if ('And' in value && Array.isArray(value.And)) {
       result.And = value.And.map(JSONPathChoiceRule.fromJsonValue)
     }
@@ -255,21 +247,28 @@ export class JSONPathChoiceRule {
   }
 
   /**
-   * 型判定メソッド
+   * 型判定メソッド - JSONPathルールかどうかを判定
+   * @returns 常にtrue（JSONPathChoiceRuleインスタンスの場合）
    */
   isJSONPath(): this is JSONPathChoiceRule {
     return true
   }
 
+  /**
+   * 型判定メソッド - JSONataルールかどうかを判定
+   * @returns 常にfalse（JSONPathChoiceRuleインスタンスの場合）
+   */
   isJSONata(): this is JSONataChoiceRule {
     return false
   }
 
   /**
-   * 評価メソッド
+   * Choice条件を評価する
+   * @param input 評価対象の入力データ
+   * @param context 実行コンテキスト
+   * @returns 条件が真の場合true、偽の場合false
    */
   evaluate(input: JsonValue, context: ExecutionContext): boolean {
-    // 論理演算子の評価
     if (this.And) {
       return this.And.every((rule) => rule.evaluate(input, context))
     }
@@ -282,78 +281,78 @@ export class JSONPathChoiceRule {
       return !this.Not.evaluate(input, context)
     }
 
-    // Variable評価
     if (!this.Variable) {
       return false
     }
 
-    // IsPresent特別処理
+    // IsPresent requires special handling to check field existence without value retrieval
     if (this.IsPresent !== undefined) {
       const hasPath = this.isFieldPresent(this.Variable, input, context)
       return hasPath === this.IsPresent
     }
 
-    // 値の取得
     const value = this.getVariableValue(this.Variable, input, context)
 
-    // 比較演算子の評価
     return this.evaluateComparisonOperator(value, input, context)
   }
 
   /**
-   * フィールドの存在確認
+   * フィールドの存在確認（値自体ではなくパスの存在を確認）
+   * @param path 確認するパス
+   * @param input 入力データ
+   * @param context 実行コンテキスト
+   * @returns フィールドが存在する場合true
    */
   private isFieldPresent(path: string, input: JsonValue, context: ExecutionContext): boolean {
-    // Direct JSONPath evaluation to check if field exists
-    // We need to check if the path returns any results, not the value itself
+    // Must check if path returns results to determine field existence,
+    // not the value itself (field with null value still exists)
 
     if (path.startsWith('$.')) {
       const pathResult = JSONPath({
         path,
         json: input,
       })
-      // If path returns empty array, field doesn't exist
-      // If it returns array with any value (including null), field exists
+      // Empty array means field doesn't exist,
+      // any value (including null) means field exists
       return Array.isArray(pathResult) && pathResult.length > 0
     }
 
-    // For variable references, use the context
     const result = JSONPathProcessor.evaluateStringValue(path, input, {
       context,
       handleIntrinsics: false,
     })
-    // This is a fallback - may not distinguish null values from missing fields
+    // Fallback for variable references - limitation: can't distinguish null from missing
     return result !== null
   }
 
   /**
-   * 変数値の取得
+   * 指定されたパスから変数値を取得
+   * @param path 変数パス
+   * @param input 入力データ
+   * @param context 実行コンテキスト
+   * @returns 変数の値
+   * @throws {Error} パスが無効な場合
    */
   private getVariableValue(path: string, input: JsonValue, context: ExecutionContext): JsonValue {
-    // For direct JSONPath, check if field exists first
     if (path.startsWith('$.')) {
       const pathResult = JSONPath({
         path,
         json: input,
       })
-      // If path returns empty array, field doesn't exist
       if (!Array.isArray(pathResult) || pathResult.length === 0) {
         throw new Error(
           `Invalid path '${path}': The choice state's condition path references an invalid value.`,
         )
       }
-      // Return the first result (could be null if field exists but has null value)
       return pathResult[0]
     }
 
-    // For other paths (like $variableName), use JSONPathProcessor
     const result = JSONPathProcessor.evaluateStringValue(path, input, {
       context,
       handleIntrinsics: false,
     })
 
-    // JSONPathProcessor.evaluateStringValue returns null when path not found
-    // For variable references, null means the variable doesn't exist
+    // Null return means variable doesn't exist (different from null value)
     if (result === null) {
       throw new Error(
         `Invalid path '${path}': The choice state's condition path references an invalid value.`,
@@ -364,7 +363,9 @@ export class JSONPathChoiceRule {
   }
 
   /**
-   * ワイルドカードパターンを正規表現に変換
+   * ワイルドカードパターン（* と ?）を正規表現に変換
+   * @param pattern ワイルドカードパターン文字列
+   * @returns 対応する正規表現オブジェクト
    */
   private wildcardToRegex(pattern: string): RegExp {
     const escaped = pattern
@@ -375,14 +376,17 @@ export class JSONPathChoiceRule {
   }
 
   /**
-   * 比較演算子の評価
+   * 各種比較演算子による条件評価
+   * @param value 評価対象の値
+   * @param input 入力データ（Path系演算子で使用）
+   * @param context 実行コンテキスト（Path系演算子で使用）
+   * @returns 条件が真の場合true
    */
   private evaluateComparisonOperator(
     value: JsonValue,
     input?: JsonValue,
     context?: ExecutionContext,
   ): boolean {
-    // 文字列比較
     if (this.StringEquals !== undefined) {
       return value === this.StringEquals
     }
@@ -403,7 +407,6 @@ export class JSONPathChoiceRule {
       return pattern.test(String(value))
     }
 
-    // 数値比較
     if (this.NumericEquals !== undefined) {
       return value !== null && value !== undefined && Number(value) === this.NumericEquals
     }
@@ -420,12 +423,10 @@ export class JSONPathChoiceRule {
       return value !== null && value !== undefined && Number(value) >= this.NumericGreaterThanEquals
     }
 
-    // ブール値比較
     if (this.BooleanEquals !== undefined) {
       return Boolean(value) === this.BooleanEquals
     }
 
-    // タイムスタンプ比較
     if (this.TimestampEquals !== undefined) {
       const valueStr = String(value)
       return new Date(valueStr).toISOString() === new Date(this.TimestampEquals).toISOString()
@@ -443,7 +444,6 @@ export class JSONPathChoiceRule {
       return new Date(String(value)) >= new Date(this.TimestampGreaterThanEquals)
     }
 
-    // 型チェック
     if (this.IsNull !== undefined) {
       return (value === null) === this.IsNull
     }
@@ -461,7 +461,6 @@ export class JSONPathChoiceRule {
       return isTimestamp === this.IsTimestamp
     }
 
-    // パス比較演算子
     if (input !== undefined && context !== undefined) {
       if (this.StringEqualsPath !== undefined) {
         const compareValue = this.getVariableValue(this.StringEqualsPath, input, context)
@@ -566,7 +565,7 @@ export class JSONataChoiceRule {
       throw new Error('JSONata choice rule must be an object')
     }
 
-    // Early detection of wrong mode usage (helpful error message)
+    // Detect JSONPath fields in JSONata mode to provide clear error message
     if ('Variable' in value || 'And' in value || 'Or' in value || 'Not' in value) {
       throw new Error(
         "JSONPath choice rule fields (Variable, And, Or, Not) are not supported in JSONata mode. Use 'Condition' field instead",
@@ -577,7 +576,7 @@ export class JSONataChoiceRule {
       throw new Error('JSONata choice rule must have a Condition field')
     }
 
-    // AWS仕様: JSONataモードではConditionは{% %}で囲まれている必要がある
+    // AWS requires JSONata Condition to be wrapped with {% %} brackets
     if (!(value.Condition.startsWith('{%') && value.Condition.endsWith('%}'))) {
       throw new Error(
         `JSONata Condition must be wrapped with {% and %} brackets. Got: ${value.Condition}`,
@@ -595,22 +594,28 @@ export class JSONataChoiceRule {
   }
 
   /**
-   * 型判定メソッド
+   * 型判定メソッド - JSONPathルールかどうかを判定
+   * @returns 常にfalse（JSONataChoiceRuleインスタンスの場合）
    */
   isJSONPath(): this is JSONPathChoiceRule {
     return false
   }
 
+  /**
+   * 型判定メソッド - JSONataルールかどうかを判定
+   * @returns 常にtrue（JSONataChoiceRuleインスタンスの場合）
+   */
   isJSONata(): this is JSONataChoiceRule {
     return true
   }
 
   /**
-   * 評価メソッド（非同期）
+   * JSONata条件式を評価する
+   * @param input 評価対象の入力データ
+   * @param context 実行コンテキスト
+   * @returns 条件が真の場合true、偽の場合falseのPromise
    */
   async evaluate(input: JsonValue, context: ExecutionContext): Promise<boolean> {
-    // JSONata評価
-    // $states.inputとして入力を設定
     const bindings: JsonObject = {
       states: {
         input,
@@ -625,11 +630,11 @@ export class JSONataChoiceRule {
           Task: context.Task || {},
         },
       },
-      // Variables directly at root level for easy access
+      // Variables at root level for direct access like $variableName
       ...context.variables,
     }
 
-    // Remove {% %} wrapper if present
+    // Strip {% %} wrapper before evaluation (required by spec but not by JSONata)
     let expression = this.Condition
     if (expression.startsWith('{%') && expression.endsWith('%}')) {
       expression = expression.slice(2, -2).trim()

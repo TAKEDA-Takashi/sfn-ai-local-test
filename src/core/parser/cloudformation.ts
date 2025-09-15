@@ -47,7 +47,10 @@ export class CloudFormationParser {
     return stateMachines
   }
 
-  // 完全一致で見つからない場合は前方一致で検索
+  /**
+   * 指定されたIDでステートマシンを抽出
+   * 完全一致で見つからない場合は前方一致で検索
+   */
   extractStateMachineById(
     template: CloudFormationTemplate,
     logicalId: string,

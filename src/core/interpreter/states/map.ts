@@ -1,7 +1,7 @@
 import type {
   DistributedMapState,
   ExecutionContext,
-  ItemProcessor,
+  ItemBatcher,
   ItemReader,
   JsonArray,
   JsonObject,
@@ -10,7 +10,6 @@ import type {
   ToleranceConfig,
 } from '../../../types/asl'
 import type { MapState } from '../../../types/state-classes'
-import { hasIterator } from '../../../types/type-guards'
 import type { MockEngine } from '../../mock/engine'
 import { ItemReaderValidator } from '../../mock/item-reader-validator'
 import { JSONataEvaluator } from '../expressions/jsonata'
@@ -18,12 +17,7 @@ import type { ItemProcessorContext } from '../item-processor-runner'
 import { ItemProcessorRunner } from '../item-processor-runner'
 import { JSONPathProcessor } from '../utils/jsonpath-processor'
 import { JSONPathUtils } from '../utils/jsonpath-utils'
-import {
-  createItemBatches,
-  getDefaultMockDataForResource,
-  processMapContextSelector,
-  shouldFailExecution,
-} from '../utils/map-helpers'
+// Removed import - functions moved to this file
 import type { StateExecutionResult } from './base'
 import { BaseStateExecutor } from './base'
 
@@ -321,14 +315,8 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
     context: ExecutionContext,
     iterationIndex?: number,
   ): Promise<StateExecutionResult> {
-    // Support both ItemProcessor (newer) and Iterator (older) fields
-    let processor: ItemProcessor | undefined = this.state.ItemProcessor
-
-    // For legacy compatibility, check if Iterator exists
-    // Note: Iterator is a legacy field not in the type definition
-    if (!processor && hasIterator(this.state)) {
-      processor = this.state.Iterator
-    }
+    // ItemProcessorはMap stateクラスで必ず正規化されている
+    const processor = this.state.ItemProcessor
 
     if (!processor) {
       return { output: itemInput, executionPath: [], success: true }
@@ -440,7 +428,9 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
       // When ItemBatcher is configured, createBatches returns objects like { Items: [...] }
       // When not configured, we wrap each item for consistent processing
       const batches =
-        'ItemBatcher' in this.state && this.state.ItemBatcher ? this.createBatches(items) : items // Keep items as-is for individual processing
+        'ItemBatcher' in this.state && this.state.ItemBatcher
+          ? createItemBatches(items, this.state.ItemBatcher)
+          : items // Keep items as-is for individual processing
 
       const maxConcurrency = this.state.MaxConcurrency || 1000
       const results: JsonArray = []
@@ -653,10 +643,6 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
     return getDefaultMockDataForResource(resource)
   }
 
-  private createBatches(items: JsonArray): JsonArray {
-    return createItemBatches(items, this.state.ItemBatcher)
-  }
-
   private shouldFailExecution(failedCount: number, totalCount: number, input: JsonValue): boolean {
     // Pick tolerance properties from this.state
     const toleranceProps: Pick<DistributedMapState, keyof ToleranceConfig> = {
@@ -669,7 +655,7 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
     // Filter out undefined values
     const config = Object.fromEntries(
       Object.entries(toleranceProps).filter(([_, value]) => value !== undefined),
-    ) as ToleranceConfig
+    )
 
     return shouldFailExecution(failedCount, totalCount, input, config)
   }
@@ -842,4 +828,158 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
 
     return parameters
   }
+}
+
+// ========= Helper Functions (moved from map-helpers.ts) =========
+
+/**
+ * Calculate if execution should fail based on tolerance settings
+ */
+function shouldFailExecution(
+  failedCount: number,
+  totalCount: number,
+  input: JsonValue,
+  toleranceConfig: ToleranceConfig,
+): boolean {
+  if (
+    'ToleratedFailureCount' in toleranceConfig &&
+    toleranceConfig.ToleratedFailureCount !== undefined
+  ) {
+    return failedCount > (toleranceConfig.ToleratedFailureCount || 0)
+  }
+
+  if ('ToleratedFailureCountPath' in toleranceConfig) {
+    const path = toleranceConfig.ToleratedFailureCountPath
+    if (!path) return failedCount > 0
+    const toleratedCount = JSONPathUtils.evaluateFirst(path, input, 0)
+    const numericToleratedCount =
+      typeof toleratedCount === 'number' ? toleratedCount : Number(toleratedCount) || 0
+    return failedCount > numericToleratedCount
+  }
+
+  if (
+    'ToleratedFailurePercentage' in toleranceConfig &&
+    toleranceConfig.ToleratedFailurePercentage !== undefined
+  ) {
+    const percentage = toleranceConfig.ToleratedFailurePercentage
+    const failedPercentage = (failedCount / totalCount) * 100
+    // Fail only if the failure percentage exceeds (not equals) the tolerance
+    return failedPercentage > percentage
+  }
+
+  if ('ToleratedFailurePercentagePath' in toleranceConfig) {
+    const path = toleranceConfig.ToleratedFailurePercentagePath
+    if (!path) return failedCount > 0
+    const toleratedPercentage = JSONPathUtils.evaluateFirst(path, input, 0)
+    const numericToleratedPercentage =
+      typeof toleratedPercentage === 'number'
+        ? toleratedPercentage
+        : Number(toleratedPercentage) || 0
+    const failedPercentage = (failedCount / totalCount) * 100
+    return failedPercentage > numericToleratedPercentage
+  }
+
+  // Default: fail on any error
+  return failedCount > 0
+}
+
+/**
+ * Create batches from items array based on ItemBatcher configuration
+ */
+function createItemBatches(items: JsonArray, batcherConfig?: ItemBatcher): JsonArray {
+  if (!batcherConfig) {
+    return items
+  }
+
+  const batches: JsonArray = []
+  const maxItemsPerBatch = batcherConfig.MaxItemsPerBatch || 1
+  const maxInputBytesPerBatch = batcherConfig.MaxInputBytesPerBatch
+  const batchInput = batcherConfig.BatchInput || {}
+
+  let currentBatch: JsonArray = []
+  let currentBatchSize = 0
+
+  for (const item of items) {
+    const itemSize = maxInputBytesPerBatch ? JSON.stringify(item).length : 0
+
+    const shouldStartNewBatch =
+      currentBatch.length >= maxItemsPerBatch ||
+      (maxInputBytesPerBatch && currentBatchSize + itemSize > maxInputBytesPerBatch)
+
+    if (shouldStartNewBatch && currentBatch.length > 0) {
+      const batchObject = {
+        ...batchInput,
+        Items: currentBatch,
+      }
+      batches.push(batchObject)
+      currentBatch = []
+      currentBatchSize = 0
+    }
+
+    currentBatch.push(item)
+    currentBatchSize += itemSize
+  }
+
+  if (currentBatch.length > 0) {
+    const batchObject = {
+      ...batchInput,
+      Items: currentBatch,
+    }
+    batches.push(batchObject)
+  }
+
+  return batches
+}
+
+/**
+ * Process special Map context selectors ($$, $$.Map.Item.Value, etc.)
+ */
+function processMapContextSelector(
+  selector: string,
+  item: JsonValue,
+  context: JsonObject,
+): JsonValue | null {
+  if (selector === '$$') {
+    return context
+  }
+  if (selector === '$$.Map.Item.Value') {
+    return item
+  }
+  if (selector === '$$.Map.Item.Index') {
+    if (!context.Map || typeof context.Map !== 'object' || Array.isArray(context.Map)) {
+      return null
+    }
+    const mapContext = context.Map
+    if (!mapContext.Item || typeof mapContext.Item !== 'object' || Array.isArray(mapContext.Item)) {
+      return null
+    }
+    const itemContext = mapContext.Item
+    return itemContext.Index ?? null
+  }
+  if (selector.startsWith('$$.')) {
+    return JSONPathUtils.evaluateWithContext(selector, item, context)
+  }
+  return null // Not a special Map context selector
+}
+
+/**
+ * Get default mock data for different data source types
+ */
+function getDefaultMockDataForResource(resource: string): JsonArray {
+  if (resource.includes('s3:listObjectsV2')) {
+    return [
+      { Key: 'mock-object-1.json', Size: 1024, LastModified: new Date().toISOString() },
+      { Key: 'mock-object-2.json', Size: 2048, LastModified: new Date().toISOString() },
+    ]
+  }
+
+  if (resource.includes('dynamodb:scan') || resource.includes('dynamodb:query')) {
+    return [
+      { id: 'item-1', data: 'mock-data-1' },
+      { id: 'item-2', data: 'mock-data-2' },
+    ]
+  }
+
+  // Return empty array for unknown data sources
+  return []
 }

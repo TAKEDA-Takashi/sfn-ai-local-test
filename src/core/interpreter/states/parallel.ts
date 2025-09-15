@@ -23,6 +23,7 @@ export class ParallelStateExecutor extends BaseStateExecutor<ParallelState> {
     const currentStateName = context.currentState
     const branchPaths: string[][] = new Array(this.state.Branches.length)
 
+    // Branches are already converted StateMachines with State instances
     const branchPromises = this.state.Branches.map(async (branch, branchIndex) => {
       const branchResult = await this.executeBranch(
         branch,

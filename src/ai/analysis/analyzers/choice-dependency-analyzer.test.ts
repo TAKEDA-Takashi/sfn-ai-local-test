@@ -208,11 +208,11 @@ describe('ChoiceDependencyAnalyzer', () => {
             Type: 'Choice',
             Choices: [
               {
-                Condition: '$notify = true',
+                Condition: '{% $notify = true %}',
                 Next: 'SendNotification',
               },
               {
-                Condition: '$count > 10',
+                Condition: '{% $count > 10 %}',
                 Next: 'ProcessBatch',
               },
             ],
@@ -239,14 +239,14 @@ describe('ChoiceDependencyAnalyzer', () => {
 
       const notifyBranch = branches.find((b) => b.condition.includes('$notify = true'))
       expect(notifyBranch).toMatchObject({
-        condition: 'JSONata: $notify = true',
+        condition: 'JSONata: {% $notify = true %}',
         nextState: 'SendNotification',
         requiredInput: { notify: true },
       })
 
       const countBranch = branches.find((b) => b.condition.includes('$count > 10'))
       expect(countBranch).toMatchObject({
-        condition: 'JSONata: $count > 10',
+        condition: 'JSONata: {% $count > 10 %}',
         nextState: 'ProcessBatch',
         requiredInput: { count: 10 },
       })
@@ -261,11 +261,11 @@ describe('ChoiceDependencyAnalyzer', () => {
             Type: 'Choice',
             Choices: [
               {
-                Condition: '$states.input.userId != null',
+                Condition: '{% $states.input.userId != null %}',
                 Next: 'ProcessUser',
               },
               {
-                Condition: '$states.input.items.length > 0',
+                Condition: '{% $states.input.items.length > 0 %}',
                 Next: 'ProcessItems',
               },
             ],

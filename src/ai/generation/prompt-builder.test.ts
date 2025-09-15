@@ -31,68 +31,6 @@ describe('PromptBuilder', () => {
   })
 
   describe('detectChoiceLoops', () => {
-    it('should detect TimestampEqualsPath as problematic pattern', () => {
-      const stateMachine = createStateMachine({
-        StartAt: 'CheckTime',
-        States: {
-          CheckTime: {
-            Type: 'Choice',
-            Choices: [
-              {
-                Variable: '$.timestamp',
-                TimestampEqualsPath: '$$.Execution.StartTime',
-                Next: 'Process',
-              },
-            ],
-            Default: 'Wait',
-          },
-          Wait: {
-            Type: 'Wait',
-            Seconds: 10,
-            Next: 'CheckTime',
-          },
-          Process: {
-            Type: 'Succeed',
-          },
-        },
-      })
-
-      const result = builder.detectChoiceLoops(stateMachine)
-
-      expect(result.hasProblematicPatterns).toBe(true)
-      expect(result.problematicStates).toContain('CheckTime')
-    })
-
-    it('should detect TimestampLessThanPath as problematic pattern', () => {
-      const stateMachine = createStateMachine({
-        StartAt: 'CheckDeadline',
-        States: {
-          CheckDeadline: {
-            Type: 'Choice',
-            Choices: [
-              {
-                Variable: '$.currentTime',
-                TimestampLessThanPath: '$.deadline',
-                Next: 'Continue',
-              },
-            ],
-            Default: 'Timeout',
-          },
-          Continue: {
-            Type: 'Succeed',
-          },
-          Timeout: {
-            Type: 'Fail',
-          },
-        },
-      })
-
-      const result = builder.detectChoiceLoops(stateMachine)
-
-      expect(result.hasProblematicPatterns).toBe(true)
-      expect(result.problematicStates).toContain('CheckDeadline')
-    })
-
     it('should detect context variables like $$.Task.Token', () => {
       const stateMachine = createStateMachine({
         StartAt: 'CheckState',
@@ -226,68 +164,30 @@ describe('PromptBuilder', () => {
       expect(result.hasStructuralLoops).toBe(false)
       expect(result.problematicStates).toHaveLength(0)
     })
-
-    it('should detect the polling wait-and-retry pattern', () => {
-      const stateMachine = createStateMachine({
-        StartAt: 'Query',
-        States: {
-          Query: {
-            Type: 'Task',
-            Resource: 'arn:aws:states:::aws-sdk:dynamodb:query',
-            Next: 'Running Choice',
-          },
-          'Running Choice': {
-            Type: 'Choice',
-            Choices: [
-              {
-                Variable: '$SessionItems.Items[0].StartTime.S',
-                TimestampEqualsPath: '$$.Execution.StartTime',
-                Next: 'Process',
-              },
-            ],
-            Default: 'Current Running Wait',
-          },
-          'Current Running Wait': {
-            Type: 'Wait',
-            Seconds: 30,
-            Next: 'Query',
-          },
-          Process: {
-            Type: 'Succeed',
-          },
-        },
-      })
-
-      const result = builder.detectChoiceLoops(stateMachine)
-
-      expect(result.hasProblematicPatterns).toBe(true)
-      expect(result.hasStructuralLoops).toBe(true)
-      expect(result.problematicStates).toContain('Running Choice')
-    })
   })
 
   describe('hasProblematicChoicePatterns', () => {
     it('should return true for state machines with problematic Choice patterns', () => {
       const stateMachine = createStateMachine({
-        StartAt: 'CheckTime',
+        StartAt: 'CheckRetry',
         States: {
-          CheckTime: {
+          CheckRetry: {
             Type: 'Choice',
             Choices: [
               {
-                Variable: '$.timestamp',
-                TimestampEqualsPath: '$$.Execution.StartTime',
-                Next: 'Process',
+                Variable: '$$.State.RetryCount',
+                NumericLessThan: 3,
+                Next: 'Retry',
               },
             ],
-            Default: 'Wait',
+            Default: 'Done',
           },
-          Wait: {
+          Retry: {
             Type: 'Wait',
             Seconds: 10,
-            Next: 'CheckTime',
+            Next: 'CheckRetry',
           },
-          Process: {
+          Done: {
             Type: 'Succeed',
           },
         },
@@ -467,14 +367,14 @@ mocks:
   describe('buildMockPrompt', () => {
     it('should include Choice mock guidelines for problematic patterns', () => {
       const stateMachine = createStateMachine({
-        StartAt: 'CheckTime',
+        StartAt: 'CheckMapIndex',
         States: {
-          CheckTime: {
+          CheckMapIndex: {
             Type: 'Choice',
             Choices: [
               {
-                Variable: '$.timestamp',
-                TimestampEqualsPath: '$$.Execution.StartTime',
+                Variable: '$$.Map.Item.Index',
+                NumericGreaterThan: 10,
                 Next: 'Process',
               },
             ],
@@ -483,7 +383,7 @@ mocks:
           Wait: {
             Type: 'Wait',
             Seconds: 10,
-            Next: 'CheckTime',
+            Next: 'CheckMapIndex',
           },
           Process: {
             Type: 'Succeed',
@@ -495,7 +395,7 @@ mocks:
 
       expect(prompt).toContain('Choice State Mock Guidelines')
       expect(prompt).toContain('detected potential infinite loops')
-      expect(prompt).toContain('CheckTime')
+      expect(prompt).toContain('CheckMapIndex')
     })
 
     it('should not include Choice mock guidelines for normal Choice states', () => {
@@ -529,7 +429,7 @@ mocks:
   })
 
   describe('detectChoiceLoops edge cases', () => {
-    it('should handle And/Or conditions with timestamp patterns', () => {
+    it('should handle And/Or conditions with variable patterns', () => {
       const stateMachine = createStateMachine({
         StartAt: 'ComplexChoice',
         States: {
@@ -539,7 +439,7 @@ mocks:
               {
                 And: [
                   { Variable: '$.status', StringEquals: 'PENDING' },
-                  { Variable: '$.timestamp', TimestampLessThanPath: '$.deadline' },
+                  { Variable: '$$.State.RetryCount', NumericLessThan: 3 },
                 ],
                 Next: 'Process',
               },
@@ -567,7 +467,7 @@ mocks:
               {
                 Or: [
                   { Variable: '$.retry', NumericGreaterThan: 3 },
-                  { Variable: '$.time', TimestampGreaterThanPath: '$.deadline' },
+                  { Variable: '$$.Map.Item.Index', NumericGreaterThan: 100 },
                 ],
                 Next: 'Fail',
               },

@@ -197,65 +197,8 @@ export interface JSONataStateMachine extends StateMachineBase {
 export type StateMachine = JSONPathStateMachine | JSONataStateMachine
 
 // =============================================================================
-// Choice State Rules
+// Choice State Rules (moved to choice-rule.ts and re-exported below)
 // =============================================================================
-
-/** JSONPath用ChoiceRule */
-export interface JSONPathChoiceRule {
-  Variable?: string
-  StringEquals?: string
-  StringLessThan?: string
-  StringGreaterThan?: string
-  StringLessThanEquals?: string
-  StringGreaterThanEquals?: string
-  StringMatches?: string
-  NumericEquals?: number
-  NumericLessThan?: number
-  NumericGreaterThan?: number
-  NumericLessThanEquals?: number
-  NumericGreaterThanEquals?: number
-  BooleanEquals?: boolean
-  TimestampEquals?: string
-  TimestampLessThan?: string
-  TimestampGreaterThan?: string
-  TimestampLessThanEquals?: string
-  TimestampGreaterThanEquals?: string
-  IsNull?: boolean
-  IsPresent?: boolean
-  IsNumeric?: boolean
-  IsString?: boolean
-  IsBoolean?: boolean
-  IsTimestamp?: boolean
-  StringEqualsPath?: string
-  StringLessThanPath?: string
-  StringGreaterThanPath?: string
-  StringLessThanEqualsPath?: string
-  StringGreaterThanEqualsPath?: string
-  NumericEqualsPath?: string
-  BooleanEqualsPath?: string
-  TimestampEqualsPath?: string
-  TimestampLessThanPath?: string
-  TimestampGreaterThanPath?: string
-  TimestampLessThanEqualsPath?: string
-  TimestampGreaterThanEqualsPath?: string
-  NumericLessThanPath?: string
-  NumericGreaterThanPath?: string
-  NumericLessThanEqualsPath?: string
-  NumericGreaterThanEqualsPath?: string
-  And?: JSONPathChoiceRule[]
-  Or?: JSONPathChoiceRule[]
-  Not?: JSONPathChoiceRule
-  Next?: string
-}
-
-/** JSONata用ChoiceRule */
-export interface JSONataChoiceRule {
-  Condition?: string
-  Next?: string
-}
-
-/** ChoiceRule統合型 */
-export type ChoiceRule = JSONPathChoiceRule | JSONataChoiceRule
 
 // =============================================================================
 // Map State Components
@@ -426,6 +369,12 @@ export interface ExecutionContext {
 // Re-exports from other modules
 // =============================================================================
 
+// ChoiceRule関連の型をre-export
+export type { ChoiceRule } from './choice-rule.js'
+export {
+  JSONataChoiceRule,
+  JSONPathChoiceRule,
+} from './choice-rule.js'
 // 具体的なStateクラス実装をre-export（外部API用）
 export {
   JSONataChoiceState,
@@ -449,7 +398,6 @@ export {
   JSONPathTaskState,
   JSONPathWaitState,
 } from './state-classes.js'
-
 export { StateFactory } from './state-factory.js'
 
 // 内部使用：union型構築のためのインポート

@@ -20,8 +20,6 @@ import type {
   ItemBatcher,
   ItemProcessor,
   ItemReader,
-  JSONataChoiceRule,
-  JSONPathChoiceRule,
   JsonObject,
   JsonValue,
   MapState,
@@ -31,10 +29,12 @@ import type {
   RetryRule,
   StateMachine,
   SucceedState,
-  // ユニオン型もインポート
   TaskState,
   WaitState,
 } from './asl.js'
+import { JSONataChoiceRule, JSONPathChoiceRule } from './asl.js'
+import { StateFactory } from './state-factory.js'
+import { isJsonArray, isJsonObject, isString } from './type-guards.js'
 
 const EMPTY_SET: ReadonlySet<string> = Object.freeze(new Set<string>())
 
@@ -88,10 +88,7 @@ export abstract class State implements IState {
     const typeName = this.getStateTypeName()
     const fieldList = fields.join(', ')
 
-    // Check if QueryLanguage is JSONata from config (before it's applied to this)
     const isJSONataMode = config.QueryLanguage === 'JSONata'
-
-    // Provide specific error messages for common cases
     if (fields.length === 1) {
       const field = fields[0]
 
@@ -103,9 +100,7 @@ export abstract class State implements IState {
         throw new Error('Pass state does not support Arguments field')
       }
 
-      // JSONata mode specific field validation
       if (isJSONataMode) {
-        // Generic JSONata field mapping
         const jsonataFieldMap: Record<string, string> = {
           Parameters: 'Arguments',
           InputPath: 'Assign',
@@ -120,7 +115,6 @@ export abstract class State implements IState {
           )
         }
 
-        // XxxPath -> Xxx field mappings
         if (field.endsWith('Path')) {
           const baseField = field.replace('Path', '')
           const pathToBaseFields = ['Output', 'Items', 'Seconds', 'Timestamp']
@@ -231,7 +225,12 @@ export class JSONPathTaskState extends JSONPathStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONPathTaskState> & { Resource: string }) {
+  constructor(config: JsonObject) {
+    // Validate Resource field at runtime
+    if (typeof config.Resource !== 'string') {
+      throw new Error('Task state requires Resource field')
+    }
+
     const { Resource, ...rest } = config
     super(rest)
     this.Resource = Resource
@@ -254,7 +253,12 @@ export class JSONataTaskState extends JSONataStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONataTaskState> & { Resource: string }) {
+  constructor(config: JsonObject) {
+    // Validate Resource field at runtime
+    if (typeof config.Resource !== 'string') {
+      throw new Error('Task state requires Resource field')
+    }
+
     const { Resource, ...rest } = config
     super(rest)
     this.Resource = Resource
@@ -279,17 +283,9 @@ export class JSONPathParallelState extends JSONPathStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONPathParallelState> & { Branches: StateMachine[] }) {
-    const { Branches, ...rest } = config
-    super(rest)
-    this.validateBranches(Branches)
-    this.Branches = Branches
-  }
-
-  private validateBranches(branches: StateMachine[]): void {
-    if (!Array.isArray(branches) || branches.length === 0) {
-      throw new Error('Parallel state requires non-empty Branches array')
-    }
+  constructor(config: JsonObject) {
+    super(config)
+    this.Branches = createBranches(config)
   }
 }
 
@@ -305,17 +301,9 @@ export class JSONataParallelState extends JSONataStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONataParallelState> & { Branches: StateMachine[] }) {
-    const { Branches, ...rest } = config
-    super(rest)
-    this.validateBranches(Branches)
-    this.Branches = Branches
-  }
-
-  private validateBranches(branches: StateMachine[]): void {
-    if (!Array.isArray(branches) || branches.length === 0) {
-      throw new Error('Parallel state requires non-empty Branches array')
-    }
+  constructor(config: JsonObject) {
+    super(config)
+    this.Branches = createBranches(config)
   }
 }
 
@@ -329,10 +317,6 @@ export class JSONPathPassState extends JSONPathStateBase {
   }
   override isPass(): this is PassState {
     return true
-  }
-
-  constructor(config: Partial<JSONPathPassState> = {}) {
-    super(config)
   }
 }
 
@@ -351,10 +335,6 @@ export class JSONataPassState extends JSONataStateBase {
   }
   override isPass(): this is PassState {
     return true
-  }
-
-  constructor(config: Partial<JSONataPassState> = {}) {
-    super(config)
   }
 }
 
@@ -384,17 +364,21 @@ export class JSONPathChoiceState extends JSONPathStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONPathChoiceState> & { Choices: JSONPathChoiceRule[] }) {
-    const { Choices, ...rest } = config
-    super(rest)
-    this.validateChoices(Choices)
-    this.Choices = Choices
-  }
-
-  private validateChoices(choices: JSONPathChoiceRule[]): void {
-    if (!Array.isArray(choices) || choices.length === 0) {
+  constructor(config: JsonObject) {
+    // Validate Choices field at runtime
+    if (!isJsonArray(config.Choices)) {
+      throw new Error('Choice state requires Choices array')
+    }
+    if (config.Choices.length === 0) {
       throw new Error('Choice state requires non-empty Choices array')
     }
+
+    const { Choices: choicesData, ...rest } = config
+    super(rest)
+
+    this.Choices = choicesData.map((choice) => {
+      return JSONPathChoiceRule.fromJsonValue(choice)
+    })
   }
 }
 
@@ -424,18 +408,88 @@ export class JSONataChoiceState extends JSONataStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONataChoiceState> & { Choices: JSONataChoiceRule[] }) {
-    const { Choices, ...rest } = config
-    super(rest)
-    this.validateChoices(Choices)
-    this.Choices = Choices
-  }
-
-  private validateChoices(choices: JSONataChoiceRule[]): void {
-    if (!Array.isArray(choices) || choices.length === 0) {
+  constructor(config: JsonObject) {
+    // Validate Choices field at runtime
+    if (!isJsonArray(config.Choices)) {
+      throw new Error('Choice state requires Choices array')
+    }
+    if (config.Choices.length === 0) {
       throw new Error('Choice state requires non-empty Choices array')
     }
+
+    const { Choices: choicesData, ...rest } = config
+    super(rest)
+
+    this.Choices = choicesData.map((choice) => {
+      return JSONataChoiceRule.fromJsonValue(choice)
+    })
   }
+}
+
+// Map stateの共通処理を抽出したヘルパー関数
+function createItemProcessor(config: JsonObject): ItemProcessor {
+  const processorData = config.ItemProcessor || config.Iterator
+  if (!isJsonObject(processorData)) {
+    throw new Error('Map state requires ItemProcessor or Iterator field')
+  }
+
+  if (!isString(processorData.StartAt)) {
+    throw new Error('ItemProcessor/Iterator requires StartAt field')
+  }
+
+  const itemProcessor: ItemProcessor = {
+    ...processorData,
+    StartAt: processorData.StartAt,
+    States: {},
+  }
+
+  // StatesフィールドをStateクラスインスタンスに変換
+  if (isJsonObject(processorData.States)) {
+    itemProcessor.States = StateFactory.createStates(
+      processorData.States,
+      config.QueryLanguage as 'JSONPath' | 'JSONata' | undefined,
+    )
+  }
+
+  return itemProcessor
+}
+
+// ParallelステートのBranches配列をStateMachine配列に変換
+function createBranches(config: JsonObject): StateMachine[] {
+  const branchesData = config.Branches
+  if (!isJsonArray(branchesData)) {
+    throw new Error('Parallel state requires Branches array')
+  }
+  if (branchesData.length === 0) {
+    throw new Error('Parallel state requires non-empty Branches array')
+  }
+
+  return branchesData.map((branch) => {
+    if (!isJsonObject(branch)) {
+      throw new Error('Each branch must be an object')
+    }
+    if (!isString(branch.StartAt)) {
+      throw new Error('Branch must have a StartAt field')
+    }
+    if (!isJsonObject(branch.States)) {
+      throw new Error('Branch must have a States field')
+    }
+
+    // ブランチのQueryLanguageを決定（親から継承または独自指定）
+    const branchQueryLanguage = branch.QueryLanguage || config.QueryLanguage
+
+    // ブランチのStatesをStateインスタンスに変換
+    const branchStateMachine: StateMachine = {
+      ...branch,
+      StartAt: branch.StartAt,
+      States: StateFactory.createStates(
+        branch.States,
+        branchQueryLanguage as 'JSONPath' | 'JSONata',
+      ),
+    }
+
+    return branchStateMachine
+  })
 }
 
 export class JSONPathInlineMapState extends JSONPathStateBase {
@@ -457,10 +511,10 @@ export class JSONPathInlineMapState extends JSONPathStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONPathInlineMapState> & { ItemProcessor: ItemProcessor }) {
-    const { ItemProcessor, ...rest } = config
+  constructor(config: JsonObject) {
+    const { ItemProcessor: _, Iterator: __, ...rest } = config
     super(rest)
-    this.ItemProcessor = ItemProcessor
+    this.ItemProcessor = createItemProcessor(config)
   }
 }
 
@@ -483,10 +537,10 @@ export class JSONataInlineMapState extends JSONataStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONataInlineMapState> & { ItemProcessor: ItemProcessor }) {
-    const { ItemProcessor, ...rest } = config
+  constructor(config: JsonObject) {
+    const { ItemProcessor: _, Iterator: __, ...rest } = config
     super(rest)
-    this.ItemProcessor = ItemProcessor
+    this.ItemProcessor = createItemProcessor(config)
   }
 }
 
@@ -517,10 +571,10 @@ export class JSONPathDistributedMapState extends JSONPathStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONPathDistributedMapState> & { ItemProcessor: ItemProcessor }) {
-    const { ItemProcessor, ...rest } = config
+  constructor(config: JsonObject) {
+    const { ItemProcessor: _, Iterator: __, ...rest } = config
     super(rest)
-    this.ItemProcessor = ItemProcessor
+    this.ItemProcessor = createItemProcessor(config)
   }
 }
 
@@ -552,10 +606,10 @@ export class JSONataDistributedMapState extends JSONataStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONataDistributedMapState> & { ItemProcessor: ItemProcessor }) {
-    const { ItemProcessor, ...rest } = config
+  constructor(config: JsonObject) {
+    const { ItemProcessor: _, Iterator: __, ...rest } = config
     super(rest)
-    this.ItemProcessor = ItemProcessor
+    this.ItemProcessor = createItemProcessor(config)
   }
 }
 
@@ -574,7 +628,7 @@ export class JSONPathWaitState extends JSONPathStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONPathWaitState> = {}) {
+  constructor(config: JsonObject) {
     super(config)
     this.validateWaitConfiguration()
   }
@@ -616,7 +670,7 @@ export class JSONataWaitState extends JSONataStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONataWaitState> = {}) {
+  constructor(config: JsonObject) {
     super(config)
     this.validateWaitConfiguration()
   }
@@ -654,10 +708,6 @@ export class JSONPathSucceedState extends JSONPathStateBase {
   override isSucceed(): this is SucceedState {
     return true
   }
-
-  constructor(config: Partial<JSONPathSucceedState> = {}) {
-    super(config)
-  }
 }
 
 // JSONata版の終端ステート用
@@ -685,10 +735,6 @@ export class JSONataSucceedState extends JSONataStateBase {
   override isSucceed(): this is SucceedState {
     return true
   }
-
-  constructor(config: Partial<JSONataSucceedState> = {}) {
-    super(config)
-  }
 }
 
 export class JSONPathFailState extends JSONPathStateBase {
@@ -706,7 +752,7 @@ export class JSONPathFailState extends JSONPathStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONPathFailState> = {}) {
+  constructor(config: JsonObject) {
     super(config)
     this.validateErrorFields()
   }
@@ -754,7 +800,7 @@ export class JSONataFailState extends JSONataStateBase {
     return true
   }
 
-  constructor(config: Partial<JSONataFailState> = {}) {
+  constructor(config: JsonObject) {
     super(config)
     this.validateErrorFields()
   }

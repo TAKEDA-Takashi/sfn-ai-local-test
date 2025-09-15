@@ -9,21 +9,7 @@
  * - Output: State class instance with runtime behavior
  */
 
-// Type unions are imported from state-classes.js via re-export
-
-import {
-  isJSONataChoiceRule,
-  isJSONPathChoiceRule,
-} from '../core/interpreter/utils/choice-guards.js'
-import type {
-  ItemProcessor,
-  JSONataChoiceRule,
-  JSONPathChoiceRule,
-  JsonArray,
-  JsonObject,
-  JsonValue,
-  StateMachine,
-} from './asl.js'
+import type { JsonObject, StateMachine } from './asl.js'
 import {
   JSONataChoiceState,
   JSONataDistributedMapState,
@@ -45,446 +31,99 @@ import {
   JSONPathWaitState,
   type State,
 } from './state-classes.js'
-import { isJsonObject } from './type-guards.js'
+import { isJsonObject, isString } from './type-guards.js'
 
-export function isString(value: unknown): value is string {
-  return typeof value === 'string'
-}
+// Type for State constructors
+type StateConstructor = new (config: JsonObject) => State
 
-export function isArray(value: unknown): value is JsonArray {
-  return Array.isArray(value)
+// QueryLanguageのバリデーションと正規化
+// AWS Step FunctionsはJSONPathがデフォルト、JSONataはオプショナル
+function getValidQueryLanguage(value: unknown): 'JSONPath' | 'JSONata' {
+  if (value === undefined) {
+    return 'JSONPath'
+  }
+  if (value === 'JSONPath' || value === 'JSONata') {
+    return value
+  }
+  throw new Error(
+    `Invalid QueryLanguage: ${JSON.stringify(value)}. Must be 'JSONPath' or 'JSONata'`,
+  )
 }
 
 /**
- * Type guard for JSONata choices array
+ * Get State class based on state type, query language, and optional processor mode
  */
-function isJSONataChoicesArray(choices: unknown): choices is JSONataChoiceRule[] {
-  if (!Array.isArray(choices)) return false
-  return choices.every((choice) => {
-    if (!choice || typeof choice !== 'object') return false
-    return isJSONataChoiceRule(choice)
-  })
-}
+function getStateClass(
+  stateType: string,
+  queryLanguage: 'JSONPath' | 'JSONata',
+  config?: JsonObject,
+): StateConstructor {
+  // Mapステートは ProcessorMode によって4つのクラスに分岐
+  if (stateType === 'Map') {
+    let processorMode: 'DISTRIBUTED' | 'INLINE' = 'INLINE'
+    if (config) {
+      const processorData = config.ItemProcessor || config.Iterator
+      if (
+        isJsonObject(processorData) &&
+        isJsonObject(processorData.ProcessorConfig) &&
+        processorData.ProcessorConfig.Mode === 'DISTRIBUTED'
+      ) {
+        processorMode = 'DISTRIBUTED'
+      }
+    }
 
-/**
- * Type guard for JSONPath choices array
- */
-function isJSONPathChoicesArray(choices: unknown): choices is JSONPathChoiceRule[] {
-  if (!Array.isArray(choices)) return false
-  return choices.every((choice) => {
-    if (!choice || typeof choice !== 'object') return false
-    return isJSONPathChoiceRule(choice)
-  })
-}
+    if (processorMode === 'DISTRIBUTED') {
+      return queryLanguage === 'JSONata' ? JSONataDistributedMapState : JSONPathDistributedMapState
+    } else {
+      return queryLanguage === 'JSONata' ? JSONataInlineMapState : JSONPathInlineMapState
+    }
+  }
 
-// Type guard for valid QueryLanguage value
-export function isValidQueryLanguage(value: unknown): value is 'JSONPath' | 'JSONata' {
-  return value === 'JSONPath' || value === 'JSONata'
-}
+  // その他のステートは QueryLanguage のみで決定
+  const stateClasses: Record<string, { JSONPath: StateConstructor; JSONata: StateConstructor }> = {
+    Parallel: { JSONPath: JSONPathParallelState, JSONata: JSONataParallelState },
+    Choice: { JSONPath: JSONPathChoiceState, JSONata: JSONataChoiceState },
+    Task: { JSONPath: JSONPathTaskState, JSONata: JSONataTaskState },
+    Pass: { JSONPath: JSONPathPassState, JSONata: JSONataPassState },
+    Wait: { JSONPath: JSONPathWaitState, JSONata: JSONataWaitState },
+    Succeed: { JSONPath: JSONPathSucceedState, JSONata: JSONataSucceedState },
+    Fail: { JSONPath: JSONPathFailState, JSONata: JSONataFailState },
+  }
 
-// Type guard for ItemProcessor-like structure
-export function hasItemProcessor(
-  value: JsonObject,
-): value is JsonObject & { ItemProcessor: JsonValue } {
-  return 'ItemProcessor' in value
-}
+  const classes = stateClasses[stateType]
+  if (!classes) {
+    throw new Error(`Unknown state type: ${stateType}`)
+  }
 
-// Type guard to validate ItemProcessor interface
-export function isItemProcessor(value: unknown): value is ItemProcessor {
-  if (!isJsonObject(value)) return false
-  if (!isString(value.StartAt)) return false
-  if (!isJsonObject(value.States)) return false
-  return true
-}
-
-// Type guard for States property
-export function hasStates(value: JsonObject): value is JsonObject & { States: JsonObject } {
-  return 'States' in value && isJsonObject(value.States)
-}
-
-// Type guard for Branch structure
-export function isBranch(value: unknown): value is { States: JsonObject } & JsonObject {
-  return isJsonObject(value) && hasStates(value)
+  return classes[queryLanguage]
 }
 
 export class StateFactory {
   /**
-   * Create a complete StateMachine with all states converted to class instances
-   *
-   * @param stateMachineDefinition - Complete ASL StateMachine definition
-   * @returns StateMachine with all states as class instances
-   */
-  static createStateMachine(stateMachineDefinition: JsonObject): StateMachine {
-    // Ensure we have required fields
-    if (!('States' in stateMachineDefinition && isJsonObject(stateMachineDefinition.States))) {
-      throw new Error('StateMachine must have a States field')
-    }
-
-    if (
-      !('StartAt' in stateMachineDefinition) ||
-      typeof stateMachineDefinition.StartAt !== 'string'
-    ) {
-      throw new Error('StateMachine must have a StartAt field')
-    }
-
-    // Determine the StateMachine's QueryLanguage
-    const queryLanguage =
-      stateMachineDefinition.QueryLanguage === 'JSONata' ? 'JSONata' : 'JSONPath'
-
-    // Convert all states recursively
-    const states = StateFactory.createStates(stateMachineDefinition.States, queryLanguage)
-
-    // Return complete StateMachine with converted states
-    // Preserve QueryLanguage only if it was explicitly provided
-    if (
-      'QueryLanguage' in stateMachineDefinition &&
-      isValidQueryLanguage(stateMachineDefinition.QueryLanguage)
-    ) {
-      const result: StateMachine = {
-        ...stateMachineDefinition,
-        StartAt: stateMachineDefinition.StartAt,
-        States: states,
-        QueryLanguage: stateMachineDefinition.QueryLanguage,
-      }
-      return result
-    }
-
-    // Don't add QueryLanguage if it wasn't in the original
-    const result: StateMachine = {
-      ...stateMachineDefinition,
-      StartAt: stateMachineDefinition.StartAt,
-      States: states,
-    }
-    return result
-  }
-
-  /**
-   * Create a State class instance from ASL type definition
-   *
-   * @param aslState - ASL State interface from JSON/YAML or raw data
-   * @param stateMachineQueryLanguage - QueryLanguage from the StateMachine level (for nested states)
-   * @returns State class instance with runtime behavior
+   * Create a single State instance from ASL definition
    */
   static createState(
     aslState: JsonObject,
     stateMachineQueryLanguage?: 'JSONPath' | 'JSONata',
   ): State {
-    // Ensure we have the required Type field
+    // ASL仕様: すべてのStateはTypeフィールドが必須
     if (!isString(aslState.Type)) {
       throw new Error('State must have a Type field')
     }
 
-    // Extract and validate QueryLanguage
-    // Priority: State's own QueryLanguage > StateMachine's QueryLanguage > JSONPath default
-    const queryLanguageValue = aslState.QueryLanguage
-    const queryLanguage: 'JSONPath' | 'JSONata' = isValidQueryLanguage(queryLanguageValue)
-      ? queryLanguageValue
-      : stateMachineQueryLanguage || 'JSONPath'
+    // QueryLanguageの優先順位: State定義 > StateMachine定義 > デフォルト
+    const queryLanguage =
+      aslState.QueryLanguage !== undefined
+        ? getValidQueryLanguage(aslState.QueryLanguage)
+        : stateMachineQueryLanguage || 'JSONPath'
 
-    switch (aslState.Type) {
-      case 'Task': {
-        if (!isString(aslState.Resource)) {
-          throw new Error('Task state requires Resource field')
-        }
-        // Include QueryLanguage in config for validation
-        if (queryLanguage === 'JSONata') {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONata' as const,
-            Resource: aslState.Resource,
-          }
-          return new JSONataTaskState(config)
-        } else {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONPath' as const,
-            Resource: aslState.Resource,
-          }
-          return new JSONPathTaskState(config)
-        }
-      }
-
-      case 'Choice': {
-        if (!isArray(aslState.Choices)) {
-          throw new Error('Choice state requires Choices field')
-        }
-
-        // Validate Choice rules based on query language
-        if (queryLanguage === 'JSONata') {
-          for (const choice of aslState.Choices) {
-            // Type guard check - ensure it's an object before checking rule type
-            // Check if choice is an object and has JSONPath-specific fields
-            if (
-              choice &&
-              typeof choice === 'object' &&
-              ('Variable' in choice || 'And' in choice || 'Or' in choice || 'Not' in choice)
-            ) {
-              throw new Error(
-                "Variable field is not supported in JSONata mode. Use 'Condition' field instead",
-              )
-            }
-          }
-        }
-
-        // Remove QueryLanguage from config as it's handled internally
-        const { QueryLanguage: _, ...stateWithoutQL } = aslState
-        const config = {
-          ...stateWithoutQL,
-          Choices: aslState.Choices,
-        }
-        // Use type guards to validate and narrow Choices type
-        if (queryLanguage === 'JSONata') {
-          if (!isJSONataChoicesArray(config.Choices)) {
-            throw new Error(`Invalid JSONata Choices array`)
-          }
-          return new JSONataChoiceState({
-            ...config,
-            Choices: config.Choices,
-          })
-        } else {
-          if (!isJSONPathChoicesArray(config.Choices)) {
-            throw new Error(`Invalid JSONPath Choices array`)
-          }
-          return new JSONPathChoiceState({
-            ...config,
-            Choices: config.Choices,
-          })
-        }
-      }
-
-      case 'Map': {
-        // Determine if this is Distributed or Inline Map
-        // According to AWS documentation, the Mode is specified in ItemProcessor.ProcessorConfig.Mode
-        // Default to INLINE if not specified
-        let processorMode: string = 'INLINE'
-
-        // Check ItemProcessor.ProcessorConfig.Mode (AWS standard location)
-        if (
-          isJsonObject(aslState.ItemProcessor) &&
-          isJsonObject(aslState.ItemProcessor.ProcessorConfig)
-        ) {
-          const mode = aslState.ItemProcessor.ProcessorConfig.Mode
-          if (isString(mode)) {
-            processorMode = mode
-          }
-        }
-
-        // Remove QueryLanguage from config as it's handled internally
-        const { QueryLanguage: _, ...stateWithoutQL } = aslState
-
-        // Handle legacy Iterator field (for backward compatibility)
-        // AWS Step Functions Local still uses Iterator instead of ItemProcessor
-        const stateData = { ...stateWithoutQL }
-        if (!stateData.ItemProcessor && 'Iterator' in stateData) {
-          stateData.ItemProcessor = stateData.Iterator
-        }
-
-        if (!isJsonObject(stateData.ItemProcessor)) {
-          throw new Error('Map state requires ItemProcessor field')
-        }
-
-        // Convert nested States in ItemProcessor to State class instances
-        const itemProcessorData = stateData.ItemProcessor
-        if (!isString(itemProcessorData.StartAt)) {
-          throw new Error('ItemProcessor requires StartAt field')
-        }
-
-        // Map states pass their QueryLanguage to ItemProcessor.States
-        // Priority: State's own QueryLanguage > Map's QueryLanguage > StateMachine's QueryLanguage
-        const mapQueryLanguage = queryLanguage
-
-        const itemProcessor: ItemProcessor = {
-          ...itemProcessorData,
-          StartAt: itemProcessorData.StartAt,
-          States: hasStates(itemProcessorData)
-            ? StateFactory.createStates(itemProcessorData.States, mapQueryLanguage)
-            : {},
-        }
-
-        if (queryLanguage === 'JSONata') {
-          const config = {
-            ...stateData,
-            QueryLanguage: 'JSONata' as const,
-            ItemProcessor: itemProcessor,
-            // If original stateData had Iterator, also convert its States to State instances
-            ...('Iterator' in stateData &&
-            isJsonObject(stateData.Iterator) &&
-            hasStates(stateData.Iterator)
-              ? {
-                  Iterator: {
-                    ...stateData.Iterator,
-                    States: StateFactory.createStates(stateData.Iterator.States, mapQueryLanguage),
-                  },
-                }
-              : {}),
-          }
-          return processorMode === 'DISTRIBUTED'
-            ? new JSONataDistributedMapState(config)
-            : new JSONataInlineMapState(config)
-        } else {
-          const config = {
-            ...stateData,
-            QueryLanguage: 'JSONPath' as const,
-            ItemProcessor: itemProcessor,
-            // If original stateData had Iterator, also convert its States to State instances
-            ...('Iterator' in stateData &&
-            isJsonObject(stateData.Iterator) &&
-            hasStates(stateData.Iterator)
-              ? {
-                  Iterator: {
-                    ...stateData.Iterator,
-                    States: StateFactory.createStates(stateData.Iterator.States, mapQueryLanguage),
-                  },
-                }
-              : {}),
-          }
-          return processorMode === 'DISTRIBUTED'
-            ? new JSONPathDistributedMapState(config)
-            : new JSONPathInlineMapState(config)
-        }
-      }
-
-      case 'Parallel': {
-        if (!isArray(aslState.Branches)) {
-          throw new Error('Parallel state requires Branches field')
-        }
-
-        // Convert nested States in each branch to State class instances
-        // Note: Branches inherit QueryLanguage from the state machine level, not from the Parallel state
-        const branches = aslState.Branches.map((branch) => {
-          // Validate that branch is an object
-          if (!isJsonObject(branch)) {
-            throw new Error('Each branch must be an object')
-          }
-
-          // Check if it has States to convert
-          if (hasStates(branch)) {
-            // Parallel branches inherit from StateMachine, not from Parallel state
-            const states = StateFactory.createStates(branch.States, stateMachineQueryLanguage)
-            // Ensure branch has StartAt field for StateMachine compliance
-            const branchWithStates = {
-              ...branch,
-              States: states,
-            }
-            // Ensure StartAt is present
-            if (!('StartAt' in branchWithStates) || typeof branchWithStates.StartAt !== 'string') {
-              throw new Error('Branch must have a StartAt field')
-            }
-            // Validated, construct proper StateMachine
-            const validBranch: StateMachine = {
-              ...branchWithStates,
-              StartAt: branchWithStates.StartAt,
-              States: states,
-            }
-            return validBranch
-          }
-
-          // If no States to convert, ensure it's still a valid StateMachine
-          if (!('StartAt' in branch) || typeof branch.StartAt !== 'string') {
-            throw new Error('Branch must have a StartAt field')
-          }
-          if (!('States' in branch && isJsonObject(branch.States))) {
-            throw new Error('Branch must have a States field')
-          }
-          // Branch has StartAt and States, so it's a valid StateMachine structure
-          // Create proper StateMachine from validated branch
-          const validBranch: StateMachine = {
-            ...branch,
-            StartAt: branch.StartAt,
-            States: StateFactory.createStates(branch.States, queryLanguage),
-          }
-          return validBranch
-        })
-
-        // Include QueryLanguage in config for validation
-        if (queryLanguage === 'JSONata') {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONata' as const,
-            Branches: branches,
-          }
-          return new JSONataParallelState(config)
-        } else {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONPath' as const,
-            Branches: branches,
-          }
-          return new JSONPathParallelState(config)
-        }
-      }
-
-      case 'Pass': {
-        // Include QueryLanguage in config for validation
-        if (queryLanguage === 'JSONata') {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONata' as const,
-          }
-          return new JSONataPassState(config)
-        } else {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONPath' as const,
-          }
-          return new JSONPathPassState(config)
-        }
-      }
-
-      case 'Wait': {
-        // Include QueryLanguage in config for validation
-        if (queryLanguage === 'JSONata') {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONata' as const,
-          }
-          return new JSONataWaitState(config)
-        } else {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONPath' as const,
-          }
-          return new JSONPathWaitState(config)
-        }
-      }
-
-      case 'Succeed': {
-        // Include QueryLanguage in config for validation
-        if (queryLanguage === 'JSONata') {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONata' as const,
-          }
-          return new JSONataSucceedState(config)
-        } else {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONPath' as const,
-          }
-          return new JSONPathSucceedState(config)
-        }
-      }
-
-      case 'Fail': {
-        // Include QueryLanguage in config for validation
-        if (queryLanguage === 'JSONata') {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONata' as const,
-          }
-          return new JSONataFailState(config)
-        } else {
-          const config = {
-            ...aslState,
-            QueryLanguage: 'JSONPath' as const,
-          }
-          return new JSONPathFailState(config)
-        }
-      }
-
-      default:
-        throw new Error(`Unknown state type: ${aslState.Type}`)
+    const config: JsonObject = {
+      ...aslState,
+      QueryLanguage: queryLanguage,
     }
+
+    const StateClass = getStateClass(aslState.Type, queryLanguage, config)
+    return new StateClass(config)
   }
 
   /**
@@ -496,7 +135,7 @@ export class StateFactory {
   ): Record<string, State> {
     const states: Record<string, State> = {}
 
-    // Handle null or undefined input
+    // 空のステート定義を許容する（エッジケース対応）
     if (!statesData) {
       return states
     }
@@ -506,9 +145,11 @@ export class StateFactory {
         throw new Error(`State ${stateName} must be an object`)
       }
 
+      // 元のASL定義を変更しないため浅いコピーを作成
+      // QueryLanguageプロパティを追加する可能性があるため不変性を保証
       const stateData = { ...stateValue }
 
-      // Inherit QueryLanguage from StateMachine if not specified at state level
+      // QueryLanguageの継承階層: State > StateMachine > デフォルト(JSONPath)
       if (!stateData.QueryLanguage && defaultQueryLanguage) {
         stateData.QueryLanguage = defaultQueryLanguage
       }
@@ -520,35 +161,40 @@ export class StateFactory {
   }
 
   /**
-   * Validate if an object is a valid State definition
+   * Create a complete StateMachine with all states converted to class instances
+   *
+   * @param stateMachineDefinition - Complete ASL StateMachine definition
+   * @returns StateMachine with all states as class instances
    */
-  static isValidStateDefinition(value: unknown): value is JsonObject {
-    if (!isJsonObject(value)) {
-      return false
+  static createStateMachine(stateMachineDefinition: JsonObject): StateMachine {
+    // ASL仕様: StateMachineはStatesフィールドが必須
+    if (!('States' in stateMachineDefinition && isJsonObject(stateMachineDefinition.States))) {
+      throw new Error('StateMachine must have a States field')
     }
 
-    // Must have a Type field
-    if (!isString(value.Type)) {
-      return false
+    if (
+      !('StartAt' in stateMachineDefinition) ||
+      typeof stateMachineDefinition.StartAt !== 'string'
+    ) {
+      throw new Error('StateMachine must have a StartAt field')
     }
 
-    // Type-specific validation
-    switch (value.Type) {
-      case 'Task':
-        return isString(value.Resource)
-      case 'Choice':
-        return isArray(value.Choices)
-      case 'Map':
-        return hasItemProcessor(value) || 'Iterator' in value
-      case 'Parallel':
-        return isArray(value.Branches)
-      case 'Pass':
-      case 'Wait':
-      case 'Succeed':
-      case 'Fail':
-        return true
-      default:
-        return false
+    // StateMachineレベルのQueryLanguageを決定
+    // 無効な値の場合はエラー、undefinedは許可（デフォルトを使用）
+    const queryLanguage = getValidQueryLanguage(stateMachineDefinition.QueryLanguage)
+
+    // すべてのStateを再帰的に変換
+    const states = StateFactory.createStates(stateMachineDefinition.States, queryLanguage)
+
+    // StateMachineオブジェクトを構築
+    // QueryLanguageは明示的に指定された場合のみ含める
+    const result: StateMachine = {
+      ...stateMachineDefinition,
+      StartAt: stateMachineDefinition.StartAt,
+      States: states,
+      ...('QueryLanguage' in stateMachineDefinition ? { QueryLanguage: queryLanguage } : {}),
     }
+
+    return result
   }
 }

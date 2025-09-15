@@ -114,7 +114,7 @@ export class DataFlowHelpers {
       const part = parts[i]
       if (part) {
         current[part] = {}
-        current = current[part] as JsonObject
+        current = current[part]
       }
     }
 

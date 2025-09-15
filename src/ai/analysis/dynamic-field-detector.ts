@@ -171,17 +171,3 @@ function findDynamicFieldsInObject(obj: unknown, path = ''): string[] {
 
   return dynamicPaths
 }
-
-/**
- * テストケースに対してpartial matchingを推奨するかどうかを判定
- */
-export function shouldRecommendPartialMatching(
-  stateMachine: StateMachine,
-  stateName: string,
-): boolean {
-  const state = stateMachine.States?.[stateName]
-  if (!state) return false
-
-  const detection = analyzeStateForDynamicFields(stateName, state)
-  return detection.recommendPartialMatching
-}

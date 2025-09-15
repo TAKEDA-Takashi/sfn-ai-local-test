@@ -10,7 +10,6 @@ import type {
   ParallelState,
   StateMachine,
 } from '../../types/asl'
-import { isJsonObject } from '../../types/type-guards'
 import { traverseStates } from '../utils/state-traversal'
 
 interface StateHierarchy {
@@ -125,7 +124,6 @@ export class StateHierarchyAnalyzer {
       type: 'Map',
     }
 
-    // Handle both ItemProcessor and Iterator formats
     if (state.isMap() && state.ItemProcessor) {
       const processor = state.ItemProcessor
       const processorInfo: ProcessorInfo = {
@@ -134,27 +132,6 @@ export class StateHierarchyAnalyzer {
         processorConfig: processor.ProcessorConfig,
       }
       structure.itemProcessor = processorInfo
-    } else if (state.isMap() && 'Iterator' in state && state.Iterator) {
-      // Legacy Iterator field support
-      const iterator = state.Iterator
-      if (
-        iterator &&
-        typeof iterator === 'object' &&
-        'States' in iterator &&
-        iterator.States &&
-        typeof iterator.States === 'object'
-      ) {
-        const processorInfo: ProcessorInfo = {
-          states: Object.keys(iterator.States),
-          startAt:
-            'StartAt' in iterator && typeof iterator.StartAt === 'string' ? iterator.StartAt : '',
-          processorConfig:
-            'ProcessorConfig' in iterator && isJsonObject(iterator.ProcessorConfig)
-              ? iterator.ProcessorConfig
-              : undefined,
-        }
-        structure.itemProcessor = processorInfo
-      }
     }
 
     return structure

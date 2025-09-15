@@ -2,11 +2,10 @@
  * Unified state traversal utility for Step Functions state machines
  *
  * This utility provides a consistent way to traverse all states in a state machine,
- * including nested states in Parallel branches, Map/DistributedMap ItemProcessors,
- * and legacy Iterator patterns.
+ * including nested states in Parallel branches and Map/DistributedMap ItemProcessors.
  */
 
-import type { MapState, State, StateMachine } from '../../types/asl'
+import type { State, StateMachine } from '../../types/asl'
 
 export interface TraversalContext {
   /** Current depth in the state hierarchy */
@@ -19,8 +18,6 @@ export interface TraversalContext {
   branchIndex?: number
   /** Whether this is within an ItemProcessor */
   isInItemProcessor?: boolean
-  /** Whether this is within an Iterator (legacy Map) */
-  isInIterator?: boolean
   /** Whether the parent uses JSONata mode */
   parentIsJSONata?: boolean
 }
@@ -112,26 +109,6 @@ function traverseState(
     }
   }
 
-  // Handle legacy Iterator pattern
-  // Note: Iterator is a legacy pattern. Type assertion is needed for compatibility
-  if (state.isMap() && 'Iterator' in state) {
-    const mapWithIterator = state as MapState & { Iterator?: StateMachine }
-    const iterator = mapWithIterator.Iterator
-    if (iterator?.States) {
-      const iteratorIsJSONata = iterator.QueryLanguage === 'JSONata' || stateIsJSONata
-      for (const [iterStateName, iterState] of Object.entries(iterator.States)) {
-        // iterator.States entries are already State instances
-        const result = traverseState(iterStateName, iterState, visitor, {
-          depth: context.depth + 1,
-          path: `${context.path}.Iterator.${iterStateName}`,
-          parentType: 'Map',
-          isInIterator: true,
-          parentIsJSONata: iteratorIsJSONata,
-        })
-        if (result === false) return false
-      }
-    }
-  }
   return undefined
 }
 

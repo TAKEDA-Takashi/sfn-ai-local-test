@@ -385,7 +385,7 @@ describe('MapOutputAnalyzer', () => {
             },
           },
         })
-      }).toThrow('Map state requires ItemProcessor field')
+      }).toThrow('Map state requires ItemProcessor or Iterator field')
     })
 
     it('should handle non-Map states gracefully', () => {

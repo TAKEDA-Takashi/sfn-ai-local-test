@@ -116,7 +116,7 @@ export class TestExecutionValidator {
             testCase: testCase.name,
             state: expectation.state,
             reason,
-            original: expectedOutput as JsonValue,
+            original: expectedOutput,
             corrected: actualOutput,
           })
 

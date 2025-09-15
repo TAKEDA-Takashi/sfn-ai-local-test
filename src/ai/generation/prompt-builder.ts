@@ -6,7 +6,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { HTTP_STATUS_OK } from '../../constants/defaults'
-import type { ChoiceState, ItemReader, State, StateMachine } from '../../types/asl'
+import type { ChoiceRule, ChoiceState, ItemReader, State, StateMachine } from '../../types/asl'
 import { MOCK_TYPE_DEFINITIONS, TEST_TYPE_DEFINITIONS } from '../agents/embedded-types'
 import {
   type ChoiceDependency,
@@ -928,54 +928,19 @@ The executor handles this automatically based on ItemReader processing.
     let hasProblematicPatterns = false
     let hasStructuralLoops = false
 
-    // Non-deterministic patterns for both JSONPath and JSONata
-    // These are common patterns, but we also check for general categories
-    const nonDeterministicPatterns = {
+    // Only patterns that are truly variable and cannot be made deterministic in tests
+    const variablePatterns = {
       jsonpath: [
-        // Dynamic timestamps
-        'TimestampEquals',
-        'TimestampEqualsPath',
-        'TimestampLessThanPath',
-        'TimestampGreaterThanPath',
-        'TimestampLessThanEquals',
-        'TimestampGreaterThanEquals',
-        // Context variables that change
-        '$$.State.Name',
-        '$$.Task.Token',
-        '$$.State.RetryCount',
-        '$$.Map.Item.Index',
-        // Note: $$.State.EnteredTime and $$.Execution.StartTime are FIXED in tests
+        // These change during execution and cannot be fixed
+        '$$.State.RetryCount', // Changes on each retry
+        '$$.Map.Item.Index', // Different for each Map item
+        '$$.Task.Token', // waitForTaskToken pattern (not supported)
       ],
       jsonata: [
-        // JSONata non-deterministic functions
-        '$random',
-        '$uuid',
-        '$now',
-        '$millis',
-        // Context functions (correct paths)
+        // JSONata equivalents
         '$states.context.State.RetryCount',
-        '$states.context.State.Name',
-        // Note: $states.context.State.EnteredTime and $states.context.Execution.StartTime are FIXED in tests
-        // Also check for general patterns (case-insensitive)
-        'random',
-        'uuid',
-        'time',
-        'date',
-        'timestamp',
-        'millis',
-        'now',
-      ],
-      // General suspicious patterns that might indicate non-determinism
-      general: [
-        'retry',
-        'attempt',
-        'count',
-        'iteration',
-        'poll',
-        'wait',
-        'timeout',
-        'deadline',
-        'expire',
+        '$states.context.Map.Item.Index',
+        '$random', // True random function if used
       ],
     }
 
@@ -997,59 +962,20 @@ The executor handles this automatically based on ItemReader processing.
     // Check each Choice state
     for (const [stateName, state] of Object.entries(states)) {
       if (state.isChoice()) {
-        const isJSONata = state.isJSONataState()
-
-        // Check for non-deterministic conditions
         const choices = state.Choices
-        if (isJSONata && choices) {
-          // JSONata mode - check Condition field
-          for (const choice of choices) {
-            if ('Condition' in choice && !('Variable' in choice)) {
-              const conditionStr = JSON.stringify(choice.Condition).toLowerCase()
 
-              // Check specific JSONata patterns
-              const hasSpecificPattern = nonDeterministicPatterns.jsonata.some((pattern) =>
-                conditionStr.includes(pattern.toLowerCase()),
-              )
+        if (!choices) continue
 
-              // Check general suspicious patterns
-              const hasGeneralPattern = nonDeterministicPatterns.general.some((pattern) =>
-                conditionStr.includes(pattern.toLowerCase()),
-              )
+        // Check if any choice contains variable patterns
+        const hasVariablePattern = this.checkChoiceForVariablePatterns(
+          choices,
+          variablePatterns.jsonpath,
+          variablePatterns.jsonata,
+        )
 
-              if (hasSpecificPattern || hasGeneralPattern) {
-                hasProblematicPatterns = true
-                problematicStates.push(stateName)
-                break
-              }
-            }
-          }
-        } else if (choices) {
-          // JSONPath mode - check Variable and comparison operators
-          for (const choice of choices) {
-            // Check if choice object has any timestamp comparison operators
-            const hasTimestampOperator = Object.keys(choice).some((key) =>
-              nonDeterministicPatterns.jsonpath.some((pattern) => key.includes(pattern)),
-            )
-
-            // Also check the values for context variables
-            const choiceStr = JSON.stringify(choice)
-            const hasContextVariable = nonDeterministicPatterns.jsonpath.some(
-              (pattern) => pattern.startsWith('$$') && choiceStr.includes(pattern),
-            )
-
-            // Check general suspicious patterns (case-insensitive)
-            const choiceStrLower = choiceStr.toLowerCase()
-            const hasGeneralPattern = nonDeterministicPatterns.general.some((pattern) =>
-              choiceStrLower.includes(pattern.toLowerCase()),
-            )
-
-            if (hasTimestampOperator || hasContextVariable || hasGeneralPattern) {
-              hasProblematicPatterns = true
-              problematicStates.push(stateName)
-              break
-            }
-          }
+        if (hasVariablePattern) {
+          hasProblematicPatterns = true
+          problematicStates.push(stateName)
         }
 
         // Structural loop detection - can this Choice create a loop?
@@ -1095,6 +1021,61 @@ The executor handles this automatically based on ItemReader processing.
     }
 
     return graph
+  }
+
+  /**
+   * Check if Choice rules contain variable patterns that cannot be fixed
+   */
+  private checkChoiceForVariablePatterns(
+    choices: ChoiceRule[],
+    jsonPathPatterns: string[],
+    jsonataPatterns: string[],
+  ): boolean {
+    for (const choice of choices) {
+      if (choice.isJSONata()) {
+        // For JSONata, check the Condition string
+        const conditionStr = choice.Condition?.toLowerCase() || ''
+        if (jsonataPatterns.some((pattern) => conditionStr.includes(pattern.toLowerCase()))) {
+          return true
+        }
+      } else {
+        // For JSONPath, recursively check the choice structure
+        if (this.checkJSONPathChoiceForPatterns(choice, jsonPathPatterns)) {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  /**
+   * Recursively check JSONPath Choice rule for variable patterns
+   */
+  private checkJSONPathChoiceForPatterns(choice: ChoiceRule, patterns: string[]): boolean {
+    // Type guard ensures we're working with JSONPathChoiceRule
+    if (!choice.isJSONPath()) {
+      return false
+    }
+
+    // Check Variable field for context variable patterns
+    if (choice.Variable) {
+      if (patterns.some((pattern) => choice.Variable?.includes(pattern))) {
+        return true
+      }
+    }
+
+    // Check And/Or/Not recursively
+    if (choice.And) {
+      return choice.And.some((rule) => this.checkJSONPathChoiceForPatterns(rule, patterns))
+    }
+    if (choice.Or) {
+      return choice.Or.some((rule) => this.checkJSONPathChoiceForPatterns(rule, patterns))
+    }
+    if (choice.Not) {
+      return this.checkJSONPathChoiceForPatterns(choice.Not, patterns)
+    }
+
+    return false
   }
 
   private getChoiceNextStates(choiceState: ChoiceState): string[] {

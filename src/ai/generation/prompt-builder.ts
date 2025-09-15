@@ -14,7 +14,6 @@ import {
   type MapOutputSpec,
   type PassVariableFlow,
 } from '../analysis/data-flow-analyzer'
-import { detectDynamicFields } from '../analysis/dynamic-field-detector'
 import {
   detectOutputTransformation,
   getOutputTransformationDetails,
@@ -99,26 +98,21 @@ export class PromptBuilder {
     const mockableStates = this.analyzer.getMockableStates(hierarchy)
     sections.push(this.getMockableStatesGuidance(mockableStates))
 
-    // Add Lambda integration rules if needed
     if (hasState(stateMachine, StateFilters.isLambdaTask)) {
       sections.push(this.getLambdaIntegrationRules())
     }
 
-    // Add Variables/Assign rules if needed
     if (hasState(stateMachine, StateFilters.hasVariables)) {
       sections.push(this.getVariablesRules())
     }
 
-    // Add Choice mock guidelines if there are problematic patterns
     if (this.hasProblematicChoicePatterns(stateMachine)) {
       const analysis = this.detectChoiceLoops(stateMachine)
       sections.push(this.getChoiceMockGuidelines(analysis))
     }
 
-    // Add ExecutionContext information for mocks
     sections.push(this.getExecutionContextInfo())
 
-    // Add data flow analysis for improved mock generation
     this.dataFlowAnalyzer = new DataFlowAnalyzer(stateMachine)
     const dataFlowAnalysis = this.dataFlowAnalyzer?.analyzeDataFlowConsistency() || {
       consistency: {
@@ -130,7 +124,6 @@ export class PromptBuilder {
     }
     sections.push(this.getDataFlowGuidance(dataFlowAnalysis))
 
-    // Add the state machine definition
     sections.push('## State Machine Definition')
     sections.push('```json')
     sections.push(JSON.stringify(stateMachine, null, 2))
@@ -174,17 +167,10 @@ export class PromptBuilder {
     // Critical test rules
     sections.push(this.getTestCriticalRules())
 
-    // Add output transformation guidance if needed
     const hasOutputTransformation = detectOutputTransformation(stateMachine)
     if (hasOutputTransformation) {
       const transformationDetails = getOutputTransformationDetails(stateMachine)
       sections.push(this.getOutputTransformationGuidance(transformationDetails))
-    }
-
-    // Dynamic field detection
-    const dynamicFields = detectDynamicFields(stateMachine)
-    if (dynamicFields.length > 0) {
-      sections.push(this.getDynamicFieldGuidance(dynamicFields))
     }
 
     // Structure analysis
@@ -193,7 +179,6 @@ export class PromptBuilder {
       sections.push(structureExplanation)
     }
 
-    // Add specialized test guidance based on state types
     const hasParallel = Object.values(hierarchy.nestedStructures).some((s) => s.type === 'Parallel')
     const hasMap = Object.values(hierarchy.nestedStructures).some((s) => s.type === 'Map')
     const hasDistributedMap = Object.values(hierarchy.nestedStructures).some(
@@ -210,12 +195,10 @@ export class PromptBuilder {
       sections.push(this.getDistributedMapTestGuidance())
     }
 
-    // Add Variables guidance if needed
     if (hasState(stateMachine, StateFilters.hasVariables)) {
       sections.push(this.getVariablesTestGuidance())
     }
 
-    // Add state machine and mock
     sections.push('## State Machine Definition')
     sections.push('```json')
     sections.push(JSON.stringify(stateMachine, null, 2))
@@ -359,7 +342,7 @@ testCases:  # NOT "tests"
     return `# CRITICAL RULES FOR TEST GENERATION
 
 ⚠️⚠️⚠️ RULE #1: ALWAYS USE outputMatching: "partial" FOR ALL STATE EXPECTATIONS ⚠️⚠️⚠️
-⚠️⚠️⚠️ RULE #2: NEVER INCLUDE TIMESTAMPS OR DATES IN EXPECTATIONS ⚠️⚠️⚠️
+⚠️⚠️⚠️ RULE #2: BE AWARE OF FIXED EXECUTIONCONTEXT VALUES ⚠️⚠️⚠️
 ⚠️⚠️⚠️ RULE #3: NEVER USE stateExpectations FOR MAP/PARALLEL INTERNAL STATES ⚠️⚠️⚠️
 
 ## 🔴 CRITICAL: Map/Parallel Internal State Testing Rules 🔴
@@ -417,8 +400,8 @@ stateExpectations:
 - Any field containing ISO date strings (e.g., "2024-01-15T10:00:00.000Z")
 - Any field that looks like a date or time
 
-**WHY:** Timestamps change on every execution. Including them causes tests to fail.
-**SOLUTION:** Use outputMatching: "partial" and omit all timestamp fields from expectations.
+**NOTE:** ExecutionContext values like timestamps are FIXED during tests for deterministic behavior.
+You CAN include these in exact matching if they come from ExecutionContext variables.
 
 ## EXECUTION CONTEXT - FIXED VALUES IN TESTS
 **IMPORTANT:** ExecutionContext values are FIXED during tests for deterministic behavior:
@@ -466,7 +449,7 @@ testCases:  # ⚠️ NOT "tests" - MUST BE "testCases"
 6. MUST use "state" NOT "stateName" in expectations
 7. Every expectation MUST have outputMatching: "partial"
 8. Variables go in stateExpectations.variables, NOT in output
-9. **⚠️ NEVER include timestamps, dates, or time-related fields in expectations ⚠️**
+9. **⚠️ CAUTION: ExecutionContext timestamps are FIXED in tests (safe to use) ⚠️**
 10. When copying from mock data, ALWAYS remove timestamp fields
 11. For Parallel states, expect array output
 12. For Map states, expect array output
@@ -944,7 +927,6 @@ The executor handles this automatically based on ItemReader processing.
       ],
     }
 
-    // Handle missing States object
     if (!stateMachine.States) {
       return {
         hasProblematicPatterns: false,
@@ -956,17 +938,14 @@ The executor handles this automatically based on ItemReader processing.
     // StateMachine should already contain processed State instances
     const states = stateMachine.States
 
-    // Build a state graph for structural analysis
     const stateGraph = this.buildStateGraph(states)
 
-    // Check each Choice state
     for (const [stateName, state] of Object.entries(states)) {
       if (state.isChoice()) {
         const choices = state.Choices
 
         if (!choices) continue
 
-        // Check if any choice contains variable patterns
         const hasVariablePattern = this.checkChoiceForVariablePatterns(
           choices,
           variablePatterns.jsonpath,
@@ -1057,14 +1036,12 @@ The executor handles this automatically based on ItemReader processing.
       return false
     }
 
-    // Check Variable field for context variable patterns
     if (choice.Variable) {
       if (patterns.some((pattern) => choice.Variable?.includes(pattern))) {
         return true
       }
     }
 
-    // Check And/Or/Not recursively
     if (choice.And) {
       return choice.And.some((rule) => this.checkJSONPathChoiceForPatterns(rule, patterns))
     }
@@ -1122,7 +1099,6 @@ The executor handles this automatically based on ItemReader processing.
       guidelines = this.getDefaultChoiceMockGuidelines()
     }
 
-    // Add specific detection message if analysis is provided
     if (analysis && analysis.problematicStates.length > 0) {
       const header = `# Choice State Mock Guidelines
 
@@ -1411,64 +1387,6 @@ Transformation changes the shape and content of the output - your tests must ref
 `
 
     return guidance
-  }
-
-  /**
-   * Generate guidance for states with dynamic fields
-   */
-  private getDynamicFieldGuidance(
-    dynamicFields: Array<{ stateName: string; dynamicPaths: string[]; reason: string }>,
-  ): string {
-    const stateList = dynamicFields
-      .map(
-        (d) => `- **${d.stateName}**: ${d.reason}\n  Dynamic fields: ${d.dynamicPaths.join(', ')}`,
-      )
-      .join('\n')
-
-    return `## ⏰ CRITICAL: Dynamic Fields Detected
-
-# ⚠️ DYNAMIC VALUES DETECTED IN THESE STATES ⚠️
-
-The following states contain dynamic fields that change on every execution:
-
-${stateList}
-
-### ℹ️ Note: Partial Matching is Default
-
-Since outputMatching defaults to "partial", these dynamic fields will be handled correctly.
-However, if you need exact matching for other reasons, you must explicitly set outputMatching: "exact"
-and exclude dynamic fields from your expectations.
-
-Dynamic fields include:
-- Timestamps (EnteredTime, StartTime)
-- Execution IDs
-- UUIDs
-- Random values
-- Other context-dependent values
-
-**EXAMPLE:**
-\`\`\`yaml
-stateExpectations:
-  - state: "${dynamicFields[0]?.stateName || 'StateWithDynamicFields'}"
-    outputMatching: "partial"  # ⚠️ REQUIRED due to dynamic fields
-    output:
-      # Only include stable fields
-      userId: "12345"
-      status: "success"
-      # DO NOT include: timestamp, executionId, uuid, etc.
-\`\`\`
-
-### 🔴 RULE: Omit Dynamic Fields from Expectations 🔴
-
-**NEVER include these in test expectations:**
-- Any timestamp fields
-- Execution IDs or names
-- UUIDs or random values
-- State tokens
-- Map item indices (when dynamic)
-
-**Why?** These values are different every time the test runs, causing false failures.
-`
   }
 
   /**

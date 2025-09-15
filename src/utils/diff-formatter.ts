@@ -1,10 +1,10 @@
-import type { JsonValue } from '../types/asl'
+import type { JsonObject, JsonValue } from '../types/asl'
 
 interface DiffResult {
-  added: Record<string, unknown>
-  removed: Record<string, unknown>
+  added: JsonObject
+  removed: JsonObject
   changed: Record<string, { expected: unknown; actual: unknown }>
-  unchanged: Record<string, unknown>
+  unchanged: JsonObject
 }
 
 export class DiffFormatter {
@@ -21,18 +21,12 @@ export class DiffFormatter {
       return DiffFormatter.formatArrayDiff(expected as unknown[], actual as unknown[])
     }
 
-    const diff = DiffFormatter.computeObjectDiff(
-      expected as Record<string, unknown>,
-      actual as Record<string, unknown>,
-    )
+    const diff = DiffFormatter.computeObjectDiff(expected as JsonObject, actual as JsonObject)
 
     return DiffFormatter.formatObjectDiff(diff)
   }
 
-  private static computeObjectDiff(
-    expected: Record<string, unknown>,
-    actual: Record<string, unknown>,
-  ): DiffResult {
+  private static computeObjectDiff(expected: JsonObject, actual: JsonObject): DiffResult {
     const diff: DiffResult = {
       added: {},
       removed: {},
@@ -132,8 +126,8 @@ export class DiffFormatter {
       return `${JSON.stringify(expected)} → ${JSON.stringify(actual)}`
     }
 
-    const expectedObj = expected as Record<string, unknown>
-    const actualObj = actual as Record<string, unknown>
+    const expectedObj = expected as JsonObject
+    const actualObj = actual as JsonObject
     const diff = DiffFormatter.computeObjectDiff(expectedObj, actualObj)
 
     if (Object.keys(diff.changed).length === 0) {

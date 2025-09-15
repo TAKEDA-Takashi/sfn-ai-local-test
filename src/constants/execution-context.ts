@@ -78,36 +78,3 @@ export function buildStateMachineId(
 ): string {
   return `arn:aws:states:${region}:${accountId}:stateMachine:${stateMachineName}`
 }
-
-/**
- * Get default Execution context
- */
-export function getDefaultExecutionContext() {
-  return {
-    Id: buildExecutionId(),
-    Name: EXECUTION_CONTEXT_DEFAULTS.NAME,
-    StartTime: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
-    RoleArn: EXECUTION_CONTEXT_DEFAULTS.ROLE_ARN,
-  }
-}
-
-/**
- * Get default StateMachine context
- */
-export function getDefaultStateMachineContext() {
-  return {
-    Id: buildStateMachineId(),
-    Name: EXECUTION_CONTEXT_DEFAULTS.STATE_MACHINE_NAME,
-  }
-}
-
-/**
- * Get default State context
- */
-export function getDefaultStateContext() {
-  return {
-    EnteredTime: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
-    Name: '',
-    RetryCount: 0,
-  }
-}

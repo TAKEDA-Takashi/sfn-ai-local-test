@@ -172,7 +172,6 @@ export type TestCase = z.infer<typeof testCaseSchema>
 export type MapExpectation = z.infer<typeof mapExpectationSchema>
 export type StateExpectation = z.infer<typeof stateExpectationSchema>
 export type ParallelExpectation = z.infer<typeof parallelExpectationSchema>
-export type Settings = z.infer<typeof settingsSchema>
 export type Assertions = z.infer<typeof assertionsSchema>
 
 // Extract MockOverride type from TestCase

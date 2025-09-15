@@ -55,10 +55,3 @@ export async function processInParallel<T, R>(
   await Promise.all(executing)
   return results
 }
-
-/**
- * Check if result is an error
- */
-export function isError(result: unknown): result is Error {
-  return result instanceof Error
-}

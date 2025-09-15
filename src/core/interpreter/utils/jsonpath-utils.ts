@@ -147,7 +147,7 @@ export class JSONPathUtils {
             throw new Error(`ItemsPath "${itemsPath}" references undefined variable`)
           }
           if (typeof current === 'object' && !Array.isArray(current)) {
-            current = (current as JsonObject)[parts[i]]
+            current = current[parts[i]]
           } else {
             throw new Error(`ItemsPath "${itemsPath}" references invalid path`)
           }

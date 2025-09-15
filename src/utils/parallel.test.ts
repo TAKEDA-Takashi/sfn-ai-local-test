@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { isError, processInParallel } from './parallel'
+import { isError } from '../types/type-guards'
+import { processInParallel } from './parallel'
 
 describe('processInParallel', () => {
   describe('basic functionality', () => {

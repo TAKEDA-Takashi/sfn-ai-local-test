@@ -23,7 +23,8 @@ import {
 import type { StateMachineConfig } from '../../schemas/config-schema'
 import { type MockConfig, mockConfigSchema } from '../../schemas/mock-schema'
 import { type JsonObject, type JsonValue, StateFactory, type StateMachine } from '../../types/asl'
-import { isError, processInParallel } from '../../utils/parallel'
+import { isError } from '../../types/type-guards'
+import { processInParallel } from '../../utils/parallel'
 
 /**
  * Safe file write with automatic directory creation
@@ -80,7 +81,7 @@ function ensureStateMachineData(data: JsonObject | undefined): JsonObject {
   if (!data) {
     throw new Error('State machine data is required')
   }
-  return data as JsonObject
+  return data
 }
 
 export async function generateCommand(
@@ -176,9 +177,7 @@ export async function generateCommand(
 
             const currentStateMachineObj = loadStateMachineDefinition(sm)
             // Use StateFactory to properly create a StateMachine with all nested states
-            const currentStateMachine = StateFactory.createStateMachine(
-              currentStateMachineObj as JsonObject,
-            )
+            const currentStateMachine = StateFactory.createStateMachine(currentStateMachineObj)
             const currentConfigMockFileName = `${sm.name}.mock.yaml`
 
             const currentDefaultOutputPath =

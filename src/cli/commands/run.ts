@@ -545,7 +545,7 @@ async function runSingleExecution(options: RunOptions): Promise<void> {
                 (path: unknown) =>
                   Array.isArray(path) && path.every((p: unknown) => typeof p === 'string'),
               )
-                ? (exec.iterationPaths as string[][])
+                ? exec.iterationPaths
                 : undefined,
           })),
         )
@@ -564,7 +564,7 @@ async function runSingleExecution(options: RunOptions): Promise<void> {
                 (path: unknown) =>
                   Array.isArray(path) && path.every((p: unknown) => typeof p === 'string'),
               )
-                ? (exec.branchPaths as string[][])
+                ? exec.branchPaths
                 : [],
           })),
         )

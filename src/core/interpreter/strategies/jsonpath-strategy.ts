@@ -144,14 +144,11 @@ export class JSONPathStrategy implements ProcessingStrategy {
       const pathParts = resultPath.slice(2).split('.')
 
       // pathParts.reduceRightを使ってネストしたオブジェクトを作成
-      return pathParts.reduceRight<JsonValue>(
-        (value, key) => ({ [key]: value }),
-        result,
-      ) as JsonObject
+      return pathParts.reduceRight<JsonValue>((value, key) => ({ [key]: value }), result)
     }
 
     // 元の入力がオブジェクトの場合はディープコピーして挿入
-    const output = deepClone(originalInput as JsonObject)
+    const output = deepClone(originalInput)
     const pathParts = resultPath.slice(2).split('.')
 
     // 最後の要素以外をたどって、必要に応じてオブジェクトを作成

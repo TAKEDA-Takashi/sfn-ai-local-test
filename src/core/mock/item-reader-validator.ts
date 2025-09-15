@@ -86,7 +86,7 @@ export class ItemReaderValidator {
       return transformed
     })
 
-    const maxItems = config.MaxItems as number | undefined
+    const maxItems = config.MaxItems
     const limitedData =
       maxItems && typeof maxItems === 'number'
         ? transformedData.slice(0, maxItems)
@@ -150,7 +150,7 @@ export class ItemReaderValidator {
       const transformedData = mockData.map((item, index) => {
         const transformed: JsonObject = {}
 
-        for (const header of requiredHeaders as string[]) {
+        for (const header of requiredHeaders) {
           if (!(header in item)) {
             errors.push(`Row ${index}: Missing required CSV column '${header}'`)
             transformed[header] = '' // Provide empty string for missing columns

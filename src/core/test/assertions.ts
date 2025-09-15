@@ -102,8 +102,8 @@ export class TestAssertions {
     return {
       type: 'output',
       passed: success,
-      expected: expected as JsonValue,
-      actual: actual as JsonValue,
+      expected: expected,
+      actual: actual,
       message,
     }
   }
@@ -195,8 +195,8 @@ export class TestAssertions {
 
       // Handle objects (expected is already non-null object here)
       if (!(Array.isArray(expected) || Array.isArray(actual))) {
-        const expectedObj = expected as Record<string, unknown>
-        const actualObj = actual as Record<string, unknown>
+        const expectedObj = expected as JsonObject
+        const actualObj = actual as JsonObject
         for (const key in expectedObj) {
           if (
             !(key in actualObj && TestAssertions.isPartialMatch(expectedObj[key], actualObj[key]))
@@ -453,11 +453,11 @@ export class TestAssertions {
         if (expectation.iterationPaths.all) {
           const iterationPaths = mapExec.iterationPaths as string[][]
           for (let i = 0; i < iterationPaths.length; i++) {
-            const actualPath = iterationPaths[i] as string[]
+            const actualPath = iterationPaths[i]
             if (actualPath) {
               const pathMatch = TestAssertions.comparePathStrict(
                 expectation.iterationPaths.all,
-                actualPath as string[],
+                actualPath,
                 pathMatching,
               )
               assertions.push({
@@ -469,7 +469,7 @@ export class TestAssertions {
                   ? `Map ${expectation.state} iteration ${i} follows expected path`
                   : `Map ${expectation.state} iteration ${i} path mismatch. Expected: [${expectation.iterationPaths.all.join(
                       ' → ',
-                    )}], Got: [${(actualPath as string[]).join(' → ')}]`,
+                    )}], Got: [${(actualPath).join(' → ')}]`,
               })
             }
           }
@@ -483,7 +483,7 @@ export class TestAssertions {
             if (actualPath) {
               const pathMatch = TestAssertions.comparePathStrict(
                 expectedPath,
-                actualPath as string[],
+                actualPath,
                 pathMatching,
               )
               assertions.push({
@@ -497,7 +497,7 @@ export class TestAssertions {
                       expectation.state
                     } iteration ${idx} path mismatch. Expected: [${expectedPath.join(
                       ' → ',
-                    )}], Got: [${(actualPath as string[]).join(' → ')}]`,
+                    )}], Got: [${(actualPath).join(' → ')}]`,
               })
             }
           }
@@ -575,7 +575,7 @@ export class TestAssertions {
                     expectation.state
                   } branch ${idx} path mismatch. Expected: [${expectedPath.join(
                     ' → ',
-                  )}], Got: [${(actualPath as string[]).join(' → ')}]`,
+                  )}], Got: [${(actualPath).join(' → ')}]`,
             })
           }
         }

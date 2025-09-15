@@ -51,10 +51,7 @@ export class JSONataEvaluator {
   // biome-ignore lint/suspicious/noExplicitAny: jsonata library has no proper type definitions
   private static registerStepFunctionsFunctions(expr: any): void {
     // $partition - equivalent of States.ArrayPartition
-    const expression = expr as {
-      registerFunction: (name: string, fn: (...args: JsonValue[]) => JsonValue | undefined) => void
-    }
-    expression.registerFunction('partition', (...args: JsonValue[]) => {
+    expr.registerFunction('partition', (...args: JsonValue[]) => {
       const array = args[0]
       const chunkSize = args[1] as number
       if (!Array.isArray(array)) return undefined // AWS returns undefined for non-array
@@ -69,7 +66,7 @@ export class JSONataEvaluator {
 
     // $range - equivalent of States.ArrayRange
     // AWS requires all 3 parameters and includes the end value
-    expression.registerFunction('range', (...args: JsonValue[]) => {
+    expr.registerFunction('range', (...args: JsonValue[]) => {
       const start = args[0] as number
       const end = args[1] as number
       const step = args[2] as number
@@ -104,7 +101,7 @@ export class JSONataEvaluator {
     })
 
     // $hash - equivalent of States.Hash
-    expression.registerFunction('hash', (...args: JsonValue[]) => {
+    expr.registerFunction('hash', (...args: JsonValue[]) => {
       const data = args[0]
       const algorithm = (args[1] as string) || 'SHA-256'
       if (data === undefined || data === null) {
@@ -117,7 +114,7 @@ export class JSONataEvaluator {
     })
 
     // $random - equivalent of States.MathRandom with optional seed
-    expression.registerFunction('random', (...args: JsonValue[]) => {
+    expr.registerFunction('random', (...args: JsonValue[]) => {
       const seed = args[0] as number | undefined
       if (seed !== undefined) {
         const x = Math.sin(seed) * 10000
@@ -127,7 +124,7 @@ export class JSONataEvaluator {
     })
 
     // $uuid - equivalent of States.UUID
-    expression.registerFunction('uuid', () => {
+    expr.registerFunction('uuid', () => {
       // Fixed value for deterministic testing (ADR-001)
       return EXECUTION_CONTEXT_DEFAULTS.FIXED_UUID
       // Original dynamic implementation:
@@ -135,7 +132,7 @@ export class JSONataEvaluator {
     })
 
     // $now - returns current timestamp in ISO format
-    expression.registerFunction('now', () => {
+    expr.registerFunction('now', () => {
       // Fixed value for deterministic testing (ADR-001)
       return EXECUTION_CONTEXT_DEFAULTS.START_TIME
       // Original dynamic implementation:
@@ -143,14 +140,14 @@ export class JSONataEvaluator {
     })
 
     // $millis - returns current timestamp in milliseconds
-    expression.registerFunction('millis', () => {
+    expr.registerFunction('millis', () => {
       // Fixed value for deterministic testing (ADR-001)
       return new Date(EXECUTION_CONTEXT_DEFAULTS.START_TIME).getTime()
       // Original dynamic implementation:
       // return Date.now()
     })
 
-    expression.registerFunction('parse', (...args: JsonValue[]) => {
+    expr.registerFunction('parse', (...args: JsonValue[]) => {
       const str = args[0] as string
       try {
         return JSON.parse(str)

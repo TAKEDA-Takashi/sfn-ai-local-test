@@ -34,23 +34,19 @@ export class JSONataStrategy implements ProcessingStrategy {
     state: State,
     context: ExecutionContext,
   ): Promise<JsonValue> {
-    // デバッグアサーション
     if (!state.isJSONataState()) {
       throw new Error('JSONataStrategy should only be used with JSONata mode states')
     }
 
-    // 1. Assign フィールドの処理（変数への代入）
     if ('Assign' in state && state.Assign) {
       await this.processAssign(state.Assign, result, context)
     }
 
-    // 2. Output フィールドの処理
     if ('Output' in state && state.Output) {
       const statesContext = this.buildStatesContext(context.input, context, result)
       return await this.evaluateJSONataExpression(state.Output, statesContext)
     }
 
-    // Output がない場合は結果をそのまま返す
     return result
   }
 
@@ -65,10 +61,8 @@ export class JSONataStrategy implements ProcessingStrategy {
     const statesContext = this.buildStatesContext(context.input, context, result)
 
     for (const [key, value] of Object.entries(assign)) {
-      // JSONata式の評価
       const assignedValue = await this.evaluateJSONataExpression(value, statesContext)
 
-      // 変数に代入
       if (!context.variables) {
         context.variables = {}
       }
@@ -84,7 +78,6 @@ export class JSONataStrategy implements ProcessingStrategy {
     expression: JsonValue,
     statesContext: ExecutionContext,
   ): Promise<JsonValue> {
-    // 文字列の場合
     if (typeof expression === 'string') {
       // {%...%} でラップされている場合は除去して評価
       if (expression.startsWith('{%') && expression.endsWith('%}')) {
@@ -96,7 +89,6 @@ export class JSONataStrategy implements ProcessingStrategy {
       return expression
     }
 
-    // Objectの場合: 各プロパティを再帰的に評価
     if (expression && typeof expression === 'object' && !Array.isArray(expression)) {
       const result: JsonObject = {}
       for (const [key, value] of Object.entries(expression)) {
@@ -105,7 +97,6 @@ export class JSONataStrategy implements ProcessingStrategy {
       return result
     }
 
-    // Arrayの場合: 各要素を再帰的に評価
     if (Array.isArray(expression)) {
       const result: JsonValue[] = []
       for (const item of expression) {

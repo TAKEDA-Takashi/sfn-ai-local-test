@@ -43,7 +43,6 @@ export class TestSuiteValidator {
    * Perform additional custom validations that result in warnings
    */
   private performCustomValidations(suite: TestSuite): void {
-    // Validate ItemReader mocks have data or dataFile
     if (!suite.testCases) return
 
     suite.testCases.forEach((testCase, testIndex) => {

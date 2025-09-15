@@ -49,7 +49,6 @@ export class ChoiceDependencyAnalyzer {
     const branches: ChoiceBranch[] = []
     const isJSONata = choiceState.isJSONataState()
 
-    // Choice分岐条件を分析
     for (const choice of choiceState.Choices) {
       const branchAnalysis = this.analyzeChoiceBranch(choice, isJSONata)
       if (branchAnalysis) {
@@ -59,7 +58,6 @@ export class ChoiceDependencyAnalyzer {
       }
     }
 
-    // Default分岐も追加
     if (choiceState.Default) {
       branches.push({
         condition: 'Default (no conditions matched)',
@@ -70,13 +68,11 @@ export class ChoiceDependencyAnalyzer {
     }
 
     if (requiredFields.length === 0) {
-      return null // 分析対象なし
+      return null
     }
 
-    // 重複を除去
     const uniqueFields = [...new Set(requiredFields)]
 
-    // 前段状態への要求を生成
     const upstreamRequirements: UpstreamStateRequirement[] = []
 
     // 汎用的な要求（任意の前段状態が対象）

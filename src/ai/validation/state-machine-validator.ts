@@ -26,7 +26,6 @@ export class StateMachineValidator {
 
     // Search in nested contexts (Map/Parallel)
     for (const [_parentName, state] of Object.entries(states)) {
-      // Check ItemProcessor states
       if (state.isMap() && state.ItemProcessor && state.ItemProcessor.States) {
         // ItemProcessor.States should already contain State instances
         // if the StateMachine was properly created with StateFactory.createStateMachine
@@ -36,7 +35,6 @@ export class StateMachineValidator {
         if (found) return found
       }
 
-      // Check Parallel branches
       if (state.isParallel() && state.Branches) {
         const branches = state.Branches
         for (const branch of branches) {
@@ -65,7 +63,6 @@ export class StateMachineValidator {
     for (const [stateName, state] of Object.entries(states)) {
       stateNames.push(stateName)
 
-      // Check for ItemProcessor in Map/DistributedMap states
       if (state.isMap() && state.ItemProcessor?.States) {
         // ItemProcessor.States should already contain State instances
         // if the StateMachine was properly created with StateFactory.createStateMachine
@@ -76,7 +73,6 @@ export class StateMachineValidator {
         stateNames.push(...itemProcessorStates)
       }
 
-      // Check for Parallel state branches
       if (state.isParallel() && state.Branches) {
         state.Branches.forEach((branch) => {
           if (branch.States) {
@@ -115,7 +111,6 @@ export class StateMachineValidator {
 
       // State machine is already parsed JsonObject
 
-      // Check if mocks field exists and is an array
       if (!parsed.mocks) {
         issues.push({
           level: 'error',
@@ -134,7 +129,6 @@ export class StateMachineValidator {
         return issues
       }
 
-      // Check for duplicate state names in mocks
       const mockStateNames = new Map<string, number>()
       if (!isJsonArray(parsed.mocks)) {
         return issues
@@ -158,7 +152,6 @@ export class StateMachineValidator {
         }
       }
 
-      // Check Lambda mock format
       if (parsed.mocks) {
         for (const mock of parsed.mocks) {
           if (!isJsonObject(mock) || typeof mock.state !== 'string') continue
@@ -193,7 +186,6 @@ export class StateMachineValidator {
           }
         }
 
-        // Check conditional mock format
         if (parsed.mocks && isJsonArray(parsed.mocks)) {
           for (const mock of parsed.mocks) {
             if (!isJsonObject(mock) || mock.type !== 'conditional') continue
@@ -214,7 +206,6 @@ export class StateMachineValidator {
                   typeof resource === 'string' &&
                   resource.includes('lambda:invoke')
                 ) {
-                  // Check if input.Payload is used for Lambda
                   if (isJsonObject(condition.when.input) && !condition.when.input.Payload) {
                     issues.push({
                       level: 'error',
@@ -265,7 +256,6 @@ export class StateMachineValidator {
         return issues
       }
 
-      // Check for outputMatching: "exact"
       const checkOutputMatching = (obj: JsonObject, path: string = '') => {
         if (typeof obj !== 'object' || obj === null) return
 
@@ -287,7 +277,6 @@ export class StateMachineValidator {
 
       checkOutputMatching(parsed)
 
-      // Check for variables in expectedOutput (common mistake)
       if (parsed.testCases && isJsonArray(parsed.testCases)) {
         for (const testCase of parsed.testCases) {
           if (
@@ -295,7 +284,6 @@ export class StateMachineValidator {
             testCase.expectedOutput &&
             isJsonObject(testCase.expectedOutput)
           ) {
-            // Check if any expected output keys look like variable names
             const suspiciousKeys = Object.keys(testCase.expectedOutput).filter((key) =>
               key.match(
                 /^(counter|total|sum|index|status|type|userType|.*Type|.*Status|.*Count)$/i,
@@ -314,7 +302,6 @@ export class StateMachineValidator {
         }
       }
 
-      // Check for timestamp expectations
       const checkForTimestamps = (obj: JsonObject, path: string = '') => {
         if (typeof obj !== 'object' || obj === null) return
 
@@ -386,7 +373,6 @@ export class StateMachineValidator {
 
       for (const mock of parsed.mocks) {
         if (!isJsonObject(mock) || typeof mock.state !== 'string') continue
-        // Check if state exists (including nested states)
         if (!availableStates.includes(mock.state)) {
           // Try to find similar state name
           const suggestion = this.findSimilarStateName(mock.state, availableStates)
@@ -436,7 +422,6 @@ export class StateMachineValidator {
             // DistributedMap with ResultWriter returns metadata, not array
             // Skip array validation for this case
           } else {
-            // Check if response is an array
             if (mock.response && !Array.isArray(mock.response)) {
               const stateType = state.isDistributedMap() ? 'DistributedMap' : 'Map'
               issues.push({
@@ -528,7 +513,6 @@ export class StateMachineValidator {
           typeof stateResource === 'string' &&
           stateResource.includes('lambda:invoke')
         ) {
-          // Check conditional mocks
           if (mock.type === 'conditional' && 'conditions' in mock && isJsonArray(mock.conditions)) {
             for (const condition of mock.conditions) {
               if (!isJsonObject(condition)) continue

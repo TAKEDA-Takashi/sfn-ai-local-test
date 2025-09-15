@@ -57,13 +57,11 @@ export abstract class BaseStateExecutor<TState extends State = State> {
   async execute(context: ExecutionContext): Promise<StateExecutionResult> {
     let preprocessedInput: JsonValue = context.input
     try {
-      // 1. 前処理: Strategyによる入力変換
       preprocessedInput = await this.strategy.preprocess(context.input, this.state, context)
 
-      // 2. ステート固有処理: サブクラスで実装
+      // Subclasses must implement state-specific logic
       const result = await this.executeState(preprocessedInput, context)
 
-      // 3. 後処理: Strategyによる出力変換
       const postprocessedOutput = await this.strategy.postprocess(
         result,
         context.input,
@@ -71,7 +69,6 @@ export abstract class BaseStateExecutor<TState extends State = State> {
         context,
       )
 
-      // 4. 次の状態決定
       const nextState = this.determineNextState()
 
       return {
@@ -129,13 +126,12 @@ export abstract class BaseStateExecutor<TState extends State = State> {
       throw error
     }
 
-    // Catch ルールの処理
     if ('Catch' in this.state && this.state.Catch) {
       const matchedCatch = this.findMatchingCatch(error)
       if (matchedCatch) {
         let errorOutput = context.input
 
-        // ResultPathがある場合はエラー情報を適用
+        // Preserve original input while adding error info at ResultPath
         if ('ResultPath' in matchedCatch && matchedCatch.ResultPath) {
           const errorInfo = {
             Error:

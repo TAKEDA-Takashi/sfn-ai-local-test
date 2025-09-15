@@ -10,7 +10,6 @@ import type {
   ParallelState,
   StateMachine,
 } from '../../types/asl'
-import { isJsonObject } from '../../types/type-guards'
 import { traverseStates } from '../utils/state-traversal'
 
 interface StateHierarchy {
@@ -43,14 +42,18 @@ interface ProcessorInfo {
 
 interface ReaderInfo {
   resource: string
-  parameters?: JsonObject // JSONPath mode
-  arguments?: JsonObject | string // JSONata mode
+  /** Parameters for JSONPath mode */
+  parameters?: JsonObject
+  /** Arguments for JSONata mode */
+  arguments?: JsonObject | string
 }
 
 interface WriterInfo {
   resource: string
-  parameters?: JsonObject // JSONPath mode
-  arguments?: JsonObject | string // JSONata mode
+  /** Parameters for JSONPath mode */
+  parameters?: JsonObject
+  /** Arguments for JSONata mode */
+  arguments?: JsonObject | string
 }
 
 export class StateHierarchyAnalyzer {
@@ -64,16 +67,12 @@ export class StateHierarchyAnalyzer {
       allStates: [],
     }
 
-    // Analyze top-level states
     if (stateMachine.States) {
       hierarchy.topLevelStates = Object.keys(stateMachine.States)
 
-      // Use unified traversal to build hierarchy
       traverseStates(stateMachine, (stateName, state, context) => {
-        // Add to allStates
         hierarchy.allStates.push(context.path)
 
-        // Analyze nested structures for top-level states
         if (context.depth === 0) {
           if (state.isParallel()) {
             hierarchy.nestedStructures[stateName] = this.buildParallelStructure(state)
@@ -81,7 +80,6 @@ export class StateHierarchyAnalyzer {
             if (state.isDistributedMap()) {
               hierarchy.nestedStructures[stateName] = this.buildDistributedMapStructure(state)
             } else {
-              // InlineMap or default Map
               hierarchy.nestedStructures[stateName] = this.buildMapStructure(state)
             }
           }
@@ -103,7 +101,6 @@ export class StateHierarchyAnalyzer {
       branches: [],
     }
 
-    // Handle both State instances and plain objects
     const branches = state.Branches || []
     branches.forEach((branch, index: number) => {
       const branchInfo: BranchInfo = {
@@ -125,7 +122,6 @@ export class StateHierarchyAnalyzer {
       type: 'Map',
     }
 
-    // Handle both ItemProcessor and Iterator formats
     if (state.isMap() && state.ItemProcessor) {
       const processor = state.ItemProcessor
       const processorInfo: ProcessorInfo = {
@@ -134,27 +130,6 @@ export class StateHierarchyAnalyzer {
         processorConfig: processor.ProcessorConfig,
       }
       structure.itemProcessor = processorInfo
-    } else if (state.isMap() && 'Iterator' in state && state.Iterator) {
-      // Legacy Iterator field support
-      const iterator = state.Iterator
-      if (
-        iterator &&
-        typeof iterator === 'object' &&
-        'States' in iterator &&
-        iterator.States &&
-        typeof iterator.States === 'object'
-      ) {
-        const processorInfo: ProcessorInfo = {
-          states: Object.keys(iterator.States),
-          startAt:
-            'StartAt' in iterator && typeof iterator.StartAt === 'string' ? iterator.StartAt : '',
-          processorConfig:
-            'ProcessorConfig' in iterator && isJsonObject(iterator.ProcessorConfig)
-              ? iterator.ProcessorConfig
-              : undefined,
-        }
-        structure.itemProcessor = processorInfo
-      }
     }
 
     return structure
@@ -168,7 +143,6 @@ export class StateHierarchyAnalyzer {
       type: 'DistributedMap',
     }
 
-    // Analyze ItemReader (only for DistributedMap)
     if (state.ItemReader) {
       const reader = state.ItemReader
       structure.itemReader = {
@@ -178,7 +152,6 @@ export class StateHierarchyAnalyzer {
       }
     }
 
-    // Analyze ItemProcessor
     if (state.ItemProcessor) {
       const processorInfo: ProcessorInfo = {
         states: Object.keys(state.ItemProcessor.States || {}),
@@ -188,7 +161,6 @@ export class StateHierarchyAnalyzer {
       structure.itemProcessor = processorInfo
     }
 
-    // Analyze ResultWriter (only for DistributedMap)
     if (state.ResultWriter) {
       const writer = state.ResultWriter
       structure.resultWriter = {
@@ -207,26 +179,20 @@ export class StateHierarchyAnalyzer {
   getMockableStates(hierarchy: StateHierarchy): string[] {
     const mockableStates: string[] = []
 
-    // Add all top-level states
     mockableStates.push(...hierarchy.topLevelStates)
 
-    // For nested structures, we need to include all Task states
     for (const [stateName, structure] of Object.entries(hierarchy.nestedStructures)) {
       if (structure.type === 'Parallel') {
-        // For Parallel states, include all Task states within branches
-        // These can be mocked individually for proper testing
+        // Parallel states: Task states can be mocked individually
         if (structure.branches) {
           for (const branch of structure.branches) {
             for (const branchState of branch.states) {
-              // Add the state directly (without parent prefix for Parallel)
               mockableStates.push(branchState)
             }
           }
         }
       } else if (structure.type === 'Map' || structure.type === 'DistributedMap') {
-        // Map states can be mocked at parent level or processor level
         if (structure.itemProcessor) {
-          // Can mock individual states within processor for conditional logic
           for (const processorState of structure.itemProcessor.states) {
             mockableStates.push(`${stateName}.ItemProcessor.${processorState}`)
           }

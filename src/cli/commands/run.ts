@@ -40,7 +40,8 @@ interface RunOptions {
   name?: string
   asl?: string
   cdk?: string
-  cdkStateMachine?: string // CDKテンプレート内の特定のステートマシンを指定
+  /** CDKテンプレート内の特定のステートマシンを指定 */
+  cdkStateMachine?: string
   mock?: string
   input?: string
 
@@ -50,15 +51,13 @@ interface RunOptions {
   cov?: string | boolean
 }
 
-// Helper function to convert raw state machine data to StateMachine type
-
+/**
+ * runコマンドのメインエントリポイント
+ */
 export async function runCommand(options: RunOptions): Promise<void> {
-  // テストスイート実行モード
   if (options.suite) {
-    // --suite が名前だけの場合、デフォルトパスを構築
     let suitePath = options.suite
 
-    // パス区切り文字やファイル拡張子が含まれていない場合は名前として扱う
     if (
       !(
         suitePath.includes('/') ||
@@ -67,11 +66,9 @@ export async function runCommand(options: RunOptions): Promise<void> {
         suitePath.endsWith('.yml')
       )
     ) {
-      // デフォルトのテストスイートディレクトリから探す
       const config = existsSync(DEFAULT_CONFIG_FILE) ? loadProjectConfig() : null
       const testSuitesDir = config?.paths?.testSuites || DEFAULT_TEST_SUITES_DIR
 
-      // .test.yaml または .test.yml を試す
       const yamlPath = join(testSuitesDir, `${suitePath}.test.yaml`)
       const ymlPath = join(testSuitesDir, `${suitePath}.test.yml`)
 
@@ -84,16 +81,13 @@ export async function runCommand(options: RunOptions): Promise<void> {
       }
     }
 
-    // パスが決定したらテストスイートを実行
     options.suite = suitePath
     return await runTestSuite(options)
   }
 
-  // --nameオプションが指定された場合、対応するテストスイートを探す
   if (options.name && !options.suite) {
     const config = existsSync(DEFAULT_CONFIG_FILE) ? loadProjectConfig() : null
 
-    // まず設定ファイルにステートマシンが定義されているか確認
     if (!config) {
       throw new Error(`Configuration file not found: ${DEFAULT_CONFIG_FILE}`)
     }
@@ -105,7 +99,6 @@ export async function runCommand(options: RunOptions): Promise<void> {
 
     const testSuitesDir = config?.paths?.testSuites || DEFAULT_TEST_SUITES_DIR
 
-    // テストスイートファイルを探す
     const yamlPath = join(testSuitesDir, `${options.name}.test.yaml`)
     const ymlPath = join(testSuitesDir, `${options.name}.test.yml`)
 
@@ -118,7 +111,6 @@ export async function runCommand(options: RunOptions): Promise<void> {
       options.suite = ymlPath
       return await runTestSuite(options)
     } else {
-      // テストスイートが見つからない場合はエラー
       throw new Error(
         `Test suite not found for '${options.name}'.\n` +
           `Expected to find one of:\n` +
@@ -129,24 +121,22 @@ export async function runCommand(options: RunOptions): Promise<void> {
     }
   }
 
-  // 引数なしの場合のデフォルト動作
   if (!(options.name || options.asl || options.cdk || options.suite)) {
     return await runDefaultMode(options)
   }
 
-  // 単一実行モード
   return await runSingleExecution(options)
 }
 
+/**
+ * デフォルトモードで実行（引数なしの場合）
+ */
 async function runDefaultMode(options: RunOptions): Promise<void> {
-  // Load config once at the beginning
   const config = existsSync(DEFAULT_CONFIG_FILE) ? loadProjectConfig() : null
 
-  // テストスイートディレクトリを確認
   const testSuitesDir = config?.paths?.testSuites || DEFAULT_TEST_SUITES_DIR
 
   if (existsSync(testSuitesDir)) {
-    // すべての .test.yaml ファイルを検索
     const testFiles = findTestSuites(testSuitesDir)
 
     if (testFiles.length > 0) {
@@ -180,7 +170,6 @@ async function runDefaultMode(options: RunOptions): Promise<void> {
           totalFailed += result.failedTests
           totalSkipped += result.skippedTests
 
-          // カバレッジを統合
           if (result.coverage) {
             // Skip coverage processing if it's in old format or missing nested property
             if (!result.coverage?.topLevel) {
@@ -500,7 +489,6 @@ async function runSingleExecution(options: RunOptions): Promise<void> {
 
     spinner.succeed(chalk.green('Execution completed successfully'))
 
-    // Save execution path for coverage tracking
     const coverageManager = new CoverageStorageManager()
     if (stateMachine) {
       coverageManager.saveExecution(
@@ -545,7 +533,7 @@ async function runSingleExecution(options: RunOptions): Promise<void> {
                 (path: unknown) =>
                   Array.isArray(path) && path.every((p: unknown) => typeof p === 'string'),
               )
-                ? (exec.iterationPaths as string[][])
+                ? exec.iterationPaths
                 : undefined,
           })),
         )
@@ -564,13 +552,12 @@ async function runSingleExecution(options: RunOptions): Promise<void> {
                 (path: unknown) =>
                   Array.isArray(path) && path.every((p: unknown) => typeof p === 'string'),
               )
-                ? (exec.branchPaths as string[][])
+                ? exec.branchPaths
                 : [],
           })),
         )
       }
 
-      // Load all saved executions
       const allExecutions = coverageManager.loadExecutions(stateMachine)
       for (const execution of allExecutions) {
         tracker.trackExecution(execution.executionPath)
@@ -673,7 +660,6 @@ async function runTestSuite(options: RunOptions): Promise<void> {
   const spinner = ora('Loading test suite...').start()
 
   try {
-    // Load config file if it exists to get executionContext
     const config = existsSync(DEFAULT_CONFIG_FILE) ? loadProjectConfig() : null
 
     const runner = new TestSuiteRunner(options.suite || '')
@@ -687,7 +673,6 @@ async function runTestSuite(options: RunOptions): Promise<void> {
     })
     spinner.stop()
 
-    // Generate report based on reporter type
     switch (options.reporter) {
       case 'json':
         outputJsonReport(result, options.output)
@@ -701,7 +686,6 @@ async function runTestSuite(options: RunOptions): Promise<void> {
 
     // Display coverage report if enabled
     if (options.cov && result.coverage) {
-      // Load config for coverage path
       const config = existsSync(DEFAULT_CONFIG_FILE) ? loadProjectConfig() : null
       displayCoverageReport(result.coverage, options.cov, config)
     }
@@ -740,7 +724,6 @@ function outputDefaultReport(result: TestSuiteResult, verbose?: boolean): void {
       if (testResult.assertions) {
         for (const assertion of testResult.assertions) {
           if (!assertion.passed) {
-            // Handle multi-line messages (e.g., from DiffFormatter)
             const messageLines = (assertion.message || '').split('\n')
             console.log(chalk.red(`   ❌ ${messageLines[0]}`))
             for (let i = 1; i < messageLines.length; i++) {
@@ -883,7 +866,6 @@ function displayCoverageReport(
   format: string | boolean,
   config?: ProjectConfig | null,
 ): void {
-  // Check if coverage data is valid
   if (!(coverage?.topLevel && coverage?.branches && coverage?.paths)) {
     console.error('Invalid coverage data provided to displayCoverageReport')
     return
@@ -930,7 +912,6 @@ function displayCoverageReport(
       break
     case 'html': {
       report = reporter.generateHTML()
-      // Get coverage path from config or use default
       const coverageDir = config?.paths?.coverage || DEFAULT_COVERAGE_DIR
       if (!existsSync(coverageDir)) {
         mkdirSync(coverageDir, { recursive: true })

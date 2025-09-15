@@ -1,12 +1,7 @@
 import { Anthropic } from '@anthropic-ai/sdk'
 import * as dotenv from 'dotenv'
 import { HTTP_STATUS_OK, LAMBDA_VERSION_LATEST } from '../../constants/defaults'
-// import { analyzeExpressions } from '../utils/expression-analyzer'
-// import { DataFlowTracker } from '../utils/data-flow-tracker'
-// import { MockFormatSelector } from '../utils/mock-format-selector'
-// import { ConsistencyChecker } from '../utils/consistency-checker'
 import type { JsonObject, StateMachine } from '../../types/asl'
-// Inline type check
 import {
   generateMockWithClaudeCLI,
   generateTestWithClaudeCLI,
@@ -27,13 +22,13 @@ export async function generateMockWithAI(
   timeout: number = 300000,
   maxAttempts: number = 2,
 ): Promise<string> {
-  // Claude CLI\u304c\u5229\u7528\u53ef\u80fd\u306a\u5834\u5408\u306f\u512a\u5148\u4f7f\u7528
+  // Prefer Claude CLI when available
   if (await isClaudeCLIAvailable()) {
     console.log('Using Claude CLI (Claude Code authentication)...')
     return generateMockWithClaudeCLI(stateMachine, timeout, undefined, maxAttempts)
   }
 
-  // API\u30ad\u30fc\u304c\u3042\u308b\u5834\u5408\u306fAPI\u3092\u4f7f\u7528
+  // Use direct API when available
   if (!anthropic) {
     throw new Error(
       'Neither Claude CLI nor ANTHROPIC_API_KEY is available. Please install Claude Code or set up an API key.',
@@ -240,7 +235,6 @@ function analyzeStateMachineFeatures(stateMachine: StateMachine): JsonObject {
   const variableNames = new Set<string>()
 
   for (const [stateName, state] of Object.entries(stateMachine.States || {})) {
-    // Check for Variables/Assign
     if ('Assign' in state && state.Assign) {
       features.variables = true
       variableStates.push(stateName)
@@ -250,7 +244,6 @@ function analyzeStateMachineFeatures(stateMachine: StateMachine): JsonObject {
       })
     }
 
-    // Check state types using type guards
     if (state.isChoice()) features.hasChoice = true
     if (state.isMap()) {
       if (state.isDistributedMap()) {
@@ -261,7 +254,6 @@ function analyzeStateMachineFeatures(stateMachine: StateMachine): JsonObject {
     }
     if (state.isParallel()) features.hasParallel = true
 
-    // Check error handling
     if (('Retry' in state && state.Retry) || ('Catch' in state && state.Catch))
       features.errorHandling = true
   }
@@ -283,7 +275,7 @@ export async function generateTestWithAI(
   aslPath?: string,
   outputPath?: string,
 ): Promise<string> {
-  // Claude CLI\u304c\u5229\u7528\u53ef\u80fd\u306a\u5834\u5408\u306f\u512a\u5148\u4f7f\u7528
+  // Prefer Claude CLI when available
   if (await isClaudeCLIAvailable()) {
     console.log('Using Claude CLI (Claude Code authentication)...')
     return await generateTestWithClaudeCLI(
@@ -296,7 +288,7 @@ export async function generateTestWithAI(
     )
   }
 
-  // API\u30ad\u30fc\u304c\u3042\u308b\u5834\u5408\u306fAPI\u3092\u4f7f\u7528
+  // Use direct API when available
   if (!anthropic) {
     throw new Error(
       'Neither Claude CLI nor ANTHROPIC_API_KEY is available. Please install Claude Code or set up an API key.',

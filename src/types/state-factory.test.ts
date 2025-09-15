@@ -447,7 +447,9 @@ describe('StateFactory Field Validation', () => {
           ],
           Default: 'ProcessMinor',
         }),
-      ).toThrow("Variable field is not supported in JSONata mode. Use 'Condition' field instead")
+      ).toThrow(
+        "JSONPath choice rule fields (Variable, And, Or, Not) are not supported in JSONata mode. Use 'Condition' field instead",
+      )
     })
 
     it('should throw error when InputPath field is used in JSONata mode (Fail state)', () => {

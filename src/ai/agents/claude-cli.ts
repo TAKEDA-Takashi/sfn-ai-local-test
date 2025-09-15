@@ -27,11 +27,8 @@ export async function generateMockWithClaudeCLI(
     const promptBuilder = new PromptBuilder()
     const prompt = promptBuilder.buildMockPrompt(stateMachine)
 
-    // Logging moved to runClaudeCLI to avoid duplication
-
     const result = await runClaudeCLI(prompt, timeout)
 
-    // Validate and auto-fix
     const validator = new StateMachineValidator()
     const issues = validator.validateMockContent(result, stateMachine)
     if (issues.length > 0) {
@@ -52,14 +49,11 @@ export async function generateMockWithClaudeCLI(
   const generator = (feedbackPrompt: string) => {
     let prompt = promptBuilder.buildMockPrompt(stateMachine)
 
-    // Inject feedback if provided
     if (feedbackPrompt) {
-      // Find the position after the state machine definition to inject feedback
       const stateDefEnd = prompt.indexOf('Generate a mock configuration')
       if (stateDefEnd > -1) {
         prompt = prompt.slice(0, stateDefEnd) + feedbackPrompt + prompt.slice(stateDefEnd)
       } else {
-        // Fallback: prepend feedback
         prompt = feedbackPrompt + prompt
       }
     }
@@ -114,11 +108,8 @@ export async function generateTestWithClaudeCLI(
   const promptBuilder = new PromptBuilder()
   const prompt = promptBuilder.buildTestPrompt(stateMachine, mockContent)
 
-  // Logging moved to runClaudeCLI to avoid duplication
-
   const result = await runClaudeCLI(prompt, timeout)
 
-  // Validate and auto-fix
   const validator = new StateMachineValidator()
   const issues = validator.validateTestContent(result, stateMachine)
   if (issues.length > 0) {
@@ -143,13 +134,11 @@ export function correctFilePaths(
 ): string {
   let corrected = content
 
-  // Update YAML field with the given value
   const updateYamlField = (yaml: string, fieldName: string, value: string): string => {
     const fieldRegex = new RegExp(`^${fieldName}:\\s*"?[^"\\n]*"?`, 'm')
     if (fieldRegex.test(yaml)) {
       return yaml.replace(fieldRegex, `${fieldName}: "${value}"`)
     } else {
-      // Add field if it doesn't exist
       const nameMatch = yaml.match(/^name:\s*"[^"]*"/m)
       if (nameMatch) {
         const insertPos = yaml.indexOf(nameMatch[0]) + nameMatch[0].length
@@ -159,36 +148,29 @@ export function correctFilePaths(
     return yaml
   }
 
-  // Calculate relative path from output directory to target file
   const calculateRelativePath = (targetPath: string, outputPath: string): string => {
-    // If no outputPath provided, use simple filename
     if (!outputPath) {
       return `./${basename(targetPath)}`
     }
 
-    // Calculate relative path from output directory to target file
     const outputDir = dirname(outputPath)
     const relativePath = relative(outputDir, targetPath)
 
-    // Ensure path starts with './' or '../'
     if (relativePath.startsWith('..')) {
       return relativePath // Already starts with '../'
     }
 
     if (relativePath.startsWith('.')) {
-      return relativePath // Already starts with './'
+      return relativePath
     }
 
-    // For same-directory or subdirectory paths, add './'
     return `./${relativePath}`
   }
 
-  // Check for name-based configuration - if available, use names instead of paths
   if (aslPath) {
     const aslFilename = aslPath.split('/').pop() || aslPath
     const nameWithoutExt = aslFilename.replace(/\.(asl\.)?json$/, '')
 
-    // Try to detect if this is a name-based setup vs path-based
     if (hasNameBasedConfig(nameWithoutExt)) {
       corrected = updateYamlField(corrected, 'stateMachine', nameWithoutExt)
     } else {
@@ -223,7 +205,6 @@ async function runClaudeCLI(
   prompt: string,
   timeout: number = DEFAULT_AI_TIMEOUT_MS,
 ): Promise<string> {
-  // Save prompt to temp file to avoid shell escaping issues
   const tmpFile = join(tmpdir(), `claude-prompt-${Date.now()}.txt`)
   const promptSizeKB = Buffer.byteLength(prompt) / 1024
 
@@ -231,8 +212,6 @@ async function runClaudeCLI(
   console.log(`📝 Prompt size: ${promptSizeKB.toFixed(1)}KB`)
 
   try {
-    // Use claude with --print and --output-format for non-interactive mode
-    // Add explicit instruction to avoid file creation prompts
     const modifiedPrompt = `${prompt}\n\nIMPORTANT: Do not ask to create files. Return only the YAML content directly.`
     writeFileSync(tmpFile, modifiedPrompt)
 
@@ -250,36 +229,27 @@ async function runClaudeCLI(
       console.warn('Claude CLI stderr:', stderr)
     }
 
-    // Clean up the output
     let yaml = stdout.trim()
 
-    // Remove any explanatory text before YAML
-    // Look for "version:" as the start of actual YAML
     const versionIndex = yaml.search(/^version:\s*["']?\d/m)
     if (versionIndex > 0) {
-      // There's text before "version:", remove it
       yaml = yaml.substring(versionIndex)
     }
 
-    // Remove markdown code blocks if present
     if (yaml.includes('```')) {
-      // Extract content between ```yaml and ```
       const match = yaml.match(/```(?:yaml|yml)?\n([\s\S]*?)```/)
       if (match?.[1]) {
         yaml = match[1].trim()
       } else {
-        // Remove all ``` markers
         yaml = yaml.replace(/```[a-z]*\n?/g, '').replace(/\n?```/g, '')
       }
     }
 
-    // Remove any trailing explanation after the YAML
-    // Look for common patterns that indicate end of YAML
     const endPatterns = [
-      /\n\n[A-Z][\w\s]+:/, // New paragraph starting with capital letter
-      /\n\nThis [\w\s]+/, // Explanatory text
-      /\n\nThe [\w\s]+/, // Explanatory text
-      /\n\nI've [\w\s]+/, // Assistant commentary
+      /\n\n[A-Z][\w\s]+:/,
+      /\n\nThis [\w\s]+/,
+      /\n\nThe [\w\s]+/,
+      /\n\nI've [\w\s]+/,
     ]
 
     for (const pattern of endPatterns) {
@@ -291,7 +261,6 @@ async function runClaudeCLI(
 
     return yaml.trim()
   } catch (error) {
-    // Provide more detailed error information
     if (error && typeof error === 'object' && !Array.isArray(error)) {
       if ('killed' in error && error.killed && 'signal' in error && error.signal === 'SIGTERM') {
         throw new Error(
@@ -317,12 +286,9 @@ async function runClaudeCLI(
     }
     throw error
   } finally {
-    // Clean up temp file
     try {
       unlinkSync(tmpFile)
-    } catch {
-      // Ignore errors
-    }
+    } catch {}
   }
 }
 
@@ -344,7 +310,7 @@ export async function isClaudeCLIAvailable(): Promise<boolean> {
  */
 export function hasNameBasedConfig(stateMachineName: string): boolean {
   try {
-    const config = loadProjectConfig(undefined, false) // Don't require config file to exist
+    const config = loadProjectConfig(undefined, false)
 
     if (!config?.stateMachines) return false
 
@@ -353,8 +319,6 @@ export function hasNameBasedConfig(stateMachineName: string): boolean {
     )
     return machine != null
   } catch (_error) {
-    // For debugging: uncomment to see what went wrong
-    // console.error('Error loading config:', error)
     return false
   }
 }

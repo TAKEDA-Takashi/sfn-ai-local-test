@@ -19,7 +19,6 @@ export default defineConfig({
         'examples/',
         'scripts/',
         'tests/',
-        'src/ai/agents/embedded-types.ts', // auto-generated
       ],
       thresholds: {
         statements: 80,

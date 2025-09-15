@@ -4,8 +4,6 @@
 
 import type { ItemProcessor, JsonObject, JsonValue, MapState, StateMachine } from '../../types/asl'
 import { isJsonObject } from '../../types/type-guards'
-// DataFlowAnalyzer is available for future use if needed
-// import { DataFlowAnalyzer } from '../analysis/data-flow-analyzer'
 import { findStates, StateFilters } from './state-traversal'
 
 export interface ItemReaderInfo {
@@ -21,10 +19,8 @@ export interface ItemReaderInfo {
  */
 export function analyzeItemReaders(stateMachine: StateMachine): ItemReaderInfo[] {
   return findStates(stateMachine, StateFilters.hasItemReader).map(({ name, state }) => {
-    // StateFilters.hasItemReaderが通っているので、state.isMap()は必ずtrue
     const itemReader = state.isDistributedMap() ? state.ItemReader : undefined
     if (!itemReader) {
-      // If no itemReader, return default info
       return {
         stateName: name,
         format: 'json',
@@ -36,9 +32,8 @@ export function analyzeItemReaders(stateMachine: StateMachine): ItemReaderInfo[]
 
     const resource = typeof itemReader.Resource === 'string' ? itemReader.Resource : ''
 
-    // Determine format based on resource type
     let format: ItemReaderInfo['format'] = 'json'
-    let estimatedItemCount = 10 // Default estimate
+    let estimatedItemCount = 10 // Default for unknown formats
 
     if (resource.includes('s3:listObjectsV2')) {
       format = 's3objects'
@@ -61,9 +56,8 @@ export function analyzeItemReaders(stateMachine: StateMachine): ItemReaderInfo[]
         estimatedItemCount = 30
       } else if (inputType === 'MANIFEST') {
         format = 'manifest'
-        estimatedItemCount = 100 // S3 inventory manifest can have many items
+        estimatedItemCount = 100 // S3 inventory manifests can be large
       } else {
-        // Fallback: detect format from Arguments.Key extension (for JSONata mode)
         const args =
           'Arguments' in itemReader && isJsonObject(itemReader.Arguments)
             ? itemReader.Arguments
@@ -106,7 +100,6 @@ export function generateBasicSampleData(
   format: ItemReaderInfo['format'],
   itemCount: number = 10,
 ): string {
-  // Generate generic sample data without ItemProcessor analysis
   return generateSampleDataInternal(format, itemCount, null)
 }
 
@@ -122,7 +115,6 @@ export function generateSampleData(
     return generateBasicSampleData(format, itemCount)
   }
 
-  // MapState単体でItemProcessor分析を実行
   const sampleInput = analyzeMapStateItemProcessor(mapState)
 
   return generateSampleDataInternal(format, itemCount, sampleInput)
@@ -137,43 +129,30 @@ function analyzeItemProcessorFieldUsage(
 ): JsonObject | null {
   const requiredFields: JsonObject = {}
 
-  // ItemProcessor always has States property (required in interface)
   if (!processor.States) {
     return null
   }
 
-  // Search for field references in both JSONata and JSONPath formats
-  // JSONata: $states.input.fieldName.subField
-  // JSONPath: $.fieldName.subField (when fieldName is "value")
   const jsonataPattern = new RegExp(`\\$states\\.input\\.${fieldName}\\.([\\w.]+)`, 'g')
   const jsonpathPattern = new RegExp(`\\$\\.${fieldName}\\.([\\w.]+)`, 'g')
   const jsonString = JSON.stringify(processor.States)
 
-  // Debug logging
-  // console.log('Processing field:', fieldName)
-  // console.log('JSON string:', jsonString)
-
   let match: RegExpExecArray | null = null
   const foundFields = new Set<string>()
 
-  // Track nested field paths (support deep nesting)
   const fieldPaths = new Set<string>()
 
-  // Check for JSONata format references
   let jsonataMatch = jsonataPattern.exec(jsonString)
   while (jsonataMatch !== null) {
     match = jsonataMatch
     if (match[1]) {
-      // Extract nested field paths like "id" or "addresses.PRIMARY_EMAIL"
       const fieldPath = match[1].split('.')
       const topLevelField = fieldPath[0]
 
       if (topLevelField) {
         if (fieldPath.length > 1) {
-          // This is a nested field - store the full path
           fieldPaths.add(match[1])
         } else {
-          // Simple field
           foundFields.add(topLevelField)
         }
       }
@@ -181,7 +160,6 @@ function analyzeItemProcessorFieldUsage(
     jsonataMatch = jsonataPattern.exec(jsonString)
   }
 
-  // Also check for JSONPath format references
   let jsonpathMatch = jsonpathPattern.exec(jsonString)
   while (jsonpathMatch !== null) {
     match = jsonpathMatch
@@ -191,10 +169,8 @@ function analyzeItemProcessorFieldUsage(
 
       if (topLevelField) {
         if (fieldPath.length > 1) {
-          // This is a nested field - store the full path
           fieldPaths.add(match[1])
         } else {
-          // Simple field
           foundFields.add(topLevelField)
         }
       }
@@ -202,12 +178,10 @@ function analyzeItemProcessorFieldUsage(
     jsonpathMatch = jsonpathPattern.exec(jsonString)
   }
 
-  // Generate sample data for simple fields
   for (const field of foundFields) {
     requiredFields[field] = generateSampleValueForField(field)
   }
 
-  // Build nested structure from field paths
   buildNestedStructure(requiredFields, fieldPaths, fieldName, jsonString)
 
   return Object.keys(requiredFields).length > 0 ? requiredFields : null
@@ -226,20 +200,17 @@ function buildNestedStructure(
     const parts = fieldPath.split('.')
     let current = target
 
-    // Build nested structure, creating objects as needed
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i]
       if (!part) continue
 
       if (i === parts.length - 1) {
-        // Last part - generate value with context awareness
         const fullPath = `${fieldName}\\.${fieldPath.replace(/\./g, '\\.')}`
         current[part] = generateSampleValueForField(part, {
           fullPath,
           jsonString,
         })
       } else {
-        // Intermediate part - ensure it's an object
         if (!current[part] || typeof current[part] !== 'object') {
           current[part] = {}
         }
@@ -261,10 +232,8 @@ function buildNestedStructureFromPath(target: JsonObject, fieldPath: string): vo
     if (!part) continue
 
     if (i === parts.length - 1) {
-      // Last part - generate value
       current[part] = generateSampleValueForField(part)
     } else {
-      // Intermediate part - ensure it's an object
       if (!current[part] || typeof current[part] !== 'object') {
         current[part] = {}
       }
@@ -279,13 +248,11 @@ function buildNestedStructureFromPath(target: JsonObject, fieldPath: string): vo
 function mergeNestedStructures(target: JsonObject, source: JsonObject): void {
   for (const [key, value] of Object.entries(source)) {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
-      // Nested object
       if (!target[key] || typeof target[key] !== 'object') {
         target[key] = {}
       }
       mergeNestedStructures(target[key] as JsonObject, value)
     } else {
-      // Primitive value - only set if not already exists
       if (!(key in target)) {
         target[key] = value
       }
@@ -340,32 +307,24 @@ function analyzeMapStateItemProcessor(mapState: MapState): JsonObject | null {
   const mapIsJSONata = mapState.isJSONataState()
 
   if ('ItemSelector' in mapState && mapState.ItemSelector) {
-    // ItemSelectorがある場合、ItemReaderから必要なフィールドを抽出
     const itemSelector = mapState.ItemSelector
 
     if (mapIsJSONata) {
-      // JSONataモード: ItemSelectorから参照されているフィールドを収集
-      // まずすべてのItemSelectorフィールドを処理して、ItemReaderの基本構造を構築
       for (const [selectorKey, value] of Object.entries(itemSelector)) {
         if (typeof value === 'string' && value.includes('$states.context.Map.Item.Value')) {
-          // Handle JSONata expression format: {% $states.context.Map.Item.Value.fieldName %}
           const cleanValue = value
             .replace(/^{%\s*/, '')
             .replace(/\s*%}$/, '')
             .trim()
           const match = cleanValue.match(/\$states\.context\.Map\.Item\.Value(?:\.(.+))?/)
           if (match) {
-            const fieldPath = match[1] // undefined for entire object, field path for specific fields
+            const fieldPath = match[1]
 
             if (!fieldPath) {
-              // Entire object reference: $states.context.Map.Item.Value
-              // Analyze ItemProcessor to find what fields are actually used from this selector key
               const requiredFields = analyzeItemProcessorFieldUsage(processor, selectorKey)
               if (requiredFields && Object.keys(requiredFields).length > 0) {
-                // Merge fields into sampleInput
                 mergeNestedStructures(sampleInput, requiredFields)
               } else {
-                // Default: generate sample fields commonly found in data processing
                 const defaultFields = {
                   id: generateSampleValueForField('id'),
                   name: generateSampleValueForField('name'),
@@ -376,30 +335,21 @@ function analyzeMapStateItemProcessor(mapState: MapState): JsonObject | null {
                 mergeNestedStructures(sampleInput, defaultFields)
               }
             } else {
-              // Specific field reference: $states.context.Map.Item.Value.nest1.id
               buildNestedStructureFromPath(sampleInput, fieldPath)
             }
           }
         }
-        // Note: We don't add fields that don't reference Map.Item.Value as they're not from ItemReader
       }
     } else {
-      // JSONPathモード: ItemSelectorから参照されているフィールドを収集
       for (const [rawKey, value] of Object.entries(itemSelector)) {
-        // Remove .$ suffix from key for JSONPath mode
         const key = rawKey.endsWith('.$') ? rawKey.slice(0, -2) : rawKey
 
         if (typeof value === 'string' && value.includes('$$.Map.Item.Value')) {
-          // Special case: If the expression is exactly $$.Map.Item.Value (entire object)
           if (value === '$$.Map.Item.Value' || value === '$$.Map.Item.Value.$') {
-            // Analyze ItemProcessor to find what fields are actually used
             const requiredFields = analyzeItemProcessorFieldUsage(processor, key)
             if (requiredFields && Object.keys(requiredFields).length > 0) {
-              // Add required fields directly to sampleInput (not nested)
               Object.assign(sampleInput, requiredFields)
             } else {
-              // Default: generate sample fields commonly found in data processing
-              // The actual values will be determined by generateSampleValueForField
               Object.assign(sampleInput, {
                 id: generateSampleValueForField('id'),
                 name: generateSampleValueForField('name'),
@@ -409,29 +359,22 @@ function analyzeMapStateItemProcessor(mapState: MapState): JsonObject | null {
               })
             }
           } else {
-            // $$.Map.Item.Value.fieldName -> add fieldName to ItemReader data
             const match = value.match(/\$\$\.Map\.Item\.Value\.(.+)/)
             if (match?.[1]) {
               const fieldPath = match[1]
-              // Build nested structure in sampleInput
               buildNestedStructureFromPath(sampleInput, fieldPath)
             }
           }
         }
-        // Note: We don't add fields that don't reference Map.Item.Value as they're not from ItemReader
       }
     }
   }
 
-  // ItemProcessorの内部ステートを分析して必要なフィールドを追加
   extractFieldsFromItemProcessor(processor, sampleInput, mapIsJSONata)
 
   return Object.keys(sampleInput).length > 0 ? sampleInput : null
 }
 
-/**
- * ItemProcessor内のステートからフィールド要件を抽出
- */
 function extractFieldsFromItemProcessor(
   processor: ItemProcessor,
   sampleInput: JsonObject,
@@ -440,15 +383,9 @@ function extractFieldsFromItemProcessor(
   if (!processor.States) return
 
   for (const [, state] of Object.entries(processor.States)) {
-    // processor.States is Record<string, State>, so state is already typed as State
-
-    // ガード関数を使用してChoice状態を判定
     if (state.isChoice()) {
-      // isChoice() type guard ensures state has Choices property
-      // Choice条件から必要フィールドを抽出
       if ('Choices' in state && state.Choices) {
         for (const choice of state.Choices) {
-          // Check if it's a JSONPath choice (has Variable field)
           if ('Variable' in choice && choice.Variable) {
             const fieldName = extractFieldFromPath(choice.Variable)
             if (fieldName && !sampleInput[fieldName]) {
@@ -469,8 +406,6 @@ function extractFieldsFromItemProcessor(
         }
       }
     } else if (state.isTask()) {
-      // isTask() type guard ensures state is a TaskState
-      // Task Parameters から必要フィールドを抽出
       if ('Parameters' in state && state.Parameters) {
         extractFieldsFromParameters(state.Parameters, sampleInput, isJSONata)
       }
@@ -478,9 +413,6 @@ function extractFieldsFromItemProcessor(
   }
 }
 
-/**
- * Parameters オブジェクトからフィールド参照を抽出
- */
 function extractFieldsFromParameters(
   params: JsonValue,
   sampleInput: JsonObject,
@@ -488,7 +420,6 @@ function extractFieldsFromParameters(
 ): void {
   if (!params || typeof params !== 'object') return
 
-  // Type check params before processing
   if (typeof params !== 'object' || params === null || Array.isArray(params)) {
     return
   }
@@ -505,13 +436,9 @@ function extractFieldsFromParameters(
   }
 }
 
-/**
- * JSONPath式からフィールド名を抽出
- */
 function extractFieldFromPath(path: string): string | null {
   if (!path?.startsWith('$')) return null
 
-  // Handle paths like $.field, $.field.subfield, $[0], etc.
   const match = path.match(/^\$\.?([a-zA-Z_][a-zA-Z0-9_]*)/)
   return match?.[1] ?? null
 }
@@ -529,7 +456,6 @@ function generateSampleValueForField(
 ): JsonValue {
   const lowerField = fieldName.toLowerCase()
 
-  // Email patterns - check both field name and usage context
   const isEmailField =
     lowerField.includes('email') ||
     (lowerField.includes('mail') && !lowerField.includes('mailing')) ||
@@ -539,20 +465,17 @@ function generateSampleValueForField(
     return `user${Math.floor(Math.random() * 1000) + 1}@example.com`
   }
 
-  // Date/time patterns - only for clear date/time fields
   if (lowerField.endsWith('_at') || lowerField.endsWith('_date') || lowerField.endsWith('_time')) {
     const date = new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000)
     return date.toISOString()
   }
 
-  // Month patterns - only exact matches
   if (lowerField.endsWith('_month') || lowerField === 'month') {
     const year = 2024
     const month = Math.floor(Math.random() * 12) + 1
     return `${year}-${String(month).padStart(2, '0')}`
   }
 
-  // Boolean patterns
   if (
     lowerField.startsWith('is_') ||
     lowerField.startsWith('has_') ||
@@ -566,7 +489,6 @@ function generateSampleValueForField(
     return Math.random() > 0.5
   }
 
-  // Count/number patterns
   if (
     lowerField.includes('_count') ||
     lowerField.includes('_number') ||
@@ -576,7 +498,6 @@ function generateSampleValueForField(
     return Math.floor(Math.random() * 100) + 1
   }
 
-  // Amount/price patterns (likely monetary)
   if (
     lowerField.includes('amount') ||
     lowerField.includes('price') ||
@@ -587,7 +508,6 @@ function generateSampleValueForField(
     return Math.floor(Math.random() * 10000) + 100
   }
 
-  // URL patterns
   if (
     lowerField.includes('_url') ||
     lowerField.includes('_link') ||
@@ -596,7 +516,6 @@ function generateSampleValueForField(
     return `https://example.com/${fieldName.toLowerCase()}`
   }
 
-  // Name patterns - simple string generation
   if (lowerField.includes('name')) {
     return `${fieldName
       .replace(/_/g, ' ')
@@ -604,24 +523,20 @@ function generateSampleValueForField(
       .trim()} ${Math.floor(Math.random() * 100) + 1}`
   }
 
-  // Status/state patterns
   if (lowerField.includes('status') || lowerField.includes('state')) {
     const options = ['active', 'pending', 'inactive', 'processing', 'completed']
-    return options[Math.floor(Math.random() * options.length)] ?? 'pending'
+    return options[Math.floor(Math.random() * options.length)] ?? 'pending' // Fallback to safe default
   }
 
-  // Priority patterns
   if (lowerField.includes('priority')) {
-    return Math.floor(Math.random() * 5) + 1 // 1-5 priority levels
+    return Math.floor(Math.random() * 5) + 1 // Priority levels typically 1-5
   }
 
-  // ID patterns (generic - could be any format)
   if (
     lowerField.endsWith('_id') ||
     lowerField === 'id' ||
     (lowerField.endsWith('id') && lowerField.length > 2)
   ) {
-    // Generate a reasonable ID format (not assuming AWS)
     const idNum = Math.floor(Math.random() * 1000000) + 1
     if (lowerField === 'id') {
       return `id-${idNum}`
@@ -629,15 +544,10 @@ function generateSampleValueForField(
     return `${fieldName.replace(/[_-]?id$/i, '')}-${idNum}`.toLowerCase()
   }
 
-  // Remove over-specific patterns - let AI handle these
-  // Language codes, locales, etc. should be determined by context
-
-  // Username patterns
   if (lowerField.includes('username') || lowerField === 'user') {
     return `user${Math.floor(Math.random() * 10000) + 1}`
   }
 
-  // Default case
   return `${fieldName}-${Math.floor(Math.random() * 1000) + 1}`
 }
 
@@ -649,22 +559,17 @@ function generateSampleDataInternal(
   itemCount: number,
   sampleInput: JsonObject | null,
 ): string {
-  // Add timestamp for uniqueness
   const timestamp = Date.now()
   const randomSeed = Math.floor(Math.random() * 10000)
 
-  // Helper function to generate variations from analyzed sample
   function generateVariationFromSample(sample: JsonObject, index: number, _ts: number): JsonObject {
     const variation: JsonObject = {}
 
     for (const [key, value] of Object.entries(sample)) {
       if (typeof value === 'string') {
-        // Handle JSONata expressions first
         if (value.startsWith('{%') && value.endsWith('%}')) {
-          // JSONata expressions - replace with mock test values
           const expr = value.slice(2, -2).trim()
 
-          // Generate appropriate test values based on common patterns
           if (expr.includes('$states.context.Execution.Name')) {
             variation[key] = `test-execution-${index + 1}`
           } else if (expr.includes('$states.context.Execution.StartTime')) {
@@ -680,18 +585,13 @@ function generateSampleDataInternal(
           } else if (expr.includes('value')) {
             variation[key] = `value-${Math.floor(Math.random() * 1000) + index}`
           } else {
-            // Default: generate a test value based on the field name
             variation[key] = `test-${key}-${index + 1}`
           }
         } else if (value.includes('-001')) {
-          // Preserve template pattern like "userId-001" → "userId-002"
           variation[key] = value.replace('-001', `-${String(index + 1).padStart(3, '0')}`)
         } else if (key.toLowerCase().includes('id')) {
-          // For ID fields, add incremental number: "user123" → "user124"
           variation[key] = `${value.replace(/\d+$/, '')}${index + 1}`
         } else {
-          // For other strings, keep them realistic by preserving the base value
-          // Instead of "active_1234_0", use variants like "active", "pending", "inactive"
           const lowerKey = key.toLowerCase()
           if (lowerKey.includes('status') || lowerKey.includes('state')) {
             const statusOptions = ['active', 'pending', 'inactive', 'processing', 'completed']
@@ -700,27 +600,21 @@ function generateSampleDataInternal(
             const typeOptions = ['typeA', 'typeB', 'typeC', 'standard', 'premium']
             variation[key] = typeOptions[index % typeOptions.length] || value
           } else if (lowerKey.includes('name')) {
-            // Keep the base structure but make it unique
             variation[key] = `${value} ${index + 1}`
           } else {
-            // For other fields, keep the original value to maintain realism
             variation[key] = value
           }
         }
       } else if (typeof value === 'number') {
         if (key.toLowerCase().includes('id')) {
-          // ID numbers should be incremental
           variation[key] = index + 1
         } else {
-          // Other numbers: add some realistic variation
           const baseValue = typeof value === 'number' ? value : 100
           variation[key] = baseValue + index * 50 + Math.floor(Math.random() * 100)
         }
       } else if (typeof value === 'boolean') {
-        // Vary boolean values in a pattern
-        variation[key] = index % 3 === 0 // Every 3rd item is true
+        variation[key] = index % 3 === 0
       } else {
-        // Keep complex types as-is
         variation[key] = value
       }
     }
@@ -729,7 +623,6 @@ function generateSampleDataInternal(
   }
   switch (format) {
     case 's3objects': {
-      // S3 ListObjectsV2 format - incorporate analyzed requirements
       const s3Items = Array.from({ length: itemCount }, (_, i) => {
         const baseItem = {
           Key: `data/batch-${timestamp}/item-${String(i + 1).padStart(4, '0')}.json`,
@@ -739,7 +632,6 @@ function generateSampleDataInternal(
           StorageClass: i % 10 === 0 ? 'STANDARD_IA' : 'STANDARD',
         }
 
-        // Add fields from ItemProcessor analysis
         if (sampleInput) {
           return { ...baseItem, ...generateVariationFromSample(sampleInput, i, timestamp) }
         }
@@ -749,9 +641,7 @@ function generateSampleDataInternal(
     }
 
     case 'csv': {
-      // CSV format - incorporate analyzed requirements
       if (sampleInput && Object.keys(sampleInput).length > 0) {
-        // Generate CSV based on analyzed fields
         const headers = Object.keys(sampleInput).join(',')
         const rows = Array.from({ length: itemCount }, (_, i) => {
           const variation = generateVariationFromSample(sampleInput, i, timestamp)
@@ -761,7 +651,6 @@ function generateSampleDataInternal(
         })
         return [headers, ...rows].join('\n')
       } else {
-        // Fallback to generic CSV
         const headers = 'id,name,value,status,created_at'
         const rows = Array.from(
           { length: itemCount },
@@ -773,14 +662,11 @@ function generateSampleDataInternal(
     }
 
     case 'jsonl': {
-      // JSON Lines format - incorporate analyzed requirements
       const jsonlItems = Array.from({ length: itemCount }, (_, i) => {
         if (sampleInput && Object.keys(sampleInput).length > 0) {
-          // Generate data based on ItemProcessor analysis
           const itemData = generateVariationFromSample(sampleInput, i, timestamp)
           return JSON.stringify(itemData)
         } else {
-          // Fallback to generic JSONL
           const itemData = {
             id: `item-${timestamp}-${i + 1}`,
             name: `Item ${i + 1}`,
@@ -799,7 +685,6 @@ function generateSampleDataInternal(
     }
 
     case 'manifest': {
-      // S3 Inventory Manifest format
       const manifestData = {
         sourceBucket: 'example-source-bucket',
         destinationBucket: 'arn:aws:s3:::example-inventory-bucket',
@@ -815,13 +700,11 @@ function generateSampleDataInternal(
       return JSON.stringify(manifestData, null, 2)
     }
     default: {
-      // Standard JSON array - incorporate analyzed requirements
       const jsonItems = Array.from({ length: itemCount }, (_, i) => {
         if (sampleInput && Object.keys(sampleInput).length > 0) {
           return generateVariationFromSample(sampleInput, i, timestamp)
         }
 
-        // Fallback to default structure if no requirements found
         return {
           id: `item-${timestamp}-${i + 1}`,
           name: `Item ${i + 1}`,

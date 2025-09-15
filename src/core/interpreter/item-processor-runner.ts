@@ -2,6 +2,9 @@ import type { ExecutionContext, ItemProcessor, JsonValue } from '../../types/asl
 import type { MockEngine } from '../mock/engine'
 import { StateExecutorFactory } from './states/state-executor-factory'
 
+/**
+ * ItemProcessor実行結果
+ */
 export interface ItemProcessorResult {
   output: JsonValue
   executionPath: string[]
@@ -10,6 +13,9 @@ export interface ItemProcessorResult {
   variables?: Record<string, JsonValue>
 }
 
+/**
+ * ItemProcessor実行コンテキスト
+ */
 export interface ItemProcessorContext {
   input: JsonValue
   variables?: Record<string, JsonValue>
@@ -29,6 +35,11 @@ export class ItemProcessorRunner {
     this.mockEngine = mockEngine
   }
 
+  /**
+   * ItemProcessorを実行する
+   * @param input 入力データ
+   * @returns 実行結果
+   */
   execute(input: JsonValue): Promise<ItemProcessorResult> {
     const context: ItemProcessorContext = {
       input,
@@ -39,6 +50,11 @@ export class ItemProcessorRunner {
     return this.executeWithContext(context)
   }
 
+  /**
+   * コンテキストを指定してItemProcessorを実行する
+   * @param context 実行コンテキスト
+   * @returns 実行結果
+   */
   async executeWithContext(context: ItemProcessorContext): Promise<ItemProcessorResult> {
     const executionContext: ExecutionContext = {
       input: context.input,

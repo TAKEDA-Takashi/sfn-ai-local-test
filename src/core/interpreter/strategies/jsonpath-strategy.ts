@@ -12,23 +12,21 @@ import type { ProcessingStrategy } from '../processing-strategy'
 import { JSONPathProcessor } from '../utils/jsonpath-processor'
 
 /**
- * JSONPath モードの処理戦略
- * AWS Step Functions のデフォルトモード
+ * JSONPath mode processing strategy
+ * Default mode for AWS Step Functions
  */
 export class JSONPathStrategy implements ProcessingStrategy {
   /**
-   * 前処理: InputPath → Parameters の順で処理
+   * Preprocess: Apply InputPath → Parameters
    */
   preprocess(input: JsonValue, state: State, context: ExecutionContext): Promise<JsonValue> {
-    // デバッグアサーション: このStrategyはJSONPathモードでのみ使用されるべき
+    // This Strategy should only be used with JSONPath mode
     if (!state.isJSONPathState()) {
       throw new Error('JSONPathStrategy should only be used with JSONPath mode states')
     }
 
-    // 1. InputPath の適用
     let processedInput = this.applyInputPath(input, state)
 
-    // 2. Parameters の適用
     // Map/DistributedMap states apply Parameters per item, not to the whole input
     if ('Parameters' in state && state.Parameters && !state.isMap()) {
       processedInput = this.applyParameters(processedInput, state, context)
@@ -38,7 +36,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
   }
 
   /**
-   * 後処理: ResultSelector → ResultPath → OutputPath → Assign の順で処理
+   * Postprocess: Apply ResultSelector → ResultPath → OutputPath → Assign
    */
   postprocess(
     result: JsonValue,
@@ -46,26 +44,21 @@ export class JSONPathStrategy implements ProcessingStrategy {
     state: State,
     context: ExecutionContext,
   ): Promise<JsonValue> {
-    // デバッグアサーション
     if (!state.isJSONPathState()) {
       throw new Error('JSONPathStrategy should only be used with JSONPath mode states')
     }
 
-    // 1. ResultSelector の適用
     let processedResult = result
     if ('ResultSelector' in state && state.ResultSelector) {
       processedResult = this.applyResultSelector(result, state)
     }
 
-    // 2. ResultPath の適用
     let output = this.applyResultPath(originalInput, processedResult, state)
 
-    // 3. OutputPath の適用
     output = this.applyOutputPath(output, state)
 
-    // 4. Assign の適用 (Variables の更新) - Task結果から直接評価
     if ('Assign' in state && state.Assign) {
-      // Assignは、ResultSelectorが適用された結果（Task実行結果から作られた）から値を取得
+      // Assign gets values from ResultSelector output (derived from Task execution result)
       this.applyAssign(processedResult, state, context)
     }
 
@@ -73,7 +66,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
   }
 
   /**
-   * InputPath の適用
+   * Apply InputPath to filter input
    */
   private applyInputPath(input: JsonValue, state: JSONPathState): JsonValue {
     const inputPath = state.InputPath
@@ -94,7 +87,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
   }
 
   /**
-   * Parameters の適用（ペイロードテンプレート処理）
+   * Apply Parameters (payload template processing)
    */
   private applyParameters(
     input: JsonValue,
@@ -123,7 +116,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
   }
 
   /**
-   * ResultPath の適用
+   * Apply ResultPath to merge result with original input
    */
   private applyResultPath(
     originalInput: JsonValue,
@@ -143,15 +136,11 @@ export class JSONPathStrategy implements ProcessingStrategy {
       // 元の入力がオブジェクトでない場合は、新しいオブジェクトを作成
       const pathParts = resultPath.slice(2).split('.')
 
-      // pathParts.reduceRightを使ってネストしたオブジェクトを作成
-      return pathParts.reduceRight<JsonValue>(
-        (value, key) => ({ [key]: value }),
-        result,
-      ) as JsonObject
+      return pathParts.reduceRight<JsonValue>((value, key) => ({ [key]: value }), result)
     }
 
     // 元の入力がオブジェクトの場合はディープコピーして挿入
-    const output = deepClone(originalInput as JsonObject)
+    const output = deepClone(originalInput)
     const pathParts = resultPath.slice(2).split('.')
 
     // 最後の要素以外をたどって、必要に応じてオブジェクトを作成
@@ -163,13 +152,12 @@ export class JSONPathStrategy implements ProcessingStrategy {
       current = current[pathParts[i]] as JsonObject
     }
 
-    // 最後の要素に値を設定
     current[pathParts[pathParts.length - 1]] = result
     return output
   }
 
   /**
-   * OutputPath の適用
+   * Apply OutputPath to filter output
    */
   private applyOutputPath(output: JsonValue, state: JSONPathState): JsonValue {
     const outputPath = state.OutputPath
@@ -190,7 +178,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
   }
 
   /**
-   * ペイロードテンプレートの処理
+   * Process payload template with JSONPath expressions
    */
   private processPayloadTemplate(
     template: JsonObject,
@@ -202,7 +190,6 @@ export class JSONPathStrategy implements ProcessingStrategy {
       handleIntrinsics: true,
       contextPathHandler: executionContext
         ? (path: string) => {
-            // Handle context path ($$.*)
             if (path.startsWith('$$.')) {
               const contextPath = path.replace(/^\$\$\./, '')
               return JSONPath({
@@ -220,7 +207,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
   }
 
   /**
-   * Assign の適用 (Variables の更新)
+   * Apply Assign to update Variables
    */
   private applyAssign(output: JsonValue, state: JSONPathState, context: ExecutionContext): void {
     const assign = state.Assign
@@ -228,7 +215,6 @@ export class JSONPathStrategy implements ProcessingStrategy {
       return
     }
 
-    // Initialize variables if not exists
     if (!context.variables) {
       context.variables = {}
     }
@@ -237,20 +223,16 @@ export class JSONPathStrategy implements ProcessingStrategy {
     const evaluatedValues: JsonObject = {}
 
     for (const [key, value] of Object.entries(assign)) {
-      // Check if this is a JSONPath assignment (key ends with .$)
       const isJSONPath = key.endsWith('.$')
       const variableName = isJSONPath ? key.slice(0, -2) : key
 
       if (isJSONPath && typeof value === 'string') {
-        // Process the value which may contain intrinsic functions or JSONPath
         evaluatedValues[variableName] = this.evaluateAssignValue(value, output, context)
       } else {
-        // Static value
         evaluatedValues[variableName] = value
       }
     }
 
-    // Then, assign all evaluated values to variables
     for (const [variableName, value] of Object.entries(evaluatedValues)) {
       context.variables[variableName] = value
     }
@@ -264,7 +246,6 @@ export class JSONPathStrategy implements ProcessingStrategy {
     output: JsonValue,
     context: ExecutionContext,
   ): JsonValue {
-    // Handle intrinsic functions with variable references
     if (value.includes('States.')) {
       // Replace variable references ($varName) with actual values
       const expandedValue = value.replace(/\$([a-zA-Z_][a-zA-Z0-9_]*)/g, (match, varName) => {
@@ -279,16 +260,13 @@ export class JSONPathStrategy implements ProcessingStrategy {
         return match // Keep original if variable not found
       })
 
-      // Now evaluate the intrinsic function
       return JSONPathProcessor.evaluateStringValue(expandedValue, output, {
         handleIntrinsics: true,
         context: { variables: context.variables },
       })
     }
 
-    // Handle context object references ($$.)
     if (value.startsWith('$$.')) {
-      // Create a context object with state information
       const contextObj = {
         State: {
           EnteredTime: new Date().toISOString(),
@@ -300,7 +278,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
         Map: context.Map,
       }
 
-      const contextPath = value.slice(3) // Remove $$. prefix
+      const contextPath = value.slice(3)
       const result = JSONPath({
         path: `$.${contextPath}`,
         json: contextObj,
@@ -309,7 +287,6 @@ export class JSONPathStrategy implements ProcessingStrategy {
       return result !== undefined ? result : null
     }
 
-    // Handle variable references ($varName)
     if (value.match(/^\$[a-zA-Z_][a-zA-Z0-9_]*$/)) {
       const varName = value.slice(1)
       if (context.variables && varName in context.variables) {

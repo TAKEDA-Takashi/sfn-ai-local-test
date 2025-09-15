@@ -13,7 +13,6 @@ export class TaskStateExecutor extends BaseStateExecutor<TaskState> {
    * Taskステートの実行: 外部サービスの呼び出しと結果処理
    */
   protected async executeState(input: JsonValue, context: ExecutionContext): Promise<JsonValue> {
-    // リトライ処理
     const maxAttempts = this.getMaxAttempts()
     let lastError: Error | undefined
 
@@ -37,12 +36,10 @@ export class TaskStateExecutor extends BaseStateExecutor<TaskState> {
    * 外部タスクの実行
    */
   private async invokeTask(input: JsonValue, context: ExecutionContext): Promise<JsonValue> {
-    // モックエンジンがある場合はモックレスポンスを返す
     if (this.mockEngine) {
       return await this.mockEngine.getMockResponse(context.currentState, input, this.state)
     }
 
-    // 実際のタスク実行（簡略化実装）
     throw new Error('Task execution not implemented')
   }
 

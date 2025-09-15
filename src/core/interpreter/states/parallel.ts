@@ -9,10 +9,9 @@ export class ParallelStateExecutor extends BaseStateExecutor<ParallelState> {
    * Parallelステートの実行: 複数のブランチの並列実行
    */
   protected async executeState(input: JsonValue, context: ExecutionContext): Promise<JsonValue> {
-    // ブランチを並列実行
     const branchResults = await this.executeBranches(input, context)
 
-    // 結果を配列として返す（後処理でResultSelectorが適用される）
+    // Must return array for ResultSelector to work correctly
     return branchResults
   }
 
@@ -23,6 +22,7 @@ export class ParallelStateExecutor extends BaseStateExecutor<ParallelState> {
     const currentStateName = context.currentState
     const branchPaths: string[][] = new Array(this.state.Branches.length)
 
+    // Branches are already converted StateMachines with State instances
     const branchPromises = this.state.Branches.map(async (branch, branchIndex) => {
       const branchResult = await this.executeBranch(
         branch,
@@ -32,12 +32,10 @@ export class ParallelStateExecutor extends BaseStateExecutor<ParallelState> {
         currentStateName,
       )
 
-      // ブランチパスの記録
       if (branchResult.executionPath) {
         branchPaths[branchIndex] = branchResult.executionPath
       }
 
-      // ステート実行情報の記録
       this.recordBranchStateExecutions(branchResult, branchIndex, currentStateName, context)
 
       return branchResult.output
@@ -46,7 +44,6 @@ export class ParallelStateExecutor extends BaseStateExecutor<ParallelState> {
     // Promise.all returns an array of JsonValue (branch outputs)
     const results: JsonArray = await Promise.all(branchPromises)
 
-    // Parallelメタデータの記録
     this.recordParallelMetadata(currentStateName, branchPaths, context)
 
     return results
@@ -71,7 +68,6 @@ export class ParallelStateExecutor extends BaseStateExecutor<ParallelState> {
       currentStateName,
     )
 
-    // ブランチを実行
     const branchExecutor = new StateMachineExecutor(branch, this.mockEngine)
     const branchResult = await branchExecutor.execute(branchContext)
 
@@ -95,8 +91,8 @@ export class ParallelStateExecutor extends BaseStateExecutor<ParallelState> {
     return {
       ...parentContext,
       input: input,
-      variables: { ...parentContext.variables }, // スコープ分離のためコピー
-      currentState: branch.StartAt, // ブランチのStartAt状態から開始
+      variables: { ...parentContext.variables }, // Isolate variable scope per branch
+      currentState: branch.StartAt,
       currentStatePath: [
         ...(parentContext.currentStatePath || []),
         currentStateName,
@@ -162,18 +158,17 @@ export class ParallelStateExecutor extends BaseStateExecutor<ParallelState> {
    * エラーハンドリング（Catchルールの処理）
    */
   protected handleError(error: unknown, context: ExecutionContext) {
-    // Catchルールがある場合の処理
     const matchedCatch = this.findMatchingCatch(error)
     if (matchedCatch) {
       let errorOutput = context.input
 
-      // ResultPathがある場合はエラー情報を適用
+      // Preserve original input while adding error info at ResultPath
       if ('ResultPath' in matchedCatch && matchedCatch.ResultPath) {
         const errorInfo = {
           Error: error instanceof Error ? error.name : 'Error',
           Cause: error instanceof Error ? error.message : String(error),
         }
-        // ResultPath処理の簡易実装
+        // Simplified ResultPath implementation for Parallel state
         const resultPath = matchedCatch.ResultPath
         if (typeof resultPath === 'string') {
           if (resultPath === '$') {

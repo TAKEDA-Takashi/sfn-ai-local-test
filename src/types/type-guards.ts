@@ -2,9 +2,13 @@
  * Type guard functions for ASL types
  */
 
-import type { ItemProcessor, JsonArray, JsonObject, JsonValue } from './asl'
-import type { MapState } from './state-classes'
+import type { JsonArray, JsonObject, JsonValue } from './asl'
 
+/**
+ * JSON値かどうかを判定する型ガード
+ * @param value 判定対象の値
+ * @returns JsonValue型の場合true
+ */
 export function isJsonValue(value: unknown): value is JsonValue {
   if (value === null) return true
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -23,6 +27,11 @@ export function isJsonValue(value: unknown): value is JsonValue {
   return false
 }
 
+/**
+ * JSONオブジェクトかどうかを判定する型ガード
+ * @param value 判定対象の値
+ * @returns JsonObject型の場合true
+ */
 export function isJsonObject(value: unknown): value is JsonObject {
   if (typeof value !== 'object' || value === null) {
     return false
@@ -36,45 +45,30 @@ export function isJsonObject(value: unknown): value is JsonObject {
   return Object.values(value).every(isJsonValue)
 }
 
+/**
+ * JSON配列かどうかを判定する型ガード
+ * @param value 判定対象の値
+ * @returns JsonArray型の場合true
+ */
 export function isJsonArray(value: unknown): value is JsonArray {
   return Array.isArray(value) && value.every(isJsonValue)
 }
 
-// Type guard for legacy Iterator field in MapState
-// Iterator should be compatible with ItemProcessor interface
-export function hasIterator(
-  state: MapState | unknown,
-): state is MapState & { Iterator: ItemProcessor } {
-  // First check if it's an object
-  if (state === null || typeof state !== 'object') {
-    return false
-  }
+// Basic type guards
+/**
+ * 文字列かどうかを判定する型ガード
+ * @param value 判定対象の値
+ * @returns 文字列の場合true
+ */
+export function isString(value: unknown): value is string {
+  return typeof value === 'string'
+}
 
-  // Check if Iterator property exists
-  if (!('Iterator' in state)) {
-    return false
-  }
-
-  // Access Iterator - we know it exists from the check above
-  const stateWithIterator = state as { Iterator?: unknown }
-  const iterator = stateWithIterator.Iterator
-
-  // Check if Iterator is a valid object
-  if (iterator === undefined || iterator === null || typeof iterator !== 'object') {
-    return false
-  }
-
-  // Check if iterator has required ItemProcessor properties
-  if (!('StartAt' in iterator && 'States' in iterator)) {
-    return false
-  }
-
-  // Final type check for StartAt and States
-  const iteratorObj = iterator as { StartAt?: unknown; States?: unknown }
-
-  return (
-    typeof iteratorObj.StartAt === 'string' &&
-    typeof iteratorObj.States === 'object' &&
-    iteratorObj.States !== null
-  )
+/**
+ * Errorオブジェクトかどうかを判定する型ガード
+ * @param result 判定対象の値
+ * @returns Errorインスタンスの場合true
+ */
+export function isError(result: unknown): result is Error {
+  return result instanceof Error
 }

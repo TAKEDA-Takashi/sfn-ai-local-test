@@ -78,14 +78,12 @@ export class GenerationRetryManager {
           verbose: options.verbose ?? false,
         })
 
-        // Validate generated content
         if (type === 'mock') {
           lastIssues = this.validator.validateMockContent(lastContent, stateMachine)
         } else {
           lastIssues = this.validator.validateTestContent(lastContent, stateMachine)
         }
 
-        // Check if we have critical errors
         const errors = lastIssues.filter((issue) => issue.level === 'error')
 
         if (errors.length === 0) {
@@ -103,7 +101,6 @@ export class GenerationRetryManager {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
 
-        // Check if we should retry on timeout
         if (retryOnTimeout && errorMessage.includes('timed out') && attempts < maxAttempts) {
           continue
         }

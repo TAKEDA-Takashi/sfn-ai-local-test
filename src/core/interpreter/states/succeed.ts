@@ -11,8 +11,7 @@ export class SucceedStateExecutor extends BaseStateExecutor<SucceedState> {
    * Succeedステートの実行: 入力をそのまま返して成功終了
    */
   protected executeState(input: JsonValue, _context: ExecutionContext): Promise<JsonValue> {
-    // Succeedステートは入力をそのまま返す
-    // JSONataモードでのOutput処理は後処理で対応
+    // Pass through input unchanged - Output field handled by post-processing
     return Promise.resolve(input)
   }
 
@@ -20,7 +19,7 @@ export class SucceedStateExecutor extends BaseStateExecutor<SucceedState> {
    * 次の状態を決定（Succeedは終了状態）
    */
   protected determineNextState(): string | undefined {
-    // Succeedステートは必ず実行を終了
+    // Succeed always terminates execution
     return undefined
   }
 }

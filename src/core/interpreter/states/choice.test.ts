@@ -76,7 +76,9 @@ describe('ChoiceStateExecutor', () => {
           ],
           Default: 'ProcessMinor',
         }),
-      ).toThrow("Variable field is not supported in JSONata mode. Use 'Condition' field instead")
+      ).toThrow(
+        "JSONPath choice rule fields (Variable, And, Or, Not) are not supported in JSONata mode. Use 'Condition' field instead",
+      )
     })
 
     it('should evaluate Condition field with JSONata expression', async () => {

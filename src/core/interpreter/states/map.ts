@@ -1,7 +1,7 @@
 import type {
   DistributedMapState,
   ExecutionContext,
-  ItemProcessor,
+  ItemBatcher,
   ItemReader,
   JsonArray,
   JsonObject,
@@ -10,7 +10,6 @@ import type {
   ToleranceConfig,
 } from '../../../types/asl'
 import type { MapState } from '../../../types/state-classes'
-import { hasIterator } from '../../../types/type-guards'
 import type { MockEngine } from '../../mock/engine'
 import { ItemReaderValidator } from '../../mock/item-reader-validator'
 import { JSONataEvaluator } from '../expressions/jsonata'
@@ -18,12 +17,6 @@ import type { ItemProcessorContext } from '../item-processor-runner'
 import { ItemProcessorRunner } from '../item-processor-runner'
 import { JSONPathProcessor } from '../utils/jsonpath-processor'
 import { JSONPathUtils } from '../utils/jsonpath-utils'
-import {
-  createItemBatches,
-  getDefaultMockDataForResource,
-  processMapContextSelector,
-  shouldFailExecution,
-} from '../utils/map-helpers'
 import type { StateExecutionResult } from './base'
 import { BaseStateExecutor } from './base'
 
@@ -53,7 +46,6 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
     // JSONata mode validationはStateFactoryで実施済み
     const contextInput = context.input
 
-    // InputPath処理をstrategyに委譲
     const processedInput = await this.strategy.preprocess(contextInput, this.state, context)
 
     // Note: Parameters in Map state is applied per item, not to the whole input
@@ -95,7 +87,6 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
           const result = await this.processItem(itemInput, itemContext, iterationIndex)
 
           if (result.executionPath && Array.isArray(result.executionPath)) {
-            // Add iteration paths without Map state prefix
             iterationPaths.push(result.executionPath)
           }
 
@@ -130,7 +121,6 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
             const result = await this.processItem(itemInput, itemContext, iterationIndex)
 
             if (result.executionPath && Array.isArray(result.executionPath)) {
-              // Add iteration paths without Map state prefix
               iterationPaths.push(result.executionPath)
             }
 
@@ -142,11 +132,9 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
         }
       }
 
-      // ResultPath/OutputPath処理をstrategyに委譲
       const output = await this.strategy.postprocess(results, contextInput, this.state, context)
 
       if (context.stateExecutions) {
-        // Add Map metadata to the context for TestSuiteRunner to use
         const mapMetadata = {
           type: 'Map',
           state: currentStateName,
@@ -217,7 +205,6 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
     index: number,
     contextInput: JsonValue,
   ): Promise<JsonValue> {
-    // Check both Parameters and ItemSelector fields (ItemSelector is also used in JSONPath mode)
     const parameters = 'Parameters' in this.state ? this.state.Parameters : undefined
     const itemSelector = 'ItemSelector' in this.state ? this.state.ItemSelector : undefined
     const parametersOrItemSelector = parameters || itemSelector
@@ -321,14 +308,8 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
     context: ExecutionContext,
     iterationIndex?: number,
   ): Promise<StateExecutionResult> {
-    // Support both ItemProcessor (newer) and Iterator (older) fields
-    let processor: ItemProcessor | undefined = this.state.ItemProcessor
-
-    // For legacy compatibility, check if Iterator exists
-    // Note: Iterator is a legacy field not in the type definition
-    if (!processor && hasIterator(this.state)) {
-      processor = this.state.Iterator
-    }
+    // ItemProcessorはMap stateクラスで必ず正規化されている
+    const processor = this.state.ItemProcessor
 
     if (!processor) {
       return { output: itemInput, executionPath: [], success: true }
@@ -345,7 +326,6 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
     // For Inline Map (default), pass variables context to allow access to outer scope
     let processorContext: ItemProcessorContext
     if (this.state.isInlineMap()) {
-      // Create a shallow copy of variables to maintain read access but prevent modification
       // Each iteration gets its own variable scope that inherits from parent
       processorContext = {
         input: itemInput,
@@ -428,7 +408,6 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
   private async executeDistributed(context: ExecutionContext): Promise<StateExecutionResult> {
     // JSONataモードの制約はStateFactoryで検証済み
 
-    // InputPath処理をstrategyに委譲
     const processedInput = await this.strategy.preprocess(context.input, this.state, context)
 
     // Note: Parameters in Map state is applied per item, not to the whole input
@@ -440,7 +419,9 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
       // When ItemBatcher is configured, createBatches returns objects like { Items: [...] }
       // When not configured, we wrap each item for consistent processing
       const batches =
-        'ItemBatcher' in this.state && this.state.ItemBatcher ? this.createBatches(items) : items // Keep items as-is for individual processing
+        'ItemBatcher' in this.state && this.state.ItemBatcher
+          ? createItemBatches(items, this.state.ItemBatcher)
+          : items // Keep items as-is for individual processing
 
       const maxConcurrency = this.state.MaxConcurrency || 1000
       const results: JsonArray = []
@@ -473,7 +454,6 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
               }
             } else {
               if ('Parameters' in this.state && this.state.Parameters) {
-                // Apply Parameters for JSONPath mode (it's the item selector for JSONPath)
                 batchInput = this.applyParametersToItem(batch, iterationIndex, processedInput)
               } else {
                 batchInput = batch
@@ -545,7 +525,6 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
         const batchResults = await Promise.all(batchPromises)
         for (const batchResult of batchResults) {
           if (batchResult !== null) {
-            // Check if this is an error result
             if (typeof batchResult === 'object' && 'failed' in batchResult && batchResult.failed) {
               failedCount++
             } else if (Array.isArray(batchResult)) {
@@ -557,7 +536,6 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
         }
       }
 
-      // Check failure tolerance after all items are processed
       if (failedCount > 0 && this.shouldFailExecution(failedCount, totalCount, processedInput)) {
         throw new Error('ProcessingError: State failed')
       }
@@ -567,7 +545,6 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
         // When ResultWriter is configured, write results and return metadata
         this.writeResults(results)
 
-        // Return metadata object instead of results array
         outputData = {
           ProcessedItemCount: results.length,
           ResultWriterDetails: {
@@ -580,7 +557,6 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
         outputData = results
       }
 
-      // ResultPath/OutputPath処理をstrategyに委譲
       const output = await this.strategy.postprocess(outputData, context.input, this.state, context)
 
       if (context.mapExecutions) {
@@ -653,10 +629,6 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
     return getDefaultMockDataForResource(resource)
   }
 
-  private createBatches(items: JsonArray): JsonArray {
-    return createItemBatches(items, this.state.ItemBatcher)
-  }
-
   private shouldFailExecution(failedCount: number, totalCount: number, input: JsonValue): boolean {
     // Pick tolerance properties from this.state
     const toleranceProps: Pick<DistributedMapState, keyof ToleranceConfig> = {
@@ -669,7 +641,7 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
     // Filter out undefined values
     const config = Object.fromEntries(
       Object.entries(toleranceProps).filter(([_, value]) => value !== undefined),
-    ) as ToleranceConfig
+    )
 
     return shouldFailExecution(failedCount, totalCount, input, config)
   }
@@ -774,7 +746,6 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
       Input: contextInput,
     }
 
-    // Process Parameters field similar to Map state's ItemSelector
     return this.processParametersForItem(this.state.Parameters, item, context)
   }
 
@@ -842,4 +813,157 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
 
     return parameters
   }
+}
+
+// ========= Helper Functions (moved from map-helpers.ts) =========
+
+/**
+ * Calculate if execution should fail based on tolerance settings
+ */
+function shouldFailExecution(
+  failedCount: number,
+  totalCount: number,
+  input: JsonValue,
+  toleranceConfig: ToleranceConfig,
+): boolean {
+  if (
+    'ToleratedFailureCount' in toleranceConfig &&
+    toleranceConfig.ToleratedFailureCount !== undefined
+  ) {
+    return failedCount > (toleranceConfig.ToleratedFailureCount || 0)
+  }
+
+  if ('ToleratedFailureCountPath' in toleranceConfig) {
+    const path = toleranceConfig.ToleratedFailureCountPath
+    if (!path) return failedCount > 0
+    const toleratedCount = JSONPathUtils.evaluateFirst(path, input, 0)
+    const numericToleratedCount =
+      typeof toleratedCount === 'number' ? toleratedCount : Number(toleratedCount) || 0
+    return failedCount > numericToleratedCount
+  }
+
+  if (
+    'ToleratedFailurePercentage' in toleranceConfig &&
+    toleranceConfig.ToleratedFailurePercentage !== undefined
+  ) {
+    const percentage = toleranceConfig.ToleratedFailurePercentage
+    const failedPercentage = (failedCount / totalCount) * 100
+    // Fail only if the failure percentage exceeds (not equals) the tolerance
+    return failedPercentage > percentage
+  }
+
+  if ('ToleratedFailurePercentagePath' in toleranceConfig) {
+    const path = toleranceConfig.ToleratedFailurePercentagePath
+    if (!path) return failedCount > 0
+    const toleratedPercentage = JSONPathUtils.evaluateFirst(path, input, 0)
+    const numericToleratedPercentage =
+      typeof toleratedPercentage === 'number'
+        ? toleratedPercentage
+        : Number(toleratedPercentage) || 0
+    const failedPercentage = (failedCount / totalCount) * 100
+    return failedPercentage > numericToleratedPercentage
+  }
+
+  // Default: fail on any error
+  return failedCount > 0
+}
+
+/**
+ * Create batches from items array based on ItemBatcher configuration
+ */
+function createItemBatches(items: JsonArray, batcherConfig?: ItemBatcher): JsonArray {
+  if (!batcherConfig) {
+    return items
+  }
+
+  const batches: JsonArray = []
+  const maxItemsPerBatch = batcherConfig.MaxItemsPerBatch || 1
+  const maxInputBytesPerBatch = batcherConfig.MaxInputBytesPerBatch
+  const batchInput = batcherConfig.BatchInput || {}
+
+  let currentBatch: JsonArray = []
+  let currentBatchSize = 0
+
+  for (const item of items) {
+    const itemSize = maxInputBytesPerBatch ? JSON.stringify(item).length : 0
+
+    const shouldStartNewBatch =
+      currentBatch.length >= maxItemsPerBatch ||
+      (maxInputBytesPerBatch && currentBatchSize + itemSize > maxInputBytesPerBatch)
+
+    if (shouldStartNewBatch && currentBatch.length > 0) {
+      const batchObject = {
+        ...batchInput,
+        Items: currentBatch,
+      }
+      batches.push(batchObject)
+      currentBatch = []
+      currentBatchSize = 0
+    }
+
+    currentBatch.push(item)
+    currentBatchSize += itemSize
+  }
+
+  if (currentBatch.length > 0) {
+    const batchObject = {
+      ...batchInput,
+      Items: currentBatch,
+    }
+    batches.push(batchObject)
+  }
+
+  return batches
+}
+
+/**
+ * Process special Map context selectors ($$, $$.Map.Item.Value, etc.)
+ */
+function processMapContextSelector(
+  selector: string,
+  item: JsonValue,
+  context: JsonObject,
+): JsonValue | null {
+  if (selector === '$$') {
+    return context
+  }
+  if (selector === '$$.Map.Item.Value') {
+    return item
+  }
+  if (selector === '$$.Map.Item.Index') {
+    if (!context.Map || typeof context.Map !== 'object' || Array.isArray(context.Map)) {
+      return null
+    }
+    const mapContext = context.Map
+    if (!mapContext.Item || typeof mapContext.Item !== 'object' || Array.isArray(mapContext.Item)) {
+      return null
+    }
+    const itemContext = mapContext.Item
+    return itemContext.Index ?? null
+  }
+  if (selector.startsWith('$$.')) {
+    return JSONPathUtils.evaluateWithContext(selector, item, context)
+  }
+  return null // Not a special Map context selector
+}
+
+/**
+ * Get default mock data for different data source types
+ */
+function getDefaultMockDataForResource(resource: string): JsonArray {
+  if (resource.includes('s3:listObjectsV2')) {
+    return [
+      { Key: 'mock-object-1.json', Size: 1024, LastModified: new Date().toISOString() },
+      { Key: 'mock-object-2.json', Size: 2048, LastModified: new Date().toISOString() },
+    ]
+  }
+
+  if (resource.includes('dynamodb:scan') || resource.includes('dynamodb:query')) {
+    return [
+      { id: 'item-1', data: 'mock-data-1' },
+      { id: 'item-2', data: 'mock-data-2' },
+    ]
+  }
+
+  return []
 }

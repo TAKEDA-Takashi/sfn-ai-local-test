@@ -92,7 +92,6 @@ export class ItemProcessorAnalyzer {
       }
     }
 
-    // Remove duplicates
     const uniqueRequirements = DataFlowHelpers.deduplicateRequirements(requirements)
 
     return {
@@ -570,8 +569,7 @@ export class ItemProcessorAnalyzer {
 
           // Special handling for $states.input.value.* pattern (DistributedMap ItemReader data)
           if (fieldPath.startsWith('value.')) {
-            // Extract the actual field after "value."
-            const actualField = fieldPath.substring(6) // Remove "value."
+            const actualField = fieldPath.substring(6)
             if (actualField) {
               requirements.push({
                 field: actualField,

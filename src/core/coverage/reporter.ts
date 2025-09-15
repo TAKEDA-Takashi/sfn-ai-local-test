@@ -38,22 +38,15 @@ export class CoverageReporter {
     lines.push(`   Total executions: ${this.coverage.paths.total}`)
     lines.push(`   Unique paths: ${this.coverage.paths.unique}`)
 
-    // Add nested coverage if present
     if (this.coverage.nested) {
       lines.push(chalk.bold('\n📦 Nested States Coverage:'))
       for (const [parentState, nested] of Object.entries(this.coverage.nested)) {
-        const nestedTyped = nested as {
-          total: number
-          covered: number
-          percentage: number
-          uncovered: string[]
-        }
         lines.push(`   ${chalk.cyan(parentState)}:`)
         lines.push(
-          `      Total: ${nestedTyped.total}, Covered: ${nestedTyped.covered} (${nestedTyped.percentage}%)`,
+          `      Total: ${nested.total}, Covered: ${nested.covered} (${nested.percentage}%)`,
         )
-        if (nestedTyped.uncovered.length > 0) {
-          lines.push(chalk.yellow(`      Uncovered: ${nestedTyped.uncovered.join(', ')}`))
+        if (nested.uncovered.length > 0) {
+          lines.push(chalk.yellow(`      Uncovered: ${nested.uncovered.join(', ')}`))
         }
       }
     }

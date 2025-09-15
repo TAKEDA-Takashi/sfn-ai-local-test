@@ -47,7 +47,10 @@ export class CloudFormationParser {
     return stateMachines
   }
 
-  // 完全一致で見つからない場合は前方一致で検索
+  /**
+   * 指定されたIDでステートマシンを抽出
+   * 完全一致で見つからない場合は前方一致で検索
+   */
   extractStateMachineById(
     template: CloudFormationTemplate,
     logicalId: string,
@@ -136,13 +139,11 @@ export class CloudFormationParser {
       return null
     }
 
-    const definition = aslDefinition as JsonObject
-    if (!(definition.StartAt && definition.States)) {
+    if (!(aslDefinition.StartAt && aslDefinition.States)) {
       console.warn(`Invalid ASL definition for state machine ${logicalId}`)
       return null
     }
 
-    // StateFactory.createStateMachine()で後でStateMachine型に変換される
     const stateMachineName =
       typeof properties.StateMachineName === 'string' ? properties.StateMachineName : logicalId
     const roleArn = typeof properties.RoleArn === 'string' ? properties.RoleArn : undefined
@@ -150,9 +151,9 @@ export class CloudFormationParser {
     return {
       stateMachineName,
       logicalId,
-      definition,
+      definition: aslDefinition,
       roleArn,
-      originalDefinition: (properties.DefinitionString || properties.Definition) as JsonValue,
+      originalDefinition: properties.DefinitionString || properties.Definition,
     }
   }
 
@@ -209,7 +210,7 @@ export class CloudFormationParser {
       let template: string
       let variables: JsonObject = {}
 
-      const fnSubValue = (value as JsonObject)['Fn::Sub']
+      const fnSubValue = value['Fn::Sub']
       if (Array.isArray(fnSubValue)) {
         if (fnSubValue.length !== 2) {
           return value
@@ -224,7 +225,7 @@ export class CloudFormationParser {
           return value
         }
         template = templateValue
-        variables = varsValue as JsonObject
+        variables = varsValue
       } else if (typeof fnSubValue === 'string') {
         template = fnSubValue
       } else {
@@ -265,7 +266,7 @@ export class CloudFormationParser {
     }
 
     if ('Ref' in value) {
-      const refValue = (value as JsonObject).Ref as string
+      const refValue = value.Ref as string
       // AWS疑似パラメータ
       switch (refValue) {
         case 'AWS::AccountId':
@@ -286,7 +287,7 @@ export class CloudFormationParser {
     }
 
     if ('Fn::GetAtt' in value) {
-      const fnGetAttValue = (value as JsonObject)['Fn::GetAtt']
+      const fnGetAttValue = value['Fn::GetAtt']
       if (!Array.isArray(fnGetAttValue) || fnGetAttValue.length !== 2) {
         return value
       }

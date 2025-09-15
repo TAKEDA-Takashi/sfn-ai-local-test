@@ -10,6 +10,9 @@ import { isJsonObject, isJsonValue } from '../../types/type-guards'
 import { MockFileLoader } from './file-loader'
 import { ItemReaderValidator } from './item-reader-validator'
 
+/**
+ * モックエンジン - ステートマシンテスト用のモックデータ管理
+ */
 export class MockEngine {
   private config: MockConfig
   private state: MockState
@@ -30,6 +33,10 @@ export class MockEngine {
     this.fileLoader = new MockFileLoader(options.basePath)
   }
 
+  /**
+   * モックオーバーライドを設定
+   * @param overrides オーバーライドするモック定義
+   */
   setMockOverrides(overrides: MockDefinition[]): void {
     this.overrides.clear()
     for (const override of overrides) {
@@ -37,6 +44,9 @@ export class MockEngine {
     }
   }
 
+  /**
+   * モックオーバーライドをクリア
+   */
   clearMockOverrides(): void {
     this.overrides.clear()
   }
@@ -49,6 +59,11 @@ export class MockEngine {
     this.state.callCount.clear()
   }
 
+  /**
+   * モックデータを取得（ItemReaderや固定レスポンス用）
+   * @param params モックパラメータ
+   * @returns モックデータ
+   */
   getMockData(params: {
     state: string
     type: string
@@ -116,6 +131,9 @@ export class MockEngine {
     return {}
   }
 
+  /**
+   * ItemReaderからフォーマットを推測
+   */
   private getFormatFromItemReader(
     itemReader?: ItemReader,
   ): 'json' | 'csv' | 'jsonl' | 'yaml' | undefined {
@@ -146,6 +164,10 @@ export class MockEngine {
     return 'json'
   }
 
+  /**
+   * 結果を記録（ResultWriter用）
+   * @param params 書き込みパラメータ
+   */
   writeResults(params: {
     state: string
     type: string
@@ -162,6 +184,13 @@ export class MockEngine {
     })
   }
 
+  /**
+   * ステートに対するモックレスポンスを取得
+   * @param stateName ステート名
+   * @param input 入力データ
+   * @param state ステート定義（デフォルトモック生成用）
+   * @returns モックレスポンス
+   */
   async getMockResponse(stateName: string, input: JsonValue, state?: State): Promise<JsonValue> {
     const mock = this.findMock(stateName)
     if (!mock) {
@@ -172,7 +201,6 @@ export class MockEngine {
           this.config.mocks.map((m) => m.state),
         )
       }
-      // Generate default mock if no explicit mock is defined
       if (state) {
         return this.generateDefaultMock(state, input)
       }
@@ -215,7 +243,6 @@ export class MockEngine {
         response = this.handleItemReaderMock(mock)
         break
       default: {
-        // Exhaustiveness check for TypeScript
         const _exhaustiveCheck: never = mock
         return _exhaustiveCheck
       }
@@ -512,7 +539,6 @@ export class MockEngine {
       }
     }
 
-    // Default: return input as-is
     if (process.env.DEBUG_OUTPUT_PATH) {
       console.log('Generating default mock: returning input as-is')
     }

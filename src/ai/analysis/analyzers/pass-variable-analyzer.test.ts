@@ -265,11 +265,11 @@ describe('PassVariableAnalyzer', () => {
             Type: 'Choice',
             Choices: [
               {
-                Condition: '$notify = true',
+                Condition: '{% $notify = true %}',
                 Next: 'SendNotification',
               },
               {
-                Condition: '$count($items) > 0',
+                Condition: '{% $count($items) > 0 %}',
                 Next: 'ProcessItems',
               },
             ],

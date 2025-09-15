@@ -34,19 +34,16 @@ export class JSONPathProcessor {
   ): ProcessedEntry {
     const finalKey = key.endsWith('.$') ? key.slice(0, -2) : key
 
-    // Handle JSONPath expressions (key ends with '.$' and value is string)
     if (key.endsWith('.$') && typeof value === 'string') {
       const processedValue = JSONPathProcessor.evaluateStringValue(value, data, options)
       return { key: finalKey, value: processedValue }
     }
 
-    // Handle nested objects (recursively process)
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
       const processedValue = JSONPathProcessor.processEntries(value, data, options)
       return { key: finalKey, value: processedValue }
     }
 
-    // Handle arrays (recursively process each element)
     if (Array.isArray(value)) {
       const processedValue = value.map((item) => {
         if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
@@ -57,7 +54,6 @@ export class JSONPathProcessor {
       return { key: finalKey, value: processedValue }
     }
 
-    // Return as-is for other types
     return { key: finalKey, value }
   }
 
@@ -99,7 +95,6 @@ export class JSONPathProcessor {
       return JSONPathEvaluator.evaluate(value, data, variables)
     }
 
-    // Handle context path ($$.)
     if (value.startsWith('$$.') && options?.context && 'Execution' in options.context) {
       const contextPath = value.slice(3) // Remove $$. prefix
       const contextObj: JsonObject = {
@@ -127,7 +122,6 @@ export class JSONPathProcessor {
     }
 
     if (value.startsWith('$')) {
-      // Handle variable references ($variableName or $variableName.path or $variableName[index])
       const variables =
         options?.context && 'variables' in options.context ? options.context.variables : undefined
       if (!(value.startsWith('$.') || value.startsWith('$[')) && variables) {
@@ -140,7 +134,6 @@ export class JSONPathProcessor {
         let remainingPath: string
 
         if (firstDotIndex === -1 && firstBracketIndex === -1) {
-          // Simple variable reference
           variableName = varPath
           remainingPath = ''
         } else if (
@@ -156,7 +149,6 @@ export class JSONPathProcessor {
           remainingPath = varPath.substring(firstBracketIndex)
         }
 
-        // Check if the variable exists
         if (variableName in variables) {
           const variableValue = variables[variableName]
 
@@ -255,9 +247,7 @@ export class JSONPathProcessor {
                 processedEntries[newKey] = value
               }
             } else if (value.startsWith('$')) {
-              // $ alone refers to the entire input, not a variable
               if (value === '$') {
-                // For ResultSelector, $ references the result
                 let dataContext = data
                 if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
                   const inputObj = data
@@ -265,7 +255,6 @@ export class JSONPathProcessor {
                 }
                 processedEntries[newKey] = dataContext
               } else {
-                // For ResultSelector, $ references the result
                 let dataContext = data
                 if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
                   const inputObj = data

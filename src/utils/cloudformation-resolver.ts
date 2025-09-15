@@ -23,7 +23,6 @@ export function resolveCloudFormationIntrinsics(
   }
 
   if (isJsonObject(value)) {
-    // Handle Fn::Join
     if ('Fn::Join' in value) {
       const joinParams = value['Fn::Join']
       if (Array.isArray(joinParams) && joinParams.length === 2) {
@@ -38,11 +37,9 @@ export function resolveCloudFormationIntrinsics(
       }
     }
 
-    // Handle Ref
     if ('Ref' in value) {
       const refName = value.Ref as string
 
-      // Common AWS pseudo parameters
       if (refName === 'AWS::Partition') {
         return 'aws'
       }
@@ -53,44 +50,36 @@ export function resolveCloudFormationIntrinsics(
         return '123456789012'
       }
 
-      // Check parameters
       if (parameters[refName] !== undefined) {
         return parameters[refName]
       }
 
-      // Check resources for logical ID
       if (resources[refName]) {
         const resource = resources[refName]
         if (!isJsonObject(resource)) {
           return `${refName}-PLACEHOLDER`
         }
-        // For S3 buckets, return a mock name
         if (resource.Type === 'AWS::S3::Bucket') {
           return `mock-bucket-${refName.toLowerCase()}`
         }
-        // For Lambda functions, return a mock ARN
         if (resource.Type === 'AWS::Lambda::Function') {
           return `arn:aws:lambda:us-east-1:123456789012:function:${refName}`
         }
       }
 
-      // Default: return placeholder
       return `${refName}-PLACEHOLDER`
     }
 
-    // Handle Fn::GetAtt
     if ('Fn::GetAtt' in value) {
       const getAttParams = value['Fn::GetAtt']
       if (Array.isArray(getAttParams) && getAttParams.length === 2) {
         const resourceName = getAttParams[0] as string
         const attributeName = getAttParams[1] as string
 
-        // Mock Lambda ARN
         if (attributeName === 'Arn') {
           if (resourceName.includes('Function') || resourceName.includes('Lambda')) {
             return `arn:aws:lambda:us-east-1:123456789012:function:${resourceName}`
           }
-          // Mock State Machine ARN
           if (resourceName.includes('StateMachine')) {
             return `arn:aws:states:us-east-1:123456789012:stateMachine:${resourceName}`
           }
@@ -100,11 +89,9 @@ export function resolveCloudFormationIntrinsics(
       }
     }
 
-    // Handle Fn::Sub
     if ('Fn::Sub' in value) {
       const subValue = value['Fn::Sub']
       if (typeof subValue === 'string') {
-        // Simple string substitution with AWS pseudo parameters
         return subValue
           .replace('${AWS::Partition}', 'aws')
           .replace('${AWS::Region}', 'us-east-1')
@@ -117,13 +104,11 @@ export function resolveCloudFormationIntrinsics(
           return template
         }
 
-        // Replace variables
         for (const [key, val] of Object.entries(variables)) {
           const resolvedVal = resolveCloudFormationIntrinsics(val, resources, parameters)
           template = template.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), String(resolvedVal))
         }
 
-        // Replace AWS pseudo parameters
         template = template
           .replace('${AWS::Partition}', 'aws')
           .replace('${AWS::Region}', 'us-east-1')
@@ -133,7 +118,6 @@ export function resolveCloudFormationIntrinsics(
       }
     }
 
-    // Recursively resolve nested objects
     const resolved: JsonObject = {}
     for (const [key, val] of Object.entries(value)) {
       resolved[key] = resolveCloudFormationIntrinsics(val, resources, parameters)

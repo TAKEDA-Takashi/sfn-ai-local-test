@@ -143,11 +143,6 @@ export const mockConfigSchema = z
 // Type exports
 export type MockConfig = z.infer<typeof mockConfigSchema>
 export type MockDefinition = z.infer<typeof mockDefinitionSchema>
-export type FixedMock = z.infer<typeof fixedMockSchema>
-export type ConditionalMock = z.infer<typeof conditionalMockSchema>
-export type StatefulMock = z.infer<typeof statefulMockSchema>
-export type ErrorMock = z.infer<typeof errorMockSchema>
-export type ItemReaderMock = z.infer<typeof itemReaderMockSchema>
 
 // Runtime-only types (not part of schema validation)
 export interface MockEngineOptions {

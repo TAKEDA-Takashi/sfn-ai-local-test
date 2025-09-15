@@ -83,12 +83,10 @@ export class TestGenerationPipeline {
         const rawSuite = yaml.load(generationResult.content)
         const testSuite = testSuiteSchema.parse(rawSuite)
 
-        // Validate test suite format before execution
         if (!testSuite?.testCases || testSuite.testCases.length === 0) {
           throw new Error('Generated test suite is empty or invalid format')
         }
 
-        // Execute and improve test cases
         const improvedSuite = await this.executionValidator.validateAndImprove(
           stateMachine,
           testSuite,
@@ -127,7 +125,6 @@ export class TestGenerationPipeline {
       }
     }
 
-    // Return static validated content without execution validation
     return {
       success: true,
       content: generationResult.content,

@@ -100,7 +100,6 @@ export class MockFileLoader {
     let currentLine = ''
     let inQuotes = false
 
-    // Parse CSV respecting quoted fields with newlines
     for (let i = 0; i < content.length; i++) {
       const char = content[i]
       const nextChar = content[i + 1]

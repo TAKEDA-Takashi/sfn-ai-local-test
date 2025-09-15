@@ -31,22 +31,25 @@ const DEFAULT_PATHS = {
   coverage: DEFAULT_COVERAGE_DIR,
 }
 
+/**
+ * プロジェクト設定を検証してデフォルト値を適用
+ */
 function validateProjectConfig(config: unknown): ProjectConfig {
-  // Parse and validate with Zod schema
   const parsedConfig = projectConfigSchema.parse(config)
 
-  // Apply default paths if not specified
   if (!parsedConfig.paths) {
     parsedConfig.paths = {}
   }
   parsedConfig.paths = { ...DEFAULT_PATHS, ...parsedConfig.paths }
 
-  // Additional validation for CDK sources
   validateCdkSources(parsedConfig)
 
   return parsedConfig
 }
 
+/**
+ * プロジェクト設定ファイルをロード
+ */
 export function loadProjectConfig(
   configPath: string = DEFAULT_CONFIG_FILE,
   required: boolean = true,
@@ -61,10 +64,12 @@ export function loadProjectConfig(
   const content = readFileSync(configPath, 'utf-8')
   const rawConfig = load(content)
 
-  // Validate and transform the raw YAML data into typed ProjectConfig
   return validateProjectConfig(rawConfig)
 }
 
+/**
+ * ステートマシン設定を名前で検索
+ */
 export function findStateMachine(config: ProjectConfig, name: string): StateMachineConfig | null {
   if (!(config.stateMachines && Array.isArray(config.stateMachines))) {
     return null
@@ -72,15 +77,20 @@ export function findStateMachine(config: ProjectConfig, name: string): StateMach
   return config.stateMachines.find((sm) => sm.name === name) || null
 }
 
+/**
+ * ステートマシンソースファイルのパスを解決
+ */
 export function resolveStateMachinePath(stateMachine: StateMachineConfig): string {
   if (stateMachine.source.type === 'asl') {
     return resolve(stateMachine.source.path)
   }
 
-  // CDKの場合
   return resolve(stateMachine.source.path)
 }
 
+/**
+ * ステートマシン定義をロード（ASLまたはCDKから）
+ */
 export function loadStateMachineDefinition(stateMachine: StateMachineConfig): JsonObject {
   const path = resolveStateMachinePath(stateMachine)
 
@@ -207,7 +217,6 @@ export function loadStateMachineDefinition(stateMachine: StateMachineConfig): Js
       )
     }
 
-    // 抽出結果を保存
     saveExtractedASL(stateMachine, definition, path)
 
     return definition
@@ -226,15 +235,12 @@ function saveExtractedASL(
   const extractedPath = join(extractedDir, `${stateMachine.name}${ASL_FILE_EXTENSION}`)
   const metadataPath = join(extractedDir, `${stateMachine.name}${METADATA_FILE_EXTENSION}`)
 
-  // ディレクトリ作成
   if (!existsSync(extractedDir)) {
     mkdirSync(extractedDir, { recursive: true })
   }
 
-  // ASL定義を保存
   writeFileSync(extractedPath, JSON.stringify(definition, null, 2), 'utf-8')
 
-  // メタデータを保存
   const metadata = {
     name: stateMachine.name,
     source: stateMachine.source,

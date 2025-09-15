@@ -36,25 +36,17 @@ export class TestSuiteRunner {
     // Store the directory containing the test suite file
     this.suiteDir = dirname(suitePath)
 
-    // Load and validate test suite
     this.suite = this.loadAndValidateTestSuite(suitePath)
 
-    // Load state machine
     const stateMachineData = this.loadStateMachine()
-    // Convert state machine to use State class instances
     if (!isJsonObject(stateMachineData.stateMachine)) {
       throw new Error('Invalid state machine definition')
     }
     this.stateMachine = StateFactory.createStateMachine(stateMachineData.stateMachine)
     this.stateMachineName = stateMachineData.stateMachineName
 
-    // Load mock configuration
     this.mockEngine = this.loadMockConfiguration()
 
-    // Set test data path (currently unused)
-    // this.testDataPath = this.resolveTestDataPath()
-
-    // Create executor
     this.executor = new TestSuiteExecutor(this.suite, this.stateMachine, this.mockEngine)
   }
 
@@ -62,13 +54,11 @@ export class TestSuiteRunner {
     const suiteContent = readFileSync(suitePath, 'utf-8')
     const suite = load(suiteContent)
 
-    // Validate test suite
     const validator = new TestSuiteValidator()
     let validationResult: { warnings: ValidationError[]; validatedSuite: TestSuite }
     try {
       validationResult = validator.validate(suite)
     } catch (error) {
-      // Format validation error (Zod parse error)
       console.error('\n❌ Test Suite Format Error:')
       console.error(`  ${error instanceof Error ? error.message : String(error)}`)
       throw new Error('Test suite format validation failed')
@@ -93,7 +83,6 @@ export class TestSuiteRunner {
     let stateMachineRef = this.suite.stateMachine
 
     if (!stateMachineRef) {
-      // ファイル名から推測: payment.test.yaml → payment
       const filename = basename(this.suiteDir)
       const match = filename.match(/^(.+?)\.test\.(yaml|yml)$/)
       if (match?.[1]) {
@@ -125,7 +114,6 @@ export class TestSuiteRunner {
       }
     }
 
-    // Handle as file path
     if (
       !foundInConfig &&
       (stateMachineRef.includes('/') ||
@@ -190,7 +178,6 @@ export class TestSuiteRunner {
         const rawConfig = load(mockContent)
         const mockConfig = mockConfigSchema.parse(rawConfig)
 
-        // Load project config to get test data path
         const config = existsSync(DEFAULT_CONFIG_FILE) ? loadProjectConfig() : null
         const testDataPath = config?.paths?.testData || DEFAULT_TEST_DATA_DIR
 

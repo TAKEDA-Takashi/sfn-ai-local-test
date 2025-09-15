@@ -50,7 +50,6 @@ export class NestedCoverageTracker {
   constructor(stateMachine: StateMachine) {
     this.stateMachine = stateMachine
 
-    // Initialize coverage structure first
     this.coverage = {
       totalStates: 0,
       coveredStates: new Set(),
@@ -63,7 +62,6 @@ export class NestedCoverageTracker {
     // Count all states including nested ones
     const { totalStates, totalBranches } = this.countAllStates()
 
-    // Update counts
     this.coverage.totalStates = totalStates
     this.coverage.totalBranches = totalBranches
   }
@@ -90,7 +88,6 @@ export class NestedCoverageTracker {
         const processor = state.ItemProcessor
         if (processor?.States) {
           this.nestedStateMachines.set(stateName, processor)
-          // Initialize nested coverage tracking
           this.coverage.nestedStates.set(stateName, new Set())
         }
       }
@@ -247,7 +244,6 @@ export class NestedCoverageTracker {
   getCoverage(): CoverageReport {
     const statesCoverage = (this.coverage.coveredStates.size / this.coverage.totalStates) * 100
 
-    // Get uncovered branches to calculate correct coverage
     const uncoveredTopLevelBranches = this.getUncoveredTopLevelBranches()
     const uncoveredAllBranches = this.getUncoveredBranches()
     const actualCoveredBranches = this.coverage.totalBranches - uncoveredTopLevelBranches.length
@@ -268,7 +264,6 @@ export class NestedCoverageTracker {
         ? (actualCoveredBranches / this.coverage.totalBranches) * 100
         : 100
 
-    // Build nested coverage report (hierarchical)
     const nested: CoverageReport['nested'] = {}
 
     for (const [parentState, nestedStates] of this.coverage.nestedStates.entries()) {

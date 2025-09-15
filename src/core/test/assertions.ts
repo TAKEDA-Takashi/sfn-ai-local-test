@@ -113,7 +113,6 @@ export class TestAssertions {
     actual: string[],
     settings: AssertionSettings,
   ): AssertionResult[] {
-    // Check if it's includes mode with multiple sequences (array of arrays)
     if (settings.pathMatching === 'includes' && Array.isArray(expected[0])) {
       return [TestAssertions.assertIncludesPaths(expected as string[][], actual)]
     }
@@ -160,7 +159,6 @@ export class TestAssertions {
           : `Sequence not found:\n${PathDiffFormatter.formatSequenceDiff(expected, actual)}`
         break
       default:
-        // Default to exact matching (as per documentation)
         success = TestAssertions.comparePathStrict(expected, actual, 'exact')
         message = success
           ? 'Execution path matches expected sequence exactly'
@@ -182,7 +180,6 @@ export class TestAssertions {
     if (expected === null || actual === null) return expected === actual
 
     if (typeof expected === 'object' && typeof actual === 'object' && actual !== null) {
-      // Handle arrays
       if (Array.isArray(expected) && Array.isArray(actual)) {
         if (expected.length !== actual.length) return false
         for (let i = 0; i < expected.length; i++) {
@@ -193,7 +190,6 @@ export class TestAssertions {
         return true
       }
 
-      // Handle objects (expected is already non-null object here)
       if (!(Array.isArray(expected) || Array.isArray(actual))) {
         const expectedObj = expected as JsonObject
         const actualObj = actual as JsonObject
@@ -215,7 +211,6 @@ export class TestAssertions {
   }
 
   private static pathContainsSequence(actual: string[], expected: string[]): boolean {
-    // Check if the expected sequence appears consecutively in the actual path
     for (let i = 0; i <= actual.length - expected.length; i++) {
       let match = true
       for (let j = 0; j < expected.length; j++) {
@@ -236,7 +231,6 @@ export class TestAssertions {
     const missingSequences: string[][] = []
     const foundSequences: string[][] = []
 
-    // Check each sequence
     for (const sequence of expectedSequences) {
       if (TestAssertions.pathContainsSequence(actual, sequence)) {
         foundSequences.push(sequence)
@@ -297,7 +291,6 @@ export class TestAssertions {
         continue
       }
 
-      // Check input
       if (expectation.input !== undefined) {
         const inputMatch = TestAssertions.compareValues(
           expectation.input,
@@ -318,7 +311,6 @@ export class TestAssertions {
         })
       }
 
-      // Check output
       if (expectation.output !== undefined) {
         // Use state-specific outputMatching if provided, otherwise fall back to settings
         const outputMatching = expectation.outputMatching || settings.outputMatching || 'partial'
@@ -341,7 +333,6 @@ export class TestAssertions {
         })
       }
 
-      // Check variables
       if (expectation.variables) {
         const variablesAfter = execution.variablesAfter || {}
         for (const [key, value] of Object.entries(expectation.variables)) {
@@ -372,8 +363,6 @@ export class TestAssertions {
   }
 
   private static parseStatePath(path: string): string[] {
-    // Parse both dot notation and bracket notation
-    // e.g., "ProcessOrder[1].ValidateOrder" -> ["ProcessOrder", "1", "ValidateOrder"]
     return path
       .replace(/\[(\d+)\]/g, '.$1')
       .split('.')
@@ -430,7 +419,6 @@ export class TestAssertions {
         continue
       }
 
-      // Check iteration count
       if (expectation.iterationCount !== undefined) {
         const countMatch = mapExec.iterationCount === expectation.iterationCount
         assertions.push({
@@ -444,12 +432,10 @@ export class TestAssertions {
         })
       }
 
-      // Check iteration paths (object format only)
       if (expectation.iterationPaths) {
         const pathMatching =
           expectation.iterationPaths.pathMatching || settings.pathMatching || 'exact'
 
-        // Check all iterations follow the same path
         if (expectation.iterationPaths.all) {
           const iterationPaths = mapExec.iterationPaths as string[][]
           for (let i = 0; i < iterationPaths.length; i++) {
@@ -475,7 +461,6 @@ export class TestAssertions {
           }
         }
 
-        // Check specific iteration paths
         if (expectation.iterationPaths.samples) {
           for (const [index, expectedPath] of Object.entries(expectation.iterationPaths.samples)) {
             const idx = Number.parseInt(index, 10)
@@ -529,7 +514,6 @@ export class TestAssertions {
         continue
       }
 
-      // Check branch count
       if (expectation.branchCount !== undefined) {
         const countMatch = parallelExec.branchCount === expectation.branchCount
         assertions.push({
@@ -543,7 +527,6 @@ export class TestAssertions {
         })
       }
 
-      // Check branch paths
       if (expectation.branchPaths) {
         const pathMatching =
           typeof expectation.branchPaths === 'object' &&

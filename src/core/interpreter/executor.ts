@@ -12,6 +12,9 @@ import type { MockEngine } from '../mock/engine'
 import type { StateExecutionResult } from './states/base'
 import { StateExecutorFactory } from './states/state-executor-factory'
 
+/**
+ * ステートマシン実行オプション
+ */
 export interface ExecutionOptions {
   verbose?: boolean
   quiet?: boolean
@@ -19,6 +22,9 @@ export interface ExecutionOptions {
   executionContext?: ExecutionContextConfig
 }
 
+/**
+ * ステートマシン実行結果
+ */
 export interface ExecutionResult {
   output: JsonValue
   executionPath: string[]
@@ -30,6 +36,9 @@ export interface ExecutionResult {
   error?: string
 }
 
+/**
+ * ステートマシン実行エンジン
+ */
 export class StateMachineExecutor {
   private stateMachine: StateMachine
   private mockEngine?: MockEngine
@@ -40,14 +49,18 @@ export class StateMachineExecutor {
     this.mockEngine = mockEngine
   }
 
+  /**
+   * 値がExecutionContext型かどうかを判定する
+   * @param value 判定対象の値
+   * @returns ExecutionContext型の場合true
+   */
   private isExecutionContext(value: JsonValue | ExecutionContext): value is ExecutionContext {
-    // ExecutionContextには必須フィールドがあるので、それらを確認
     // JsonValueの可能性を最初に除外
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
       return false
     }
 
-    // 必須フィールドの型チェック（キャストを避ける）
+    // Avoid casting by checking all required fields
     return (
       'currentState' in value &&
       typeof value.currentState === 'string' &&
@@ -62,6 +75,12 @@ export class StateMachineExecutor {
     )
   }
 
+  /**
+   * ステートマシンを実行する
+   * @param input 入力データまたは実行コンテキスト
+   * @param options 実行オプション
+   * @returns 実行結果
+   */
   async execute(
     input: JsonValue | ExecutionContext,
     options: ExecutionOptions = {},
@@ -91,12 +110,11 @@ export class StateMachineExecutor {
         currentState: startAt,
         executionPath: [],
         variables: {},
-        originalInput: input, // コンテキスト全体で初期入力を参照できるよう保持
+        originalInput: input, // Preserve for reference throughout execution context
         stateExecutions: [],
         currentStatePath: [],
         mapExecutions: [],
-        // 固定値のExecutionコンテキスト（テストの再現性のため）
-        // 設定値があれば上書き、なければデフォルト値
+        // Fixed execution context values for test reproducibility
         Execution: {
           Id: this.createExecutionId(options.executionContext),
           Input: isJsonObject(input) ? input : {},
@@ -104,12 +122,10 @@ export class StateMachineExecutor {
           RoleArn: options.executionContext?.roleArn || EXECUTION_CONTEXT_DEFAULTS.ROLE_ARN,
           StartTime: options.executionContext?.startTime || EXECUTION_CONTEXT_DEFAULTS.START_TIME,
         },
-        // StateMachineコンテキストの追加
         StateMachine: {
           Id: this.createStateMachineId(options.executionContext),
           Name: EXECUTION_CONTEXT_DEFAULTS.STATE_MACHINE_NAME,
         },
-        // Stateコンテキストの初期値（各ステート実行時に更新）
         State: {
           EnteredTime: options.executionContext?.startTime || EXECUTION_CONTEXT_DEFAULTS.START_TIME,
           Name: '',
@@ -126,7 +142,6 @@ export class StateMachineExecutor {
       while (context.currentState && steps < maxSteps) {
         steps++
 
-        // Get the state from the StateMachine (single states are already wrapped)
         const state = this.stateMachine.States[context.currentState]
 
         if (!state) {
@@ -135,7 +150,6 @@ export class StateMachineExecutor {
 
         context.executionPath.push(context.currentState)
 
-        // Update State context with current state name
         if (context.State) {
           context.State.Name = context.currentState
         }
@@ -157,15 +171,14 @@ export class StateMachineExecutor {
           const stateResult = await executor.execute(context)
           result = stateResult
 
-          // Map/DistributedMap/Parallelステートの場合、内部の実行パスは追加しない
-          // これらのステートは自身のみをexecutionPathに含める
+          // Map/DistributedMap/Parallel states only include themselves in executionPath,
+          // not their internal execution paths
           if (
             result.executionPath &&
             Array.isArray(result.executionPath) &&
             !state.isMap() &&
             !state.isParallel()
           ) {
-            // 現在のステートは既に追加済みなので、追加分のみ取得
             const additionalPaths = result.executionPath.slice(1)
             context.executionPath.push(...additionalPaths)
           }
@@ -201,10 +214,8 @@ export class StateMachineExecutor {
           if (options.verbose) {
             console.error(`State execution error in ${context.currentState}:`, error)
           }
-          // エラーが発生した場合、result.errorがセットされている可能性がある
-          // その場合はエラーを投げずに処理を続ける
+          // Continue processing if error was handled by state executor
           if (result?.error) {
-            // エラーハンドリングされた結果を使用
             if (options.verbose) {
               console.log(`Error was handled by state executor: ${result.error}`)
             }

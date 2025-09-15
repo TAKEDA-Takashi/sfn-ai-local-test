@@ -36,7 +36,8 @@ interface StateMachineInfo {
   source: {
     type: 'cdk' | 'asl'
     path: string
-    stateMachineName?: string // CDKの場合のみ必要
+    /** CDKの場合のみ必要 */
+    stateMachineName?: string
   }
 }
 
@@ -310,7 +311,6 @@ function findFiles(
 
   if (currentDepth >= maxDepth) return results
 
-  // Extract the parent directory from DEFAULT_EXTRACTED_DIR for ignore list
   const sfnTestParentDir = dirname(DEFAULT_EXTRACTED_DIR).replace('./', '')
   const ignoreDirs = ['node_modules', '.git', 'dist', 'build', sfnTestParentDir]
 
@@ -328,8 +328,7 @@ function findFiles(
       }
     }
   } catch (_error) {
-    // ディレクトリアクセス権限がない場合は単に無視する
-    // 権限エラーはテスト環境やCI環境で発生しやすいため意図的に続行
+    // Continue silently on permission errors (common in test/CI environments)
   }
 
   return results
@@ -541,7 +540,6 @@ function generatePlaceholderStateMachines(type: string): StateMachineConfig[] {
 }
 
 function updateGitignore(): void {
-  // Extract the parent directory from DEFAULT_EXTRACTED_DIR
   const sfnTestParentDir = dirname(DEFAULT_EXTRACTED_DIR).replace('./', '')
 
   const gitignoreContent = `

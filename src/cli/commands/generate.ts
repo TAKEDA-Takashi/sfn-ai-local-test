@@ -32,7 +32,6 @@ import { processInParallel } from '../../utils/parallel'
 function safeWriteFileSync(filePath: string, content: string): void {
   const dir = dirname(filePath)
 
-  // Create directory if it doesn't exist
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
@@ -66,14 +65,19 @@ interface GenerateOptions {
   name?: string
   asl?: string
   cdk?: string
-  cdkStateMachine?: string // CDKテンプレート内の特定のステートマシンを指定
+  /** CDKテンプレート内の特定のステートマシンを指定 */
+  cdkStateMachine?: string
   output?: string
   aiModel: string
   timeout?: string
-  mock?: string // For test generation, use existing mock file
-  maxAttempts?: string // Maximum attempts for generation cycle
-  concurrency?: string // Maximum concurrent AI generation operations
-  verbose?: boolean // Enable verbose output
+  /** For test generation, use existing mock file */
+  mock?: string
+  /** Maximum attempts for generation cycle */
+  maxAttempts?: string
+  /** Maximum concurrent AI generation operations */
+  concurrency?: string
+  /** Enable verbose output */
+  verbose?: boolean
 }
 
 // Helper function to ensure data is not undefined
@@ -200,7 +204,6 @@ export async function generateCommand(
                 break
               }
               case 'test': {
-                // Load mock file and parse mock config if available
                 let mockContent: string | undefined
                 let mockConfig: MockConfig | undefined
                 let mockFileName: string | undefined
@@ -281,7 +284,6 @@ export async function generateCommand(
 
             safeWriteFileSync(currentDefaultOutputPath, result)
 
-            // Generate test data files for ItemReader if mock type
             if (type === 'mock' && currentStateMachine) {
               try {
                 const dataFiles = generateTestDataFiles(currentStateMachine, result)
@@ -311,7 +313,6 @@ export async function generateCommand(
           concurrency,
         )
 
-        // Process results
         let successCount = 0
         let failureCount = 0
 
@@ -393,7 +394,6 @@ export async function generateCommand(
       }
       case 'test': {
         spinner.text = 'Generating test cases with AI...'
-        // Load mock file if provided
         let mockContent: string | undefined
         let mockConfig: MockConfig | undefined
         let mockFileName: string | undefined
@@ -531,7 +531,6 @@ export async function generateCommand(
 
     safeWriteFileSync(outputPath, result)
 
-    // Generate test data files for ItemReader if mock type
     if (type === 'mock' && stateMachineInstance) {
       try {
         // stateMachineInstance is a StateMachine with State instances

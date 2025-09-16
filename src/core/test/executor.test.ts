@@ -433,4 +433,79 @@ describe('TestSuiteExecutor', () => {
       )
     })
   })
+
+  describe('Error message formatting', () => {
+    it('should show detailed error in verbose mode', async () => {
+      testSuite.testCases[0].stateExpectations = [{ state: 'NonExistentState', output: {} }]
+
+      const mockExecutorInstance = {
+        execute: vi.fn().mockResolvedValue({
+          output: { result: 'success' },
+          executionPath: ['Start'],
+          success: true,
+          stateExecutions: [],
+        }),
+      }
+      vi.mocked(StateMachineExecutor).mockImplementation(
+        () => mockExecutorInstance as unknown as StateMachineExecutor,
+      )
+
+      vi.mocked(TestAssertions.performAssertions).mockImplementation(() => {
+        throw new Error(
+          'Failed to assert state expectations for states [NonExistentState]: no stateExecutions were captured',
+        )
+      })
+
+      const result = await executor.runSuite(false, { verbose: true })
+
+      expect(result.results[0].status).toBe('failed')
+      expect(result.results[0].error).toContain('Assertion failed while checking')
+      expect(result.results[0].error).toContain('state expectations')
+      expect(result.results[0].error).toContain('Failed to assert state expectations')
+    })
+
+    it('should show simplified error in non-verbose mode', async () => {
+      testSuite.testCases[0].stateExpectations = [{ state: 'NonExistentState', output: {} }]
+
+      const mockExecutorInstance = {
+        execute: vi.fn().mockResolvedValue({
+          output: { result: 'success' },
+          executionPath: ['Start'],
+          success: true,
+          stateExecutions: [],
+        }),
+      }
+      vi.mocked(StateMachineExecutor).mockImplementation(
+        () => mockExecutorInstance as unknown as StateMachineExecutor,
+      )
+
+      vi.mocked(TestAssertions.performAssertions).mockImplementation(() => {
+        throw new Error(
+          'Failed to assert state expectations for states [NonExistentState]: no stateExecutions were captured',
+        )
+      })
+
+      const result = await executor.runSuite(false, { verbose: false })
+
+      expect(result.results[0].status).toBe('failed')
+      expect(result.results[0].error).toBe(
+        'State expectations failed for [NonExistentState]: No state executions captured',
+      )
+    })
+
+    it('should handle runtime errors differently from assertion errors', async () => {
+      const mockExecutorInstance = {
+        execute: vi.fn().mockRejectedValue(new Error('Connection timeout')),
+      }
+      vi.mocked(StateMachineExecutor).mockImplementation(
+        () => mockExecutorInstance as unknown as StateMachineExecutor,
+      )
+
+      const result = await executor.runSuite(false, { verbose: true })
+
+      expect(result.results[0].status).toBe('failed')
+      expect(result.results[0].error).toContain('Runtime error during test execution')
+      expect(result.results[0].error).toContain('Connection timeout')
+    })
+  })
 })

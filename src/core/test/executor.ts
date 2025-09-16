@@ -3,7 +3,7 @@ import type { ExecutionContextConfig } from '../../schemas/config-schema'
 import type { MockDefinition } from '../../schemas/mock-schema'
 import type { MockOverride, TestCase, TestSuite } from '../../schemas/test-schema'
 import type { JsonValue, StateMachine } from '../../types/asl'
-import type { TestResult, TestSuiteResult } from '../../types/test'
+import type { AssertionResult, TestResult, TestSuiteResult } from '../../types/test'
 import { NestedCoverageTracker } from '../coverage/nested-coverage-tracker'
 import { type ExecutionResult, StateMachineExecutor } from '../interpreter/executor'
 import type { MockEngine } from '../mock/engine'
@@ -178,7 +178,35 @@ export class TestSuiteExecutor {
         }
       }
 
-      const assertions = TestAssertions.performAssertions(testCase, result, this.suite.assertions)
+      let assertions: AssertionResult[] = []
+      let assertionError: string | undefined
+
+      try {
+        assertions = TestAssertions.performAssertions(testCase, result, this.suite.assertions)
+      } catch (error) {
+        assertionError = this.formatAssertionError(error, testCase)
+        const duration = Date.now() - startTime
+
+        if (testCase.mockOverrides && this.mockEngine) {
+          this.mockEngine.clearMockOverrides()
+        }
+
+        return {
+          name: testCase.name,
+          testCase: testCase,
+          status: 'failed',
+          duration,
+          assertions: [],
+          error: assertionError,
+          executionResult: {
+            output: result.output,
+            executionPath: result.executionPath,
+            success: result.success,
+            error: result.error,
+          } as JsonValue,
+        }
+      }
+
       const failedAssertions = assertions.filter((a) => !a.passed)
 
       const duration = Date.now() - startTime
@@ -216,19 +244,105 @@ export class TestSuiteExecutor {
         }
       }
 
+      let errorMessage = error instanceof Error ? error.message : String(error)
+      if (this.options?.verbose && error instanceof Error) {
+        errorMessage = `Runtime error during test execution: ${errorMessage}`
+        if (error.stack) {
+          const stackLines = error.stack.split('\n').slice(0, 3).join('\n')
+          errorMessage += `\n\nStack trace:\n${stackLines}`
+        }
+      }
+
       return {
         name: testCase.name,
         testCase: testCase,
         status: 'failed',
         duration,
         assertions: [],
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
       }
     } finally {
       if (testCase.mockOverrides && this.mockEngine) {
         this.mockEngine.clearMockOverrides()
       }
     }
+  }
+
+  private formatAssertionError(error: unknown, testCase: TestCase): string {
+    const baseError = error instanceof Error ? error.message : String(error)
+
+    if (this.options?.verbose) {
+      const assertionTypes: string[] = []
+      if (testCase.expectedOutput !== undefined) assertionTypes.push('output')
+      if (testCase.expectedPath !== undefined) assertionTypes.push('path')
+      if (testCase.expectedError !== undefined) assertionTypes.push('error')
+      if (testCase.stateExpectations) assertionTypes.push('state expectations')
+      if (testCase.mapExpectations) assertionTypes.push('map expectations')
+      if (testCase.parallelExpectations) assertionTypes.push('parallel expectations')
+      let stackInfo = ''
+      if (error instanceof Error && error.stack) {
+        const stackLines = error.stack.split('\n')
+        const relevantLine = stackLines.find(
+          (line) =>
+            line.includes('assertOutput') ||
+            line.includes('assertPaths') ||
+            line.includes('assertStateExpectations') ||
+            line.includes('assertMapExpectations') ||
+            line.includes('assertParallelExpectations'),
+        )
+        if (relevantLine) {
+          const methodMatch = relevantLine.match(/assert\w+/)
+          if (methodMatch) {
+            stackInfo = ` (in ${methodMatch[0]})`
+          }
+        }
+      }
+
+      return `Assertion failed while checking ${assertionTypes.join(', ')}${stackInfo}: ${baseError}`
+    }
+
+    // For non-verbose mode, provide a simpler message
+    // Extract just the key information from the error
+    if (baseError.includes('Failed to assert state expectations for states')) {
+      const statesMatch = baseError.match(/\[([^\]]+)\]/)
+      const states = statesMatch ? statesMatch[1] : 'unknown states'
+      if (baseError.includes('no stateExecutions were captured')) {
+        return `State expectations failed for [${states}]: No state executions captured`
+      }
+      return `State expectations failed for [${states}]`
+    }
+
+    if (baseError.includes('Failed to assert map expectations for states')) {
+      const statesMatch = baseError.match(/\[([^\]]+)\]/)
+      const states = statesMatch ? statesMatch[1] : 'unknown states'
+      return `Map expectations failed for [${states}]`
+    }
+
+    if (baseError.includes('Failed to assert parallel expectations for states')) {
+      const statesMatch = baseError.match(/\[([^\]]+)\]/)
+      const states = statesMatch ? statesMatch[1] : 'unknown states'
+      return `Parallel expectations failed for [${states}]`
+    }
+
+    if (baseError.includes('Failed to assert output')) {
+      return 'Output assertion failed'
+    }
+
+    if (baseError.includes('Failed to assert path')) {
+      return 'Path assertion failed'
+    }
+
+    // For other errors, return a simplified version
+    if (baseError.includes('Cannot convert undefined or null to object')) {
+      return 'Assertion failed: Invalid or missing data'
+    }
+
+    // Default: return first line of error only
+    const firstLine = baseError.split('\n')[0]
+    if (firstLine.length > 100) {
+      return `${firstLine.substring(0, 97)}...`
+    }
+    return firstLine
   }
 
   convertMockOverrides(overrides: MockOverride[]): MockDefinition[] {

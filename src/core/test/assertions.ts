@@ -23,51 +23,111 @@ export class TestAssertions {
 
     // Output assertion
     if (testCase.expectedOutput !== undefined) {
-      const outputAssertion = TestAssertions.assertOutput(
-        testCase.expectedOutput,
-        result.output,
-        settings,
-      )
-      assertions.push(outputAssertion)
+      try {
+        const outputAssertion = TestAssertions.assertOutput(
+          testCase.expectedOutput,
+          result.output,
+          settings,
+        )
+        assertions.push(outputAssertion)
+      } catch (error) {
+        throw new Error(
+          `Failed to assert output: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
     }
 
     // Path assertion
     if (testCase.expectedPath !== undefined) {
-      const pathAssertions = TestAssertions.assertPaths(
-        testCase.expectedPath,
-        result.executionPath,
-        settings,
-      )
-      assertions.push(...pathAssertions)
+      try {
+        const pathAssertions = TestAssertions.assertPaths(
+          testCase.expectedPath,
+          result.executionPath,
+          settings,
+        )
+        assertions.push(...pathAssertions)
+      } catch (error) {
+        throw new Error(
+          `Failed to assert path: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
     }
 
     // State-level assertions
     if (testCase.stateExpectations && result.stateExecutions) {
-      const stateAssertions = TestAssertions.assertStateExpectations(
-        testCase.stateExpectations,
-        result.stateExecutions,
-        settings,
+      try {
+        if (!Array.isArray(result.stateExecutions)) {
+          throw new Error(`stateExecutions is not an array: ${typeof result.stateExecutions}`)
+        }
+        const stateAssertions = TestAssertions.assertStateExpectations(
+          testCase.stateExpectations,
+          result.stateExecutions,
+          settings,
+        )
+        assertions.push(...stateAssertions)
+      } catch (error) {
+        const expectedStates = testCase.stateExpectations.map((e) => e.state).join(', ')
+        throw new Error(
+          `Failed to assert state expectations for states [${expectedStates}]: ${
+            error instanceof Error ? error.message : String(error)
+          }. Actual stateExecutions: ${
+            result.stateExecutions ? JSON.stringify(result.stateExecutions, null, 2) : 'undefined'
+          }`,
+        )
+      }
+    } else if (testCase.stateExpectations && !result.stateExecutions) {
+      throw new Error(
+        `Test expects state expectations but no stateExecutions were captured. ` +
+          `Expected states: ${testCase.stateExpectations.map((e) => e.state).join(', ')}. ` +
+          `This may indicate the state machine execution did not track state executions properly.`,
       )
-      assertions.push(...stateAssertions)
     }
 
     // Map state assertions
     if (testCase.mapExpectations && result.mapExecutions) {
-      const mapAssertions = TestAssertions.assertMapExpectations(
-        testCase.mapExpectations,
-        result.mapExecutions,
-        settings,
+      try {
+        const mapAssertions = TestAssertions.assertMapExpectations(
+          testCase.mapExpectations,
+          result.mapExecutions,
+          settings,
+        )
+        assertions.push(...mapAssertions)
+      } catch (error) {
+        const expectedMaps = testCase.mapExpectations.map((e) => e.state).join(', ')
+        throw new Error(
+          `Failed to assert map expectations for states [${expectedMaps}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+      }
+    } else if (testCase.mapExpectations && !result.mapExecutions) {
+      throw new Error(
+        `Test expects map expectations but no mapExecutions were captured. ` +
+          `Expected map states: ${testCase.mapExpectations.map((e) => e.state).join(', ')}`,
       )
-      assertions.push(...mapAssertions)
     }
 
     // Parallel state assertions
     if (testCase.parallelExpectations && result.parallelExecutions) {
-      const parallelAssertions = TestAssertions.assertParallelExpectations(
-        testCase.parallelExpectations,
-        result.parallelExecutions,
+      try {
+        const parallelAssertions = TestAssertions.assertParallelExpectations(
+          testCase.parallelExpectations,
+          result.parallelExecutions,
+        )
+        assertions.push(...parallelAssertions)
+      } catch (error) {
+        const expectedParallels = testCase.parallelExpectations.map((e) => e.state).join(', ')
+        throw new Error(
+          `Failed to assert parallel expectations for states [${expectedParallels}]: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+      }
+    } else if (testCase.parallelExpectations && !result.parallelExecutions) {
+      throw new Error(
+        `Test expects parallel expectations but no parallelExecutions were captured. ` +
+          `Expected parallel states: ${testCase.parallelExpectations.map((e) => e.state).join(', ')}`,
       )
-      assertions.push(...parallelAssertions)
     }
 
     return assertions

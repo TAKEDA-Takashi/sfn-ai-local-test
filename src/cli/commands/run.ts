@@ -327,6 +327,9 @@ async function executeStateMachine(
     const rawConfig = load(mockContent)
     const mockConfig = mockConfigSchema.parse(rawConfig)
     mockEngine = new MockEngine(mockConfig, { basePath: testDataPath })
+  } else {
+    // Create empty mock engine to enable default mocks for AWS service integrations
+    mockEngine = new MockEngine({ version: '1.0', mocks: [] }, { basePath: testDataPath })
   }
 
   const executor = new StateMachineExecutor(stateMachine, mockEngine)
@@ -717,8 +720,8 @@ function outputDefaultReport(result: TestSuiteResult, verbose?: boolean): void {
     console.log(`${icon} ${color(testResult.name)} ${chalk.gray(duration)}`)
 
     if (verbose || testResult.status === 'failed') {
-      if (testResult.errorMessage) {
-        console.log(chalk.red(`   ❌ ${testResult.errorMessage}`))
+      if (testResult.error) {
+        console.log(chalk.red(`   ❌ ${testResult.error}`))
       }
 
       if (testResult.assertions) {
@@ -766,12 +769,14 @@ function outputDefaultReport(result: TestSuiteResult, verbose?: boolean): void {
   }
 
   // Final status
-  const finalStatus =
-    result.failedTests === 0
-      ? chalk.green('\n🎉 All tests passed!')
-      : chalk.red(`\n💥 ${result.failedTests} test(s) failed`)
-
-  console.log(finalStatus)
+  if (result.failedTests === 0) {
+    console.log(chalk.green('\n🎉 All tests passed!'))
+  } else {
+    console.log(chalk.red(`\n💥 ${result.failedTests} test(s) failed`))
+    if (!verbose) {
+      console.log(chalk.yellow('\n💡 Run with --verbose for more detailed error information'))
+    }
+  }
 }
 
 function outputJsonReport(result: TestSuiteResult, outputPath?: string): void {

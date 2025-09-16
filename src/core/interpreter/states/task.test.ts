@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { buildExecutionId, EXECUTION_CONTEXT_DEFAULTS } from '../../../constants/execution-context'
 import type { ExecutionContext, TaskState } from '../../../types/asl'
 import { StateFactory } from '../../../types/state-factory'
 import { MockEngine } from '../../mock/engine'
@@ -698,6 +699,118 @@ describe('TaskStateExecutor', () => {
         processedData: 'test-result',
         status: 'success',
         code: 200,
+      })
+    })
+  })
+
+  describe('Step Functions Parameters Processing', () => {
+    it('should pass Parameters-processed input to mock for state expectation validation', async () => {
+      const state = StateFactory.createState({
+        Type: 'Task',
+        Resource: 'arn:aws:states:::states:startExecution.sync',
+        Parameters: {
+          StateMachineArn: 'arn:aws:states:us-east-1:123456789012:stateMachine:ProcessingTask',
+          Input: {
+            'userId.$': '$.user_id',
+            'enableFeature.$': '$.feature_flag',
+          },
+        },
+        End: true,
+      }) as TaskState
+
+      const mockResponse = {
+        Output: JSON.stringify({ processed: true }),
+        ExecutionArn: buildExecutionId(),
+        StartDate: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+        StopDate: EXECUTION_CONTEXT_DEFAULTS.STOP_TIME,
+        Status: 'SUCCEEDED',
+      }
+
+      mockEngine.setMockOverrides([
+        {
+          state: 'TestState',
+          type: 'fixed',
+          response: mockResponse,
+        },
+      ])
+
+      const executor = new TaskStateExecutor(state, mockEngine)
+      const context: ExecutionContext = {
+        input: {
+          user_id: 'user-123',
+          feature_flag: true,
+          other_field: 'should_not_be_in_parameters',
+        },
+        currentState: 'TestState',
+        executionPath: [],
+        variables: {},
+      }
+
+      const result = await executor.execute(context)
+
+      expect(result.processedInput).toEqual({
+        StateMachineArn: 'arn:aws:states:us-east-1:123456789012:stateMachine:ProcessingTask',
+        Input: {
+          userId: 'user-123',
+          enableFeature: true,
+        },
+      })
+    })
+
+    it('should handle chained Step Functions calls without double-nesting Input', async () => {
+      const state = StateFactory.createState({
+        Type: 'Task',
+        Resource: 'arn:aws:states:::states:startExecution.sync',
+        Parameters: {
+          StateMachineArn: 'arn:aws:states:us-east-1:123456789012:stateMachine:SecondMachine',
+          'Input.$': 'States.StringToJson($.Output)',
+        },
+        End: true,
+      }) as TaskState
+
+      const mockResponse = {
+        Output: JSON.stringify({ result: 'processed' }),
+        ExecutionArn: buildExecutionId(),
+        StartDate: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+        StopDate: EXECUTION_CONTEXT_DEFAULTS.STOP_TIME,
+        Status: 'SUCCEEDED',
+      }
+
+      mockEngine.setMockOverrides([
+        {
+          state: 'TestState',
+          type: 'fixed',
+          response: mockResponse,
+        },
+      ])
+
+      const executor = new TaskStateExecutor(state, mockEngine)
+
+      const context: ExecutionContext = {
+        input: {
+          Output: JSON.stringify({
+            userId: 'user-123',
+            testData: 'value',
+          }),
+          ExecutionArn:
+            'arn:aws:states:us-east-1:123456789012:execution:StateMachine:prev-execution',
+          StartDate: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+          StopDate: '2024-01-01T00:01:00.000Z',
+          Status: 'SUCCEEDED',
+        },
+        currentState: 'TestState',
+        executionPath: [],
+        variables: {},
+      }
+
+      const result = await executor.execute(context)
+
+      expect(result.processedInput).toEqual({
+        StateMachineArn: 'arn:aws:states:us-east-1:123456789012:stateMachine:SecondMachine',
+        Input: {
+          userId: 'user-123',
+          testData: 'value',
+        },
       })
     })
   })

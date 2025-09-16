@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { buildExecutionId, EXECUTION_CONTEXT_DEFAULTS } from '../../constants/execution-context'
 import type { MockConfig } from '../../schemas/mock-schema'
 import { StateFactory } from '../../types/state-factory'
 import { MockEngine } from './engine'
@@ -174,6 +175,129 @@ describe('Default Mock Behavior', () => {
         Payload: input,
         StatusCode: 200,
         ExecutedVersion: '$LATEST',
+      })
+    })
+  })
+
+  describe('Step Functions integration default mock', () => {
+    it('should wrap response in Output for .sync pattern when using Parameters', async () => {
+      const mockConfig: MockConfig = {
+        version: '1.0',
+        mocks: [],
+      }
+
+      const mockEngine = new MockEngine(mockConfig)
+      const state = StateFactory.createState({
+        Type: 'Task',
+        Resource: 'arn:aws:states:::states:startExecution.sync',
+        End: true,
+      })
+
+      const input = {
+        StateMachineArn: 'arn:aws:states:us-east-1:123456789012:stateMachine:ChildMachine',
+        Input: {
+          userId: 'user-123',
+          testMode: false,
+        },
+      }
+      const result = await mockEngine.getMockResponse('CallChildStateMachine', input, state)
+
+      expect(result).toEqual({
+        Output: JSON.stringify({
+          userId: 'user-123',
+          testMode: false,
+        }),
+        ExecutionArn: buildExecutionId(),
+        StartDate: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+        StopDate: EXECUTION_CONTEXT_DEFAULTS.STOP_TIME,
+        Status: 'SUCCEEDED',
+      })
+    })
+
+    it('should wrap response in Output (as JSON) for .sync:2 pattern when using Parameters', async () => {
+      const mockConfig: MockConfig = {
+        version: '1.0',
+        mocks: [],
+      }
+
+      const mockEngine = new MockEngine(mockConfig)
+      const state = StateFactory.createState({
+        Type: 'Task',
+        Resource: 'arn:aws:states:::states:startExecution.sync:2',
+        End: true,
+      })
+
+      const input = {
+        StateMachineArn: 'arn:aws:states:us-east-1:123456789012:stateMachine:ChildMachine',
+        Input: {
+          userId: 'user-123',
+          testMode: false,
+        },
+      }
+      const result = await mockEngine.getMockResponse('CallChildStateMachine', input, state)
+
+      expect(result).toEqual({
+        Output: {
+          userId: 'user-123',
+          testMode: false,
+        },
+        ExecutionArn: buildExecutionId(),
+        StartDate: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+        StopDate: EXECUTION_CONTEXT_DEFAULTS.STOP_TIME,
+        Status: 'SUCCEEDED',
+      })
+    })
+
+    it('should not wrap response for async pattern when using Parameters', async () => {
+      const mockConfig: MockConfig = {
+        version: '1.0',
+        mocks: [],
+      }
+
+      const mockEngine = new MockEngine(mockConfig)
+      const state = StateFactory.createState({
+        Type: 'Task',
+        Resource: 'arn:aws:states:::states:startExecution',
+        End: true,
+      })
+
+      const input = {
+        StateMachineArn: 'arn:aws:states:us-east-1:123456789012:stateMachine:ChildMachine',
+        Input: {
+          userId: 'user-123',
+          testMode: false,
+        },
+      }
+      const result = await mockEngine.getMockResponse('CallChildStateMachine', input, state)
+
+      expect(result).toEqual({
+        ExecutionArn: buildExecutionId(),
+        StartDate: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+      })
+    })
+
+    it('should wrap original input in Output for .sync pattern without Parameters', async () => {
+      const mockConfig: MockConfig = {
+        version: '1.0',
+        mocks: [],
+      }
+
+      const mockEngine = new MockEngine(mockConfig)
+      const state = StateFactory.createState({
+        Type: 'Task',
+        Resource: 'arn:aws:states:::states:startExecution.sync',
+        End: true,
+      })
+
+      const input = { test: 'data', value: 123 }
+      const result = await mockEngine.getMockResponse('CallChildStateMachine', input, state)
+
+      expect(result).toEqual({
+        Output: JSON.stringify({ test: 'data', value: 123 }),
+        ExecutionArn: buildExecutionId(),
+        StartDate: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+        StopDate: EXECUTION_CONTEXT_DEFAULTS.STOP_TIME,
+        Status: 'SUCCEEDED',
       })
     })
   })

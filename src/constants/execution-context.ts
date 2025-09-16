@@ -29,6 +29,12 @@ export const EXECUTION_CONTEXT_DEFAULTS = {
   START_TIME: '2024-01-01T00:00:00.000Z',
 
   /**
+   * Default execution stop time (ISO 8601 format)
+   * Fixed to 1 minute after start time for consistency
+   */
+  STOP_TIME: '2024-01-01T00:01:00.000Z',
+
+  /**
    * Default IAM role ARN (constructed from account ID)
    */
   ROLE_ARN: `arn:aws:iam::${DEFAULT_ACCOUNT_ID}:role/StepFunctionsRole`,

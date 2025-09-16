@@ -14,6 +14,7 @@ import { JSONPathStrategy } from '../strategies/jsonpath-strategy'
 export interface StateExecutionResult {
   output: JsonValue
   executionPath: string[]
+  processedInput?: JsonValue // Input after Parameters processing
   stateExecutions?: Array<{
     statePath: string[]
     state: string
@@ -75,6 +76,7 @@ export abstract class BaseStateExecutor<TState extends State = State> {
         output: postprocessedOutput,
         nextState,
         executionPath: [],
+        processedInput: preprocessedInput,
         success: true,
         variables: context.variables,
       }
@@ -166,6 +168,7 @@ export abstract class BaseStateExecutor<TState extends State = State> {
           output: errorOutput,
           nextState: typeof matchedCatch.Next === 'string' ? matchedCatch.Next : undefined,
           executionPath: [],
+          processedInput: preprocessedInput,
           success: false,
           error: errorMessage,
           variables: context.variables,
@@ -176,6 +179,7 @@ export abstract class BaseStateExecutor<TState extends State = State> {
     return {
       output: preprocessedInput !== undefined ? preprocessedInput : context.input,
       executionPath: [],
+      processedInput: preprocessedInput,
       success: false,
       error: errorMessage,
     }

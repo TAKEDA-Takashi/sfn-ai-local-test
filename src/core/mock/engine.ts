@@ -1,3 +1,4 @@
+import { buildExecutionId, EXECUTION_CONTEXT_DEFAULTS } from '../../constants/execution-context'
 import type {
   MockConfig,
   MockDefinition,
@@ -527,19 +528,63 @@ export class MockEngine {
       return result
     }
 
-    // Lambda invoke integration wraps in Payload
-    // Pattern: arn:aws:states:::lambda:invoke or arn:aws:states:::lambda:invoke.waitForTaskToken
-    if (state.isTask() && state.Resource?.includes('lambda:invoke')) {
-      if (process.env.DEBUG_OUTPUT_PATH) {
-        console.log('Generating default mock for Lambda invoke: wrapping in Payload')
+    // Task state: Generate service-specific response format
+    if (state.isTask() && state.Resource) {
+      const resource = state.Resource
+
+      // Lambda invoke integration wraps in Payload
+      if (resource.includes('lambda:invoke')) {
+        if (process.env.DEBUG_OUTPUT_PATH) {
+          console.log('Generating default mock for Lambda invoke: wrapping in Payload')
+        }
+        return {
+          Payload: input,
+          StatusCode: 200,
+          ExecutedVersion: '$LATEST',
+        }
       }
-      return {
-        Payload: input,
-        StatusCode: 200,
-        ExecutedVersion: '$LATEST',
+
+      // Step Functions startExecution patterns
+      if (resource.includes('states:startExecution')) {
+        // Extract the Input field if it exists (this is what would be passed to child state machine)
+        const childInput = isJsonObject(input) && 'Input' in input ? input.Input : input
+
+        if (resource.includes('.sync:2')) {
+          if (process.env.DEBUG_OUTPUT_PATH) {
+            console.log('Generating default mock for Step Functions sync:2: Output as JSON')
+          }
+          return {
+            Output: childInput,
+            ExecutionArn: buildExecutionId(),
+            StartDate: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+            StopDate: EXECUTION_CONTEXT_DEFAULTS.STOP_TIME,
+            Status: 'SUCCEEDED',
+          }
+        }
+        if (resource.includes('.sync')) {
+          if (process.env.DEBUG_OUTPUT_PATH) {
+            console.log('Generating default mock for Step Functions sync: Output as string')
+          }
+          return {
+            Output: JSON.stringify(childInput),
+            ExecutionArn: buildExecutionId(),
+            StartDate: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+            StopDate: EXECUTION_CONTEXT_DEFAULTS.STOP_TIME,
+            Status: 'SUCCEEDED',
+          }
+        }
+        // Async startExecution
+        if (process.env.DEBUG_OUTPUT_PATH) {
+          console.log('Generating default mock for Step Functions async')
+        }
+        return {
+          ExecutionArn: buildExecutionId(),
+          StartDate: EXECUTION_CONTEXT_DEFAULTS.START_TIME,
+        }
       }
     }
 
+    // Default: return input as-is
     if (process.env.DEBUG_OUTPUT_PATH) {
       console.log('Generating default mock: returning input as-is')
     }

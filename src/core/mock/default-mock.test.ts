@@ -43,6 +43,7 @@ describe('Default Mock Behavior', () => {
       expect(result).toEqual({
         Payload: input,
         StatusCode: 200,
+        ExecutedVersion: '$LATEST',
       })
     })
 
@@ -172,6 +173,7 @@ describe('Default Mock Behavior', () => {
       expect(result).toEqual({
         Payload: input,
         StatusCode: 200,
+        ExecutedVersion: '$LATEST',
       })
     })
   })

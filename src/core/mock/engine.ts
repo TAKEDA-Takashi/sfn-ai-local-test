@@ -536,6 +536,7 @@ export class MockEngine {
       return {
         Payload: input,
         StatusCode: 200,
+        ExecutedVersion: '$LATEST',
       }
     }
 

@@ -288,8 +288,7 @@ stateMachine: test-sm
 testCases:
   - name: Test case
     input: {}
-    expected:
-      output: {}
+    expectedOutput: {}
 `
         }
         return '{}'

@@ -14,6 +14,11 @@ import {
   DEFAULT_TEST_DATA_DIR,
   DEFAULT_TEST_SUITES_DIR,
 } from '../../constants/defaults'
+import {
+  transformMapExecutions,
+  transformParallelExecutions,
+} from '../../core/coverage/execution-transformer'
+import { mergeCoverageReports } from '../../core/coverage/merge-reports'
 import type { CoverageReport } from '../../core/coverage/nested-coverage-tracker'
 import { NestedCoverageTracker } from '../../core/coverage/nested-coverage-tracker'
 import { CoverageReporter } from '../../core/coverage/reporter'
@@ -25,7 +30,6 @@ import type { ProjectConfig } from '../../schemas/config-schema'
 import { mockConfigSchema } from '../../schemas/mock-schema'
 import type { JsonObject, StateMachine } from '../../types/asl'
 import { StateFactory } from '../../types/state-factory'
-import { isJsonObject } from '../../types/type-guards'
 import { extractStateMachineFromCDK } from '../../utils/cdk-extractor'
 import {
   displayCoverageReport,
@@ -175,73 +179,10 @@ async function runDefaultMode(options: RunOptions): Promise<void> {
           totalFailed += result.failedTests
           totalSkipped += result.skippedTests
 
-          if (result.coverage) {
-            // Skip coverage processing if it's in old format or missing nested property
-            if (!result.coverage?.topLevel) {
-              continue // Skip if no coverage data or not in hierarchical format
-            }
-
-            if (combinedCoverage) {
-              // Merge with existing coverage using simple addition approach
-              if (!combinedCoverage.topLevel) {
-                console.error('combinedCoverage missing topLevel structure:', combinedCoverage)
-                continue
-              }
-
-              // For hierarchical coverage, we sum the totals and covered counts
-              // This is simpler and avoids the complex state name mapping issues
-              const newTotal: number =
-                combinedCoverage.topLevel.total + result.coverage.topLevel.total
-              const newCovered: number = Math.min(
-                combinedCoverage.topLevel.covered + result.coverage.topLevel.covered,
-                newTotal, // Never exceed total
-              )
-
-              combinedCoverage = {
-                topLevel: {
-                  total: newTotal,
-                  covered: newCovered,
-                  percentage: newTotal > 0 ? (newCovered / newTotal) * 100 : 100,
-                  uncovered: [
-                    ...(result.coverage.topLevel.uncovered || []),
-                    ...(combinedCoverage.topLevel.uncovered || []),
-                  ].filter((v, i, a) => a.indexOf(v) === i),
-                },
-                nested: {
-                  // Merge nested coverage from both reports
-                  ...(combinedCoverage.nested && typeof combinedCoverage.nested === 'object'
-                    ? combinedCoverage.nested
-                    : {}),
-                  ...(result.coverage.nested && typeof result.coverage.nested === 'object'
-                    ? result.coverage.nested
-                    : {}),
-                },
-                branches: {
-                  total: combinedCoverage.branches.total + result.coverage.branches.total,
-                  covered: Math.min(
-                    combinedCoverage.branches.covered + result.coverage.branches.covered,
-                    combinedCoverage.branches.total + result.coverage.branches.total,
-                  ),
-                  percentage:
-                    combinedCoverage.branches.total + result.coverage.branches.total > 0
-                      ? ((combinedCoverage.branches.covered + result.coverage.branches.covered) /
-                          (combinedCoverage.branches.total + result.coverage.branches.total)) *
-                        100
-                      : 100,
-                  uncovered: [
-                    ...(result.coverage.branches.uncovered || []),
-                    ...(combinedCoverage.branches.uncovered || []),
-                  ].filter((v, i, a) => a.indexOf(v) === i),
-                },
-                paths: {
-                  total: (combinedCoverage.paths.total || 0) + (result.coverage.paths.total || 0),
-                  unique:
-                    (combinedCoverage.paths.unique || 0) + (result.coverage.paths.unique || 0),
-                },
-              }
-            } else {
-              combinedCoverage = result.coverage
-            }
+          if (result.coverage?.topLevel) {
+            combinedCoverage = combinedCoverage
+              ? mergeCoverageReports(combinedCoverage, result.coverage)
+              : result.coverage
           }
 
           // 簡潔な結果表示
@@ -535,41 +476,9 @@ async function runSingleExecution(options: RunOptions): Promise<void> {
       // Track current execution
       tracker.trackExecution(result.executionPath)
 
-      // Track Map executions if present
-      if (result.mapExecutions) {
-        tracker.trackMapExecutions(
-          result.mapExecutions.filter(isJsonObject).map((exec) => ({
-            state: typeof exec.state === 'string' ? exec.state : '',
-            iterationPaths:
-              Array.isArray(exec.iterationPaths) &&
-              exec.iterationPaths.every(
-                (path: unknown) =>
-                  Array.isArray(path) && path.every((p: unknown) => typeof p === 'string'),
-              )
-                ? exec.iterationPaths
-                : undefined,
-          })),
-        )
-      }
-
-      // Track Parallel executions if present
-      if (result.parallelExecutions) {
-        tracker.trackParallelExecutions(
-          result.parallelExecutions.filter(isJsonObject).map((exec) => ({
-            type: typeof exec.type === 'string' ? exec.type : 'parallel',
-            state: typeof exec.state === 'string' ? exec.state : '',
-            branchCount: typeof exec.branchCount === 'number' ? exec.branchCount : 0,
-            branchPaths:
-              Array.isArray(exec.branchPaths) &&
-              exec.branchPaths.every(
-                (path: unknown) =>
-                  Array.isArray(path) && path.every((p: unknown) => typeof p === 'string'),
-              )
-                ? exec.branchPaths
-                : [],
-          })),
-        )
-      }
+      // Track Map/Parallel executions if present
+      tracker.trackMapExecutions(transformMapExecutions(result.mapExecutions))
+      tracker.trackParallelExecutions(transformParallelExecutions(result.parallelExecutions))
 
       const allExecutions = coverageManager.loadExecutions(stateMachine)
       for (const execution of allExecutions) {

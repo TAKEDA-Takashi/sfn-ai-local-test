@@ -931,6 +931,7 @@ testCases:
       const mockTracker = {
         trackExecution: vi.fn(),
         trackMapExecutions: vi.fn(),
+        trackParallelExecutions: vi.fn(),
         getCoverage: vi.fn().mockReturnValue({
           totalStates: 1,
           coveredStates: 1,
@@ -990,6 +991,7 @@ testCases:
       const mockTracker = {
         trackExecution: vi.fn(),
         trackMapExecutions: vi.fn(),
+        trackParallelExecutions: vi.fn(),
         getCoverage: vi.fn().mockReturnValue({
           totalStates: 1,
           coveredStates: 1,
@@ -1067,6 +1069,7 @@ testCases:
       const mockTracker = {
         trackExecution: vi.fn(),
         trackMapExecutions: vi.fn(),
+        trackParallelExecutions: vi.fn(),
         getCoverage: vi.fn().mockReturnValue({
           totalStates: 2,
           coveredStates: 2,
@@ -1388,6 +1391,7 @@ testCases:
       const mockTracker = {
         trackExecution: vi.fn(),
         trackMapExecutions: vi.fn(),
+        trackParallelExecutions: vi.fn(),
         getCoverage: vi.fn().mockReturnValue(mockCoverage),
       }
 

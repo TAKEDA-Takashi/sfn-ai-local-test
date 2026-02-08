@@ -1,5 +1,4 @@
-import type { ExecutionContext, JsonValue } from '../../../types/asl'
-import type { WaitState } from '../../../types/state-classes'
+import type { ExecutionContext, JsonValue, WaitState } from '../../../types/asl'
 import { JSONPathProcessor } from '../utils/jsonpath-processor'
 import { BaseStateExecutor } from './base'
 

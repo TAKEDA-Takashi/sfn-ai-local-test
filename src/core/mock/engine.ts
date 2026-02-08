@@ -7,6 +7,7 @@ import type {
 } from '../../schemas/mock-schema'
 import { mockConfigSchema } from '../../schemas/mock-schema'
 import type { ItemReader, JsonArray, JsonValue, State } from '../../types/asl'
+import { isDistributedMap, isMap, isParallel, isTask } from '../../types/asl'
 import { isJsonObject, isJsonValue } from '../../types/type-guards'
 import { MockFileLoader } from './file-loader'
 import { ItemReaderValidator } from './item-reader-validator'
@@ -507,8 +508,8 @@ export class MockEngine {
 
   private generateDefaultMock(state: State, input: JsonValue): JsonValue {
     // Map and DistributedMap states return empty array
-    if (state.isMap()) {
-      const isDistributed = state.isDistributedMap()
+    if (isMap(state)) {
+      const isDistributed = isDistributedMap(state)
       if (process.env.DEBUG_OUTPUT_PATH) {
         console.log(
           `Generating default mock for ${isDistributed ? 'DistributedMap' : 'Map'} state: []`,
@@ -518,7 +519,7 @@ export class MockEngine {
     }
 
     // Parallel states return array with input for each branch
-    if (state.isParallel()) {
+    if (isParallel(state)) {
       const result = state.Branches.map(() => input)
       if (process.env.DEBUG_OUTPUT_PATH) {
         console.log(
@@ -529,7 +530,7 @@ export class MockEngine {
     }
 
     // Task state: Generate service-specific response format
-    if (state.isTask() && state.Resource) {
+    if (isTask(state) && state.Resource) {
       const resource = state.Resource
 
       // Lambda invoke integration wraps in Payload

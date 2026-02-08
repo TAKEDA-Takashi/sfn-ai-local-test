@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { StateFactory } from '../../types/state-factory'
+import { isChoice, isDistributedMap, isMap, isParallel, isTask } from '../../types/state-guards'
 
 describe('Nested State conversion in ItemProcessor and Branches', () => {
-  it('should convert ItemProcessor States to State classes for DistributedMap', () => {
+  it('should convert ItemProcessor States for DistributedMap', () => {
     const rawData = {
       Type: 'Map',
       ItemProcessor: {
@@ -39,26 +40,25 @@ describe('Nested State conversion in ItemProcessor and Branches', () => {
     }
 
     const states = StateFactory.createStates({ TestMap: rawData })
-    const mapState = states.TestMap
+    const mapState = states.TestMap!
 
     expect(mapState).toBeDefined()
-    expect(mapState?.isMap()).toBe(true)
-    expect(mapState?.isDistributedMap()).toBe(true)
+    expect(isMap(mapState)).toBe(true)
+    expect(isDistributedMap(mapState)).toBe(true)
 
-    const itemProcessor = (mapState as any)?.ItemProcessor
-    expect(itemProcessor).toBeDefined()
-    expect(itemProcessor.States).toBeDefined()
+    if (isMap(mapState)) {
+      const itemProcessor = mapState.ItemProcessor
+      expect(itemProcessor).toBeDefined()
+      expect(itemProcessor.States).toBeDefined()
 
-    // Before our fix, these would fail because States weren't converted
-    const processItem = itemProcessor.States.ProcessItem
-    expect(processItem).toBeDefined()
-    expect(typeof processItem.isTask).toBe('function')
-    expect(processItem.isTask()).toBe(true)
+      const processItem = itemProcessor.States.ProcessItem!
+      expect(processItem).toBeDefined()
+      expect(isTask(processItem)).toBe(true)
 
-    const checkItem = itemProcessor.States.CheckItem
-    expect(checkItem).toBeDefined()
-    expect(typeof checkItem.isChoice).toBe('function')
-    expect(checkItem.isChoice()).toBe(true)
+      const checkItem = itemProcessor.States.CheckItem!
+      expect(checkItem).toBeDefined()
+      expect(isChoice(checkItem)).toBe(true)
+    }
   })
 
   it('should handle deeply nested Map states', () => {
@@ -95,31 +95,31 @@ describe('Nested State conversion in ItemProcessor and Branches', () => {
     }
 
     const states = StateFactory.createStates({ TestNestedMap: rawData })
-    const mapState = states.TestNestedMap
+    const mapState = states.TestNestedMap!
 
     expect(mapState).toBeDefined()
-    expect(mapState?.isMap()).toBe(true)
+    expect(isMap(mapState)).toBe(true)
 
-    // Level 1: First ItemProcessor
-    const level1 = (mapState as any)?.ItemProcessor
-    const nestedMap = level1?.States?.NestedMap
-    expect(nestedMap).toBeDefined()
-    expect(typeof nestedMap.isMap).toBe('function')
-    expect(nestedMap.isMap()).toBe(true)
+    if (isMap(mapState)) {
+      // Level 1: First ItemProcessor
+      const nestedMap = mapState.ItemProcessor.States.NestedMap!
+      expect(nestedMap).toBeDefined()
+      expect(isMap(nestedMap)).toBe(true)
 
-    // Level 2: Nested ItemProcessor
-    const level2 = nestedMap?.ItemProcessor as any
-    const deepMap = level2?.States?.DeepMap
-    expect(deepMap).toBeDefined()
-    expect(typeof deepMap.isMap).toBe('function')
-    expect(deepMap.isMap()).toBe(true)
+      if (isMap(nestedMap)) {
+        // Level 2: Nested ItemProcessor
+        const deepMap = nestedMap.ItemProcessor.States.DeepMap!
+        expect(deepMap).toBeDefined()
+        expect(isMap(deepMap)).toBe(true)
 
-    // Level 3: Deeply nested ItemProcessor
-    const level3 = deepMap?.ItemProcessor as any
-    const innerTask = level3?.States?.InnerTask
-    expect(innerTask).toBeDefined()
-    expect(typeof innerTask.isTask).toBe('function')
-    expect(innerTask.isTask()).toBe(true)
+        if (isMap(deepMap)) {
+          // Level 3: Deeply nested ItemProcessor
+          const innerTask = deepMap.ItemProcessor.States.InnerTask!
+          expect(innerTask).toBeDefined()
+          expect(isTask(innerTask)).toBe(true)
+        }
+      }
+    }
   })
 
   it('should handle Parallel state with branches containing Map states', () => {
@@ -149,26 +149,26 @@ describe('Nested State conversion in ItemProcessor and Branches', () => {
     }
 
     const states = StateFactory.createStates({ TestParallel: rawData })
-    const parallelState = states.TestParallel
+    const parallelState = states.TestParallel!
 
     expect(parallelState).toBeDefined()
-    expect(parallelState?.isParallel()).toBe(true)
+    expect(isParallel(parallelState)).toBe(true)
 
-    const branches = (parallelState as any)?.Branches as any[]
-    expect(branches).toBeDefined()
-    expect(branches.length).toBe(1)
+    if (isParallel(parallelState)) {
+      const branches = parallelState.Branches
+      expect(branches).toBeDefined()
+      expect(branches.length).toBe(1)
 
-    // Branch States should be State class instances
-    const branchMap = branches[0].States.BranchMap
-    expect(branchMap).toBeDefined()
-    expect(typeof branchMap.isMap).toBe('function')
-    expect(branchMap.isMap()).toBe(true)
+      const branchMap = branches[0]!.States.BranchMap!
+      expect(branchMap).toBeDefined()
+      expect(isMap(branchMap)).toBe(true)
 
-    // ItemProcessor inside the Map in the branch
-    const itemProcessor = branchMap.ItemProcessor as any
-    const mapTask = itemProcessor?.States?.MapTask
-    expect(mapTask).toBeDefined()
-    expect(typeof mapTask.isTask).toBe('function')
-    expect(mapTask.isTask()).toBe(true)
+      if (isMap(branchMap)) {
+        // ItemProcessor inside the Map in the branch
+        const mapTask = branchMap.ItemProcessor.States.MapTask!
+        expect(mapTask).toBeDefined()
+        expect(isTask(mapTask)).toBe(true)
+      }
+    }
   })
 })

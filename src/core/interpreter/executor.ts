@@ -5,6 +5,7 @@ import {
 } from '../../constants/execution-context'
 import type { ExecutionContextConfig } from '../../schemas/config-schema'
 import type { ExecutionContext, JsonObject, JsonValue, StateMachine } from '../../types/asl'
+import { isFail, isMap, isParallel, isSucceed } from '../../types/asl'
 import type { StateExecution } from '../../types/test'
 import { isJsonObject } from '../../types/type-guards'
 import { deepClone } from '../../utils/deep-clone'
@@ -176,8 +177,8 @@ export class StateMachineExecutor {
           if (
             result.executionPath &&
             Array.isArray(result.executionPath) &&
-            !state.isMap() &&
-            !state.isParallel()
+            !isMap(state) &&
+            !isParallel(state)
           ) {
             const additionalPaths = result.executionPath.slice(1)
             context.executionPath.push(...additionalPaths)
@@ -186,7 +187,7 @@ export class StateMachineExecutor {
           if (context.stateExecutions) {
             // For Parallel states, child executions are already added by ParallelStateExecutor
             // Only add the Parallel state itself, not overwrite child executions
-            if (!state.isParallel()) {
+            if (!isParallel(state)) {
               const stateExecution: StateExecution = {
                 statePath: [...(context.currentStatePath || []), context.currentState],
                 state: context.currentState,
@@ -232,7 +233,7 @@ export class StateMachineExecutor {
           })
         }
 
-        if (state.isSucceed()) {
+        if (isSucceed(state)) {
           return {
             output: result.output || context.input,
             executionPath: context.executionPath,
@@ -244,7 +245,7 @@ export class StateMachineExecutor {
           }
         }
 
-        if (state.isFail()) {
+        if (isFail(state)) {
           return {
             output: context.input,
             executionPath: context.executionPath,

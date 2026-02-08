@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ExecutionContext } from '../../../types/asl'
-import type { ChoiceState } from '../../../types/state-classes'
+import type { ChoiceState, ExecutionContext } from '../../../types/asl'
 import { StateFactory } from '../../../types/state-factory'
 import { ChoiceStateExecutor } from './choice'
 

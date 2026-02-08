@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { WaitState } from '../../../types/state-classes'
+import type { WaitState } from '../../../types/asl'
 import { StateFactory } from '../../../types/state-factory'
 import { WaitStateExecutor } from './wait'
 

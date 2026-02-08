@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { MapState } from '../../types/state-classes'
+import type { MapState } from '../../types/asl'
 import { StateFactory } from '../../types/state-factory'
 import { generateSampleData } from './item-reader-analyzer'
 

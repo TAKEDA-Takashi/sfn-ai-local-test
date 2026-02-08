@@ -5,6 +5,7 @@ import type {
   State,
   StateMachine,
 } from '../../../types/asl'
+import { isJSONataState } from '../../../types/asl'
 import { isJsonObject } from '../../../types/type-guards'
 
 import type { MockEngine } from '../../mock/engine'
@@ -48,7 +49,7 @@ export abstract class BaseStateExecutor<TState extends State = State> {
     this.state = state
     this.mockEngine = mockEngine
     this.stateMachine = stateMachine
-    this.strategy = state.isJSONataState() ? new JSONataStrategy() : new JSONPathStrategy()
+    this.strategy = isJSONataState(state) ? new JSONataStrategy() : new JSONPathStrategy()
   }
 
   /**

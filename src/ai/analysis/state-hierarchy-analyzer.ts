@@ -3,12 +3,15 @@
  * Analyzes complex nested structures in Step Functions state machines
  */
 
-import type {
-  DistributedMapState,
-  JsonObject,
-  MapState,
-  ParallelState,
-  StateMachine,
+import {
+  type DistributedMapState,
+  isDistributedMap,
+  isMap,
+  isParallel,
+  type JsonObject,
+  type MapState,
+  type ParallelState,
+  type StateMachine,
 } from '../../types/asl'
 import { traverseStates } from '../utils/state-traversal'
 
@@ -74,10 +77,10 @@ export class StateHierarchyAnalyzer {
         hierarchy.allStates.push(context.path)
 
         if (context.depth === 0) {
-          if (state.isParallel()) {
+          if (isParallel(state)) {
             hierarchy.nestedStructures[stateName] = this.buildParallelStructure(state)
-          } else if (state.isMap()) {
-            if (state.isDistributedMap()) {
+          } else if (isMap(state)) {
+            if (isDistributedMap(state)) {
               hierarchy.nestedStructures[stateName] = this.buildDistributedMapStructure(state)
             } else {
               hierarchy.nestedStructures[stateName] = this.buildMapStructure(state)
@@ -122,7 +125,7 @@ export class StateHierarchyAnalyzer {
       type: 'Map',
     }
 
-    if (state.isMap() && state.ItemProcessor) {
+    if (isMap(state) && state.ItemProcessor) {
       const processor = state.ItemProcessor
       const processorInfo: ProcessorInfo = {
         states: Object.keys(processor.States || {}),

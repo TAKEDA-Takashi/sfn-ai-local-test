@@ -1,4 +1,4 @@
-import type { StateMachine } from '../../types/asl'
+import { isJSONataState, isTask, type StateMachine } from '../../types/asl'
 
 export interface OutputTransformationDetails {
   stateName: string
@@ -32,11 +32,11 @@ export function getOutputTransformationDetails(
   const details: OutputTransformationDetails[] = []
 
   for (const [stateName, state] of Object.entries(stateMachine.States || {})) {
-    if (!state.isTask()) {
+    if (!isTask(state)) {
       continue
     }
 
-    // state.isTask() is a type predicate, so state is now TaskState
+    // isTask(state) is a type predicate, so state is now TaskState
     const resource = state.Resource || 'unknown'
 
     if ('ResultSelector' in state && state.ResultSelector) {
@@ -70,7 +70,7 @@ export function getOutputTransformationDetails(
       })
     }
 
-    if (state.isJSONataState()) {
+    if (isJSONataState(state)) {
       if ('Output' in state && state.Output) {
         details.push({
           stateName,

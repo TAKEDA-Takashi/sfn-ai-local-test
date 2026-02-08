@@ -6,7 +6,15 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { HTTP_STATUS_OK } from '../../constants/defaults'
-import type { ChoiceRule, ChoiceState, ItemReader, State, StateMachine } from '../../types/asl'
+import {
+  type ChoiceRule,
+  type ChoiceState,
+  type ItemReader,
+  isChoice,
+  isDistributedMap,
+  type State,
+  type StateMachine,
+} from '../../types/asl'
 import { MOCK_TYPE_DEFINITIONS, TEST_TYPE_DEFINITIONS } from '../agents/embedded-types'
 import {
   type ChoiceDependency,
@@ -76,11 +84,11 @@ export class PromptBuilder {
     // ItemReaderがある場合は必須モックとして明示
     if (hasState(stateMachine, StateFilters.hasItemReader)) {
       const allStates = findStates(stateMachine, StateFilters.hasItemReader)
-      const distributedMapStates = allStates.filter(({ state }) => state.isDistributedMap())
+      const distributedMapStates = allStates.filter(({ state }) => isDistributedMap(state))
       const itemReaderStates = distributedMapStates
         .map(({ name, state }) => {
           // isDistributedMap()でフィルタ済みだが、TypeScriptが推論できない場合がある
-          if (!state.isDistributedMap()) return null
+          if (!isDistributedMap(state)) return null
           return {
             name,
             itemReader: state.ItemReader,
@@ -941,7 +949,7 @@ The executor handles this automatically based on ItemReader processing.
     const stateGraph = this.buildStateGraph(states)
 
     for (const [stateName, state] of Object.entries(states)) {
-      if (state.isChoice()) {
+      if (isChoice(state)) {
         const choices = state.Choices
 
         if (!choices) continue
@@ -987,7 +995,7 @@ The executor handles this automatically based on ItemReader processing.
         nextStates.push(state.Next)
       }
 
-      if (state.isChoice()) {
+      if (isChoice(state)) {
         const choices = state.Choices || []
         for (const choice of choices) {
           if (choice.Next && typeof choice.Next === 'string') nextStates.push(choice.Next)

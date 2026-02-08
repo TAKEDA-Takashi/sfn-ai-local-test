@@ -1,6 +1,15 @@
 import * as yaml from 'js-yaml'
 import { HTTP_STATUS_OK, LAMBDA_VERSION_LATEST } from '../../constants/defaults'
-import type { JsonObject, JsonValue, State, StateMachine } from '../../types/asl'
+import {
+  isDistributedMap,
+  isMap,
+  isParallel,
+  isTask,
+  type JsonObject,
+  type JsonValue,
+  type State,
+  type StateMachine,
+} from '../../types/asl'
 import { isJsonArray, isJsonObject } from '../../types/type-guards'
 
 export interface ValidationIssue {
@@ -26,7 +35,7 @@ export class StateMachineValidator {
 
     // Search in nested contexts (Map/Parallel)
     for (const [_parentName, state] of Object.entries(states)) {
-      if (state.isMap() && state.ItemProcessor && state.ItemProcessor.States) {
+      if (isMap(state) && state.ItemProcessor && state.ItemProcessor.States) {
         // ItemProcessor.States should already contain State instances
         // if the StateMachine was properly created with StateFactory.createStateMachine
         const nestedStates = state.ItemProcessor.States
@@ -35,7 +44,7 @@ export class StateMachineValidator {
         if (found) return found
       }
 
-      if (state.isParallel() && state.Branches) {
+      if (isParallel(state) && state.Branches) {
         const branches = state.Branches
         for (const branch of branches) {
           if (branch?.States) {
@@ -63,7 +72,7 @@ export class StateMachineValidator {
     for (const [stateName, state] of Object.entries(states)) {
       stateNames.push(stateName)
 
-      if (state.isMap() && state.ItemProcessor?.States) {
+      if (isMap(state) && state.ItemProcessor?.States) {
         // ItemProcessor.States should already contain State instances
         // if the StateMachine was properly created with StateFactory.createStateMachine
         const nestedStates = state.ItemProcessor.States
@@ -73,7 +82,7 @@ export class StateMachineValidator {
         stateNames.push(...itemProcessorStates)
       }
 
-      if (state.isParallel() && state.Branches) {
+      if (isParallel(state) && state.Branches) {
         state.Branches.forEach((branch) => {
           if (branch.States) {
             // Branch.States should already contain State instances
@@ -156,7 +165,7 @@ export class StateMachineValidator {
         for (const mock of parsed.mocks) {
           if (!isJsonObject(mock) || typeof mock.state !== 'string') continue
           const state = this.findStateByPath(mock.state, stateMachine.States)
-          const resource = state?.isTask() ? state.Resource : null
+          const resource = state && isTask(state) ? state.Resource : null
 
           if (resource && typeof resource === 'string' && resource.includes('lambda:invoke')) {
             if (
@@ -193,7 +202,7 @@ export class StateMachineValidator {
               typeof mock.state === 'string' ? mock.state : '',
               stateMachine.States,
             )
-            const resource = state?.isTask() ? state.Resource : null
+            const resource = state && isTask(state) ? state.Resource : null
 
             if (mock.conditions && isJsonArray(mock.conditions)) {
               for (const condition of mock.conditions) {
@@ -416,14 +425,14 @@ export class StateMachineValidator {
           stateMachine.States,
         )
 
-        if (state?.isMap()) {
+        if (state && isMap(state)) {
           // Special case: DistributedMap with ResultWriter returns metadata object
-          if (state.isDistributedMap() && state.ResultWriter) {
+          if (isDistributedMap(state) && state.ResultWriter) {
             // DistributedMap with ResultWriter returns metadata, not array
             // Skip array validation for this case
           } else {
             if (mock.response && !Array.isArray(mock.response)) {
-              const stateType = state.isDistributedMap() ? 'DistributedMap' : 'Map'
+              const stateType = isDistributedMap(state) ? 'DistributedMap' : 'Map'
               issues.push({
                 level: 'error',
                 message: `${stateType} state "${mock.state}" must return an array`,
@@ -437,7 +446,7 @@ export class StateMachineValidator {
             mock.type === 'conditional' &&
             mock.conditions &&
             isJsonArray(mock.conditions) &&
-            !(state.isDistributedMap() && state.ResultWriter)
+            !(isDistributedMap(state) && state.ResultWriter)
           ) {
             for (const condition of mock.conditions) {
               if (!isJsonObject(condition)) continue
@@ -448,7 +457,7 @@ export class StateMachineValidator {
                     ? condition.default
                     : undefined
               if (response && !isJsonArray(response)) {
-                const stateType = state.isDistributedMap() ? 'DistributedMap' : 'Map'
+                const stateType = isDistributedMap(state) ? 'DistributedMap' : 'Map'
                 issues.push({
                   level: 'error',
                   message: `${stateType} state "${mock.state}" conditional response must return an array`,
@@ -464,11 +473,11 @@ export class StateMachineValidator {
             mock.type === 'stateful' &&
             mock.responses &&
             Array.isArray(mock.responses) &&
-            !(state.isDistributedMap() && state.ResultWriter)
+            !(isDistributedMap(state) && state.ResultWriter)
           ) {
             for (let i = 0; i < mock.responses.length; i++) {
               if (!Array.isArray(mock.responses[i])) {
-                const stateType = state.isDistributedMap() ? 'DistributedMap' : 'Map'
+                const stateType = isDistributedMap(state) ? 'DistributedMap' : 'Map'
                 issues.push({
                   level: 'error',
                   message: `${stateType} state "${mock.state}" stateful response #${i + 1} must return an array`,
@@ -507,7 +516,7 @@ export class StateMachineValidator {
           stateMachine.States,
         )
 
-        const stateResource = state?.isTask() ? state.Resource : null
+        const stateResource = state && isTask(state) ? state.Resource : null
         if (
           stateResource &&
           typeof stateResource === 'string' &&
@@ -728,7 +737,7 @@ The 'Payload' wrapper is REQUIRED for Lambda invoke tasks.`
             const state = this.findStateByPath(mock.state, stateMachine.States)
 
             // Check if this is a Lambda invoke task
-            const resource = state?.isTask() ? state.Resource : null
+            const resource = state && isTask(state) ? state.Resource : null
             if (resource && typeof resource === 'string' && resource.includes('lambda:invoke')) {
               // Fix conditional mocks for Lambda
               if (mock.type === 'conditional' && mock.conditions && isJsonArray(mock.conditions)) {

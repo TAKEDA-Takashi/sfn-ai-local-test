@@ -5,7 +5,15 @@
  * including nested states in Parallel branches and Map/DistributedMap ItemProcessors.
  */
 
-import type { State, StateMachine } from '../../types/asl'
+import {
+  isChoice,
+  isDistributedMap,
+  isMap,
+  isParallel,
+  isTask,
+  type State,
+  type StateMachine,
+} from '../../types/asl'
 
 export interface TraversalContext {
   /** Current depth in the state hierarchy */
@@ -69,7 +77,7 @@ function traverseState(
   const stateIsJSONata = state.QueryLanguage === 'JSONata' || !!context.parentIsJSONata
 
   // Handle Parallel branches
-  if (state.isParallel()) {
+  if (isParallel(state)) {
     if (state.Branches && Array.isArray(state.Branches)) {
       for (let index = 0; index < state.Branches.length; index++) {
         const branch = state.Branches[index]
@@ -91,7 +99,7 @@ function traverseState(
   }
 
   // Handle Map/DistributedMap ItemProcessor
-  if (state.isMap()) {
+  if (isMap(state)) {
     if (state.ItemProcessor?.States) {
       const processor = state.ItemProcessor
       const processorIsJSONata = stateIsJSONata
@@ -155,18 +163,18 @@ export const StateFilters = {
   /** Filter for states with ItemReader */
   hasItemReader: (_name: string, state: State, _context: TraversalContext) => {
     // ItemReaderはDistributedMapでのみサポート
-    return state.isDistributedMap() && !!state.ItemReader
+    return isDistributedMap(state) && !!state.ItemReader
   },
 
   /** Filter for states with ResultWriter */
   hasResultWriter: (_name: string, state: State, _context: TraversalContext) => {
-    return state.isDistributedMap() && !!state.ResultWriter
+    return isDistributedMap(state) && !!state.ResultWriter
   },
 
   /** Filter for Lambda tasks */
   isLambdaTask: (_name: string, state: State, _context: TraversalContext) => {
     return (
-      state.isTask() &&
+      isTask(state) &&
       'Resource' in state &&
       typeof state.Resource === 'string' &&
       state.Resource.includes('lambda:invoke')
@@ -181,23 +189,23 @@ export const StateFilters = {
 
   /** Filter for Map states (including DistributedMap) */
   isMapState: (_name: string, state: State, _context: TraversalContext) => {
-    return state.isMap()
+    return isMap(state)
   },
 
   /** Filter for DistributedMap states */
   isDistributedMap: (_name: string, state: State, _context: TraversalContext) => {
     // After StateFactory processing, isDistributedMap() is sufficient
-    return state.isDistributedMap()
+    return isDistributedMap(state)
   },
 
   /** Filter for Parallel states */
   isParallel: (_name: string, state: State, _context: TraversalContext) => {
-    return state.isParallel()
+    return isParallel(state)
   },
 
   /** Filter for Choice states */
   isChoice: (_name: string, state: State, _context: TraversalContext) => {
-    return state.isChoice()
+    return isChoice(state)
   },
 
   /** Filter for states using JSONata */
@@ -255,11 +263,11 @@ export function analyzeComplexity(stateMachine: StateMachine): ComplexityMetrics
     // Count state types
     if (StateFilters.isDistributedMap(name, state, context)) {
       metrics.distributedMapStates++
-    } else if (state.isMap()) {
+    } else if (isMap(state)) {
       metrics.mapStates++
-    } else if (state.isParallel()) {
+    } else if (isParallel(state)) {
       metrics.parallelStates++
-    } else if (state.isChoice()) {
+    } else if (isChoice(state)) {
       metrics.choiceStates++
     } else if (StateFilters.isLambdaTask(name, state, context)) {
       metrics.lambdaTasks++

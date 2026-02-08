@@ -1,5 +1,10 @@
-import type { ExecutionContext, JsonArray, JsonValue, StateMachine } from '../../../types/asl'
-import type { ParallelState } from '../../../types/state-classes'
+import type {
+  ExecutionContext,
+  JsonArray,
+  JsonValue,
+  ParallelState,
+  StateMachine,
+} from '../../../types/asl'
 import { isJsonObject } from '../../../types/type-guards'
 import { StateMachineExecutor } from '../executor'
 import { BaseStateExecutor, type StateExecutionResult } from './base'

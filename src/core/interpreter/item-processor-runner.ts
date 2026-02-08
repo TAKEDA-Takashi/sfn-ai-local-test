@@ -1,4 +1,5 @@
 import type { ExecutionContext, ItemProcessor, JsonValue } from '../../types/asl'
+import { isFail, isSucceed } from '../../types/asl'
 import type { MockEngine } from '../mock/engine'
 import { StateExecutorFactory } from './states/state-executor-factory'
 
@@ -97,7 +98,7 @@ export class ItemProcessorRunner {
         const executor = StateExecutorFactory.create(state, this.mockEngine)
         const result = await executor.execute(executionContext)
 
-        if (state.isSucceed()) {
+        if (isSucceed(state)) {
           return {
             output: result.output || executionContext.input,
             executionPath: executionContext.executionPath,
@@ -106,7 +107,7 @@ export class ItemProcessorRunner {
           }
         }
 
-        if (state.isFail()) {
+        if (isFail(state)) {
           return {
             output: executionContext.input,
             executionPath: executionContext.executionPath,

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { JsonObject } from './asl'
+import type { JsonObject, MapState } from './asl'
 import { StateFactory } from './state-factory'
+import { isMap, isTask } from './state-guards'
 
 describe('StateFactory.createStateMachine', () => {
-  it('should create a StateMachine with all states converted to class instances', () => {
+  it('should create a StateMachine with all states converted', () => {
     const stateMachineData: JsonObject = {
       Comment: 'A simple state machine',
       StartAt: 'FirstState',
@@ -29,9 +30,9 @@ describe('StateFactory.createStateMachine', () => {
     expect(stateMachine.States.FirstState?.Type).toBe('Task')
     expect(stateMachine.States.SecondState).toBeDefined()
     expect(stateMachine.States.SecondState?.Type).toBe('Pass')
-    // Verify these are State instances
-    expect(stateMachine.States.FirstState?.isTask()).toBe(true)
-    expect(stateMachine.States.SecondState?.isPass()).toBe(true)
+    // Verify type discrimination works
+    expect(isTask(stateMachine.States.FirstState!)).toBe(true)
+    expect(stateMachine.States.SecondState?.Type === 'Pass').toBe(true)
   })
 
   it('should validate required fields', () => {
@@ -81,13 +82,13 @@ describe('StateFactory.createStateMachine', () => {
     const stateMachine = StateFactory.createStateMachine(stateMachineData)
 
     expect(stateMachine.States.MapState).toBeDefined()
-    expect(stateMachine.States.MapState?.isMap()).toBe(true)
+    expect(isMap(stateMachine.States.MapState!)).toBe(true)
     // ItemProcessor states should also be converted
     const mapState = stateMachine.States.MapState
-    if (mapState?.isMap()) {
+    if (mapState && isMap(mapState)) {
       expect(mapState.ItemProcessor).toBeDefined()
       expect(mapState.ItemProcessor?.States.ProcessItem).toBeDefined()
-      expect(mapState.ItemProcessor?.States.ProcessItem?.isTask()).toBe(true)
+      expect(isTask(mapState.ItemProcessor?.States.ProcessItem!)).toBe(true)
     }
   })
 
@@ -106,7 +107,7 @@ describe('StateFactory.createStateMachine', () => {
     const stateMachine = StateFactory.createStateMachine(stateMachineData)
     expect(stateMachine.QueryLanguage).toBe('JSONata')
     // State should be created with JSONata mode
-    expect(stateMachine.States.FirstState?.constructor.name).toContain('JSONata')
+    expect(stateMachine.States.FirstState?.QueryLanguage).toBe('JSONata')
   })
 
   it('should not add QueryLanguage when not provided', () => {
@@ -122,8 +123,8 @@ describe('StateFactory.createStateMachine', () => {
 
     const stateMachine = StateFactory.createStateMachine(stateMachineData)
     expect('QueryLanguage' in stateMachine).toBe(false)
-    // State should still be created with JSONPath (default)
-    expect(stateMachine.States.FirstState?.constructor.name).toContain('JSONPath')
+    // State should still be created with JSONPath (default) - no QueryLanguage set
+    expect(stateMachine.States.FirstState?.QueryLanguage).toBeUndefined()
   })
 
   it('should throw error for unsupported state type', () => {
@@ -154,16 +155,14 @@ describe('StateFactory.createStateMachine', () => {
 describe('StateFactory QueryLanguage Inheritance', () => {
   describe('Map State ItemProcessor QueryLanguage Inheritance', () => {
     it('should inherit QueryLanguage from Map state to ItemProcessor states', () => {
-      // New Rule: ItemProcessor states inherit from Map state, not state machine level
       const mapStateData: JsonObject = {
         Type: 'Map',
-        QueryLanguage: 'JSONata', // Map state uses JSONata
+        QueryLanguage: 'JSONata',
         ItemProcessor: {
           StartAt: 'Process',
           States: {
             Process: {
               Type: 'Pass',
-              // No QueryLanguage specified - should inherit from state machine, not Map
               End: true,
             },
           },
@@ -173,26 +172,20 @@ describe('StateFactory QueryLanguage Inheritance', () => {
 
       const mapState = StateFactory.createState(mapStateData)
 
-      // The ItemProcessor.States should inherit Map's QueryLanguage (JSONata)
       expect(mapState).toBeDefined()
       expect(mapState.Type).toBe('Map')
-
-      // Note: We can't directly test the QueryLanguage of nested states
-      // because they're converted to State classes, but they should
-      // inherit from the Map state
     })
 
     it('should use Map QueryLanguage for ItemProcessor states, overriding state machine default', () => {
       const statesData: JsonObject = {
         MapState: {
           Type: 'Map',
-          QueryLanguage: 'JSONPath', // Map state explicitly uses JSONPath
+          QueryLanguage: 'JSONPath',
           ItemProcessor: {
             StartAt: 'Process',
             States: {
               Process: {
                 Type: 'Pass',
-                // Should inherit Map's QueryLanguage (JSONPath), not state machine's JSONata
                 End: true,
               },
             },
@@ -201,7 +194,6 @@ describe('StateFactory QueryLanguage Inheritance', () => {
         },
       }
 
-      // When creating states with state machine QueryLanguage as JSONata
       const states = StateFactory.createStates(statesData, 'JSONata')
 
       expect(states.MapState).toBeDefined()
@@ -211,17 +203,15 @@ describe('StateFactory QueryLanguage Inheritance', () => {
 
   describe('Parallel State Branches QueryLanguage Inheritance', () => {
     it('should NOT inherit QueryLanguage from Parallel state to Branch states', () => {
-      // Rule: Branch states inherit from state machine level, not Parallel state
       const parallelStateData: JsonObject = {
         Type: 'Parallel',
-        QueryLanguage: 'JSONata', // Parallel state uses JSONata
+        QueryLanguage: 'JSONata',
         Branches: [
           {
             StartAt: 'Branch1Task',
             States: {
               Branch1Task: {
                 Type: 'Pass',
-                // No QueryLanguage specified - should inherit from state machine, not Parallel
                 End: true,
               },
             },
@@ -234,8 +224,6 @@ describe('StateFactory QueryLanguage Inheritance', () => {
 
       expect(parallelState).toBeDefined()
       expect(parallelState.Type).toBe('Parallel')
-
-      // Note: Branch states should follow state machine QueryLanguage, not Parallel's
     })
   })
 
@@ -243,18 +231,17 @@ describe('StateFactory QueryLanguage Inheritance', () => {
     it('should follow priority: State > Map > StateMachine', () => {
       const mapStateData: JsonObject = {
         Type: 'Map',
-        QueryLanguage: 'JSONata', // Map state uses JSONata
+        QueryLanguage: 'JSONata',
         ItemProcessor: {
           StartAt: 'Process1',
           States: {
             Process1: {
               Type: 'Pass',
-              QueryLanguage: 'JSONPath', // State's own QueryLanguage overrides Map's
+              QueryLanguage: 'JSONPath',
               Next: 'Process2',
             },
             Process2: {
               Type: 'Pass',
-              // No QueryLanguage - should inherit from Map (JSONata)
               End: true,
             },
           },
@@ -262,25 +249,25 @@ describe('StateFactory QueryLanguage Inheritance', () => {
         End: true,
       }
 
-      const mapState = StateFactory.createState(mapStateData, 'JSONPath') // StateMachine is JSONPath
+      const mapState = StateFactory.createState(mapStateData, 'JSONPath') as MapState
 
       expect(mapState).toBeDefined()
       expect(mapState.Type).toBe('Map')
 
       // Process1 should use its own QueryLanguage (JSONPath)
+      expect(mapState.ItemProcessor.States.Process1?.QueryLanguage).toBeUndefined()
       // Process2 should inherit from Map (JSONata)
+      expect(mapState.ItemProcessor.States.Process2?.QueryLanguage).toBe('JSONata')
     })
 
     it('should use StateMachine QueryLanguage when Map does not specify', () => {
       const mapStateData: JsonObject = {
         Type: 'Map',
-        // No QueryLanguage specified at Map level
         ItemProcessor: {
           StartAt: 'Process',
           States: {
             Process: {
               Type: 'Pass',
-              // No QueryLanguage - should inherit from StateMachine via Map
               End: true,
             },
           },
@@ -288,12 +275,12 @@ describe('StateFactory QueryLanguage Inheritance', () => {
         End: true,
       }
 
-      const mapState = StateFactory.createState(mapStateData, 'JSONata') // StateMachine uses JSONata
+      const mapState = StateFactory.createState(mapStateData, 'JSONata')
 
       expect(mapState).toBeDefined()
       expect(mapState.Type).toBe('Map')
       // Map itself should use JSONata from StateMachine
-      expect(mapState.constructor.name).toContain('JSONata')
+      expect(mapState.QueryLanguage).toBe('JSONata')
     })
   })
 
@@ -303,25 +290,23 @@ describe('StateFactory QueryLanguage Inheritance', () => {
         Task1: {
           Type: 'Task',
           Resource: 'arn:aws:lambda:test',
-          // No QueryLanguage - uses state machine default
           Next: 'Task2',
         },
         Task2: {
           Type: 'Task',
           Resource: 'arn:aws:lambda:test',
-          QueryLanguage: 'JSONata', // Override to JSONata
+          QueryLanguage: 'JSONata',
           End: true,
         },
       }
 
-      // State machine defaults to JSONPath
       const states = StateFactory.createStates(statesData)
 
       expect(states.Task1).toBeDefined()
       expect(states.Task2).toBeDefined()
 
       // Task2 should be created as JSONata state
-      expect(states.Task2?.constructor.name).toContain('JSONata')
+      expect(states.Task2?.QueryLanguage).toBe('JSONata')
     })
 
     it('should use state machine QueryLanguage when state does not specify', () => {
@@ -329,17 +314,15 @@ describe('StateFactory QueryLanguage Inheritance', () => {
         Task1: {
           Type: 'Task',
           Resource: 'arn:aws:lambda:test',
-          // No QueryLanguage specified
           End: true,
         },
       }
 
-      // Create with JSONata as default
       const states = StateFactory.createStates(statesData, 'JSONata')
 
       expect(states.Task1).toBeDefined()
       // Should be created as JSONata state
-      expect(states.Task1?.constructor.name).toContain('JSONata')
+      expect(states.Task1?.QueryLanguage).toBe('JSONata')
     })
   })
 })

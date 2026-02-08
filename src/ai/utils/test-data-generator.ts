@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import * as yaml from 'js-yaml'
 import { mockConfigSchema } from '../../schemas/mock-schema'
-import type { MapState, StateMachine } from '../../types/asl'
+import { isMap, type MapState, type StateMachine } from '../../types/asl'
 import { analyzeItemReaders, generateSampleData } from './item-reader-analyzer'
 import { findStates } from './state-traversal'
 
@@ -105,13 +105,13 @@ export function generateTestDataFiles(
  */
 function findMapState(stateMachine: StateMachine, stateName: string): MapState | null {
   const mapStates = findStates(stateMachine, (name, state, _context) => {
-    return name === stateName && state.isMap()
+    return name === stateName && isMap(state)
   })
 
   if (mapStates.length > 0) {
     const firstState = mapStates[0]?.state
     // isMap() in the filter ensures this is a MapState
-    if (firstState?.isMap()) {
+    if (firstState && isMap(firstState)) {
       return firstState
     }
   }

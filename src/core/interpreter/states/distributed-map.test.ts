@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ExecutionContext } from '../../../types/asl'
-import type { DistributedMapState, MapState } from '../../../types/state-classes'
+import type { DistributedMapState, ExecutionContext, MapState } from '../../../types/asl'
 import { StateFactory } from '../../../types/state-factory'
 import type { MockEngine } from '../../mock/engine'
 import { DistributedMapStateExecutor } from './map'

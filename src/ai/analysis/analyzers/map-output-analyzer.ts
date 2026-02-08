@@ -1,4 +1,12 @@
-import type { JsonObject, JsonValue, MapState, StateMachine } from '../../../types/asl'
+import {
+  isDistributedMap,
+  isJSONataState,
+  isMap,
+  type JsonObject,
+  type JsonValue,
+  type MapState,
+  type StateMachine,
+} from '../../../types/asl'
 import type { DynamicField, MapOutputField, MapOutputSpec } from '../data-flow-analyzer'
 import { DataFlowHelpers } from './data-flow-helpers'
 
@@ -17,9 +25,9 @@ export class MapOutputAnalyzer {
     const states = this.stateMachine.States || {}
 
     for (const [stateName, state] of Object.entries(states)) {
-      if (!state.isMap()) continue
+      if (!isMap(state)) continue
 
-      // state.isMap() is a type predicate, so state is now MapState
+      // isMap(state) is a type predicate, so state is now MapState
       const spec = this.analyzeMapState(stateName, state)
       if (spec) {
         specs.push(spec)
@@ -37,8 +45,8 @@ export class MapOutputAnalyzer {
     const dynamicFields: DynamicField[] = []
     let conditionalLogic = ''
 
-    const isDistributedMap = mapState.isDistributedMap()
-    const isJSONata = mapState.isJSONataState()
+    const isDistributedMapState = isDistributedMap(mapState)
+    const isJSONata = isJSONataState(mapState)
 
     // AWS Step Functions Map状態の標準出力フィールド
     requiredFields.push({
@@ -48,7 +56,7 @@ export class MapOutputAnalyzer {
       description: 'Number of items successfully processed',
     })
 
-    if (isDistributedMap) {
+    if (isDistributedMapState) {
       // DistributedMapの場合の追加フィールド
       requiredFields.push({
         field: 'FailedItemCount',
@@ -91,7 +99,7 @@ export class MapOutputAnalyzer {
         fallbackValue: inputAnalysis.fallbackSize,
       })
 
-      if (isDistributedMap) {
+      if (isDistributedMapState) {
         dynamicFields.push({
           field: 'TotalItemCount',
           calculation: inputAnalysis.sizeCalculation,
@@ -248,7 +256,7 @@ export class MapOutputAnalyzer {
    */
   private hasResultWriter(mapState: MapState): boolean {
     return (
-      mapState.isDistributedMap() &&
+      isDistributedMap(mapState) &&
       'ResultWriter' in mapState &&
       mapState.ResultWriter !== undefined
     )

@@ -6,10 +6,11 @@ import type {
   JsonArray,
   JsonObject,
   JsonValue,
+  MapState,
   StateMachine,
   ToleranceConfig,
 } from '../../../types/asl'
-import type { MapState } from '../../../types/state-classes'
+import { isInlineMap, isJSONataState } from '../../../types/asl'
 import type { MockEngine } from '../../mock/engine'
 import { ItemReaderValidator } from '../../mock/item-reader-validator'
 import { JSONataEvaluator } from '../expressions/jsonata'
@@ -62,13 +63,13 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
 
       // For Inline Map with variables, always process sequentially to maintain variable consistency
       // This is the AWS Step Functions behavior
-      if (this.state.isInlineMap() && Object.keys(context.variables).length > 0) {
+      if (isInlineMap(this.state) && Object.keys(context.variables).length > 0) {
         // Sequential execution - variables are shared and modified in order
         for (let i = 0; i < items.length; i++) {
           const item = items[i]
           const iterationIndex = i
           let itemInput: JsonValue
-          if (this.state.isJSONataState()) {
+          if (isJSONataState(this.state)) {
             itemInput = await this.applyItemSelector(item, iterationIndex, contextInput)
           } else {
             // In JSONPath mode, use Parameters as the item selector
@@ -98,7 +99,7 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
           const batchPromises = batch.map(async (item, index) => {
             const iterationIndex = index + i
             let itemInput: JsonValue
-            if (this.state.isJSONataState()) {
+            if (isJSONataState(this.state)) {
               itemInput = await this.applyItemSelector(item, iterationIndex, contextInput)
             } else {
               // In JSONPath mode, use Parameters as the item selector
@@ -169,7 +170,7 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
 
   protected getItemsArray(input: JsonValue, context?: ExecutionContext): JsonArray {
     // JSONataモードでは Items フィールドを優先
-    if (this.state.isJSONataState() && 'Items' in this.state && this.state.Items !== undefined) {
+    if (isJSONataState(this.state) && 'Items' in this.state && this.state.Items !== undefined) {
       if (Array.isArray(this.state.Items)) {
         return this.state.Items
       }
@@ -325,7 +326,7 @@ export class MapStateExecutor extends BaseStateExecutor<MapState> {
 
     // For Inline Map (default), pass variables context to allow access to outer scope
     let processorContext: ItemProcessorContext
-    if (this.state.isInlineMap()) {
+    if (isInlineMap(this.state)) {
       // Each iteration gets its own variable scope that inherits from parent
       processorContext = {
         input: itemInput,
@@ -442,7 +443,7 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
             // Batch is already an object like { Items: [...] } from createBatches
             batchInput = batch
           } else {
-            if (this.state.isJSONataState()) {
+            if (isJSONataState(this.state)) {
               if ('ItemSelector' in this.state && this.state.ItemSelector) {
                 batchInput = await this.applyItemSelectorInJSONata(
                   batch,
@@ -674,7 +675,7 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
 
   private getItemsArrayForDistributed(input: JsonValue): JsonArray {
     // ItemsPath is only available in JSONPath mode
-    if (this.state.isJSONataState()) {
+    if (isJSONataState(this.state)) {
       return Array.isArray(input) ? input : [input]
     }
 
@@ -701,7 +702,7 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
     contextInput: JsonValue,
   ): Promise<JsonValue> {
     // ItemSelector is only available in JSONata mode
-    if (!this.state.isJSONataState()) {
+    if (!isJSONataState(this.state)) {
       return item
     }
 
@@ -728,7 +729,7 @@ export class DistributedMapStateExecutor extends MapStateExecutor {
     contextInput: JsonValue,
   ): JsonValue {
     // Parameters is only available in JSONPath mode
-    if (this.state.isJSONataState()) {
+    if (isJSONataState(this.state)) {
       return item
     }
 

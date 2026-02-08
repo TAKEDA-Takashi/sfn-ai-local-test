@@ -1,13 +1,13 @@
 /**
  * Amazon States Language (ASL) Type Definitions
  *
- * JSONPath/JSONata分離型設計:
- * - QueryLanguageによる完全な型分離
- * - ステートマシンレベル・ステートレベル両方の階層的判定サポート
- * - AWS仕様準拠の排他的フィールド制御
+ * Discriminated Union設計:
+ * - Type フィールドによる discriminated union
+ * - QueryLanguage はフィールドレベルで表現（モードごとに型を分けない）
+ * - バリデーションは StateFactory に集約
  */
 
-// Import StateExecution from test types
+import type { ChoiceRule } from './choice-rule.js'
 import type { StateExecution } from './test.js'
 
 // =============================================================================
@@ -44,169 +44,108 @@ export interface RetryRule {
 export interface JSONPathCatchRule {
   ErrorEquals: string[]
   Next?: string
-  ResultPath?: string // エラー情報の挿入先パス
+  ResultPath?: string
 }
 
 /** JSONata用Catchルール */
 export interface JSONataCatchRule {
   ErrorEquals: string[]
   Next?: string
-  Output?: JsonValue // エラー時の出力を指定
+  Output?: JsonValue
 }
 
-/** Catchルール統合型（互換性のため） */
+/** Catchルール統合型 */
 export type CatchRule = JSONPathCatchRule | JSONataCatchRule
 
 // =============================================================================
-// State Type Forward Declarations
+// Query Language
 // =============================================================================
 
-// 統合型定義（型ガードで使用）
-export type TaskState = JSONPathTaskState | JSONataTaskState
-export type ChoiceState = JSONPathChoiceState | JSONataChoiceState
-export type MapState =
-  | JSONPathInlineMapState
-  | JSONataInlineMapState
-  | JSONPathDistributedMapState
-  | JSONataDistributedMapState
-export type InlineMapState = JSONPathInlineMapState | JSONataInlineMapState
-export type DistributedMapState = JSONPathDistributedMapState | JSONataDistributedMapState
-export type ParallelState = JSONPathParallelState | JSONataParallelState
-export type PassState = JSONPathPassState | JSONataPassState
-export type WaitState = JSONPathWaitState | JSONataWaitState
-export type SucceedState = JSONPathSucceedState | JSONataSucceedState
-export type FailState = JSONPathFailState | JSONataFailState
+export type QueryLanguage = 'JSONPath' | 'JSONata'
 
 // =============================================================================
-// Base State Interface
+// Common State Fields (shared by all state types)
 // =============================================================================
 
-/**
- * 基本Stateインターフェース（全てのStateの基底）
- *
- * @see https://docs.aws.amazon.com/step-functions/latest/dg/amazon-states-language-state-types.html
- */
-export interface State {
-  /** ステートのタイプ (Task, Pass, Choice, Wait, Succeed, Fail, Map, Parallel) */
-  Type: string
-  /** 次に遷移するステート名 */
+/** 全Stateが持つ共通フィールド */
+interface StateCommon {
   Next?: string
-  /** 終了ステートの場合true */
   End?: boolean
-  /** コメント（ドキュメント用） */
   Comment?: string
-  /** リトライルール */
   Retry?: RetryRule[]
-  /**
-   * エラーキャッチルール
-   * - JSONPathモード: JSONPathCatchRule[]
-   * - JSONataモード: JSONataCatchRule[]
-   */
   Catch?: JSONPathCatchRule[] | JSONataCatchRule[]
-  /** クエリ言語の指定（未指定の場合は親から継承） */
-  QueryLanguage?: 'JSONPath' | 'JSONata'
-  /**
-   * 変数割り当て（両モードで使用可能）
-   * @see https://docs.aws.amazon.com/step-functions/latest/dg/workflow-variables.html
-   */
+  QueryLanguage?: QueryLanguage
   Assign?: JsonObject
-
-  // 型ガード関数（実装クラスで定義）
-  isTask(): this is TaskState
-  isChoice(): this is ChoiceState
-  isMap(): this is MapState
-  isParallel(): this is ParallelState
-  isPass(): this is PassState
-  isWait(): this is WaitState
-  isSucceed(): this is SucceedState
-  isFail(): this is FailState
-  isDistributedMap(): this is DistributedMapState
-  isInlineMap(): this is InlineMapState
-  isJSONPathState(): this is JSONPathState
-  isJSONataState(): this is JSONataState
 }
 
-// =============================================================================
-// Query Language Specific State Interfaces
-// =============================================================================
-
-/**
- * JSONPathステートの型定義
- * @see https://docs.aws.amazon.com/step-functions/latest/dg/input-output-jsonpath.html
- */
-export interface JSONPathState extends State {
-  QueryLanguage?: 'JSONPath' | undefined
-  Catch?: JSONPathCatchRule[]
-  /** 入力のフィルタリング */
+/** JSONPath固有フィールド */
+interface JSONPathFields {
   InputPath?: string
-  /** 出力のフィルタリング */
   OutputPath?: string
-  /** 結果の挿入先パス */
   ResultPath?: string
-  /** タスクへのパラメータ（ペイロードテンプレート） */
   Parameters?: JsonObject
-  /** 結果のフィルタリング（ペイロードテンプレート） */
   ResultSelector?: JsonObject
-  /** 変数への代入（Variables機能） */
-  Assign?: JsonObject
 }
 
-/**
- * JSONataステートの型定義
- * @see https://docs.aws.amazon.com/step-functions/latest/dg/transforming-data.html
- */
-export interface JSONataState extends State {
-  QueryLanguage: 'JSONata'
-  Catch?: JSONataCatchRule[]
-  /**
-   * タスクへの引数（JSONata式）
-   * - オブジェクト: 各値にJSONata式を含む
-   * - 文字列: JSONata式全体
-   */
+/** JSONata固有フィールド */
+interface JSONataFields {
   Arguments?: string | JsonObject
-  /**
-   * ステートの出力（JSONata式またはJSON値）
-   */
   Output?: JsonValue
 }
 
 // =============================================================================
-// State Machine Definitions
+// State Type Definitions (Discriminated Union)
 // =============================================================================
 
-/** ステートマシン共通インターフェース */
-interface StateMachineBase {
-  Comment?: string
-  StartAt: string
-  States: Record<string, State>
-  Version?: string
+/** Task State */
+export interface TaskState extends StateCommon, JSONPathFields, JSONataFields {
+  Type: 'Task'
+  Resource: string
   TimeoutSeconds?: number
+  TimeoutSecondsPath?: string
+  HeartbeatSeconds?: number
+  HeartbeatSecondsPath?: string
 }
 
-/** JSONPathモードステートマシン */
-export interface JSONPathStateMachine extends StateMachineBase {
-  QueryLanguage?: 'JSONPath' | undefined
+/** Pass State */
+export interface PassState extends StateCommon, JSONPathFields {
+  Type: 'Pass'
+  Result?: JsonValue
+  Output?: JsonValue
 }
 
-/** JSONataモードステートマシン */
-export interface JSONataStateMachine extends StateMachineBase {
-  QueryLanguage: 'JSONata'
+/** Choice State */
+export interface ChoiceState extends StateCommon {
+  Type: 'Choice'
+  Choices: ChoiceRule[]
+  Default?: string
 }
 
-/** 統合ステートマシン型 */
-export type StateMachine = JSONPathStateMachine | JSONataStateMachine
+/** Wait State */
+export interface WaitState extends StateCommon, JSONPathFields, JSONataFields {
+  Type: 'Wait'
+  Seconds?: number | string
+  SecondsPath?: string
+  Timestamp?: string
+  TimestampPath?: string
+}
 
-// =============================================================================
-// Choice State Rules (moved to choice-rule.ts and re-exported below)
-// =============================================================================
+/** Succeed State */
+export interface SucceedState extends StateCommon, JSONPathFields, JSONataFields {
+  Type: 'Succeed'
+}
 
-// =============================================================================
-// Map State Components
-// =============================================================================
+/** Fail State */
+export interface FailState extends StateCommon {
+  Type: 'Fail'
+  Error?: string
+  ErrorPath?: string
+  Cause?: string
+  CausePath?: string
+  Output?: JsonValue
+}
 
-/**
- * ItemProcessor（Map/DistributedMapステートで使用）
- */
+/** Map State Components */
 export interface ItemProcessor {
   ProcessorConfig?: {
     Mode?: 'INLINE' | 'DISTRIBUTED'
@@ -244,7 +183,7 @@ export interface ReaderConfig {
 export interface JSONPathItemReader {
   Resource: string
   ReaderConfig?: ReaderConfig & {
-    MaxItemsPath?: string // JSONPathモードのみ
+    MaxItemsPath?: string
   }
   Parameters?: JsonObject
 }
@@ -281,143 +220,182 @@ export interface JSONataResultWriter extends ResultWriterBase {
 /** ResultWriter統合型 */
 export type ResultWriter = JSONPathResultWriter | JSONataResultWriter
 
+/** Map State */
+export interface MapState extends StateCommon, JSONPathFields, JSONataFields {
+  Type: 'Map'
+  ItemProcessor: ItemProcessor
+  ItemsPath?: string
+  Items?: string
+  MaxConcurrency?: number
+  MaxConcurrencyPath?: string
+  ItemSelector?: string | JsonObject
+  /** DISTRIBUTED mode indicator */
+  ProcessorMode?: 'DISTRIBUTED'
+  ItemReader?: ItemReader
+  ItemBatcher?: ItemBatcher
+  ResultWriter?: ResultWriter
+  ToleratedFailureCount?: number
+  ToleratedFailureCountPath?: string
+  ToleratedFailurePercentage?: number
+  ToleratedFailurePercentagePath?: string
+}
+
+/** Parallel State */
+export interface ParallelState extends StateCommon, JSONPathFields, JSONataFields {
+  Type: 'Parallel'
+  Branches: StateMachine[]
+}
+
+// =============================================================================
+// Discriminated Union
+// =============================================================================
+
+/** 全State型のDiscriminated Union */
+export type State =
+  | TaskState
+  | PassState
+  | ChoiceState
+  | WaitState
+  | SucceedState
+  | FailState
+  | MapState
+  | ParallelState
+
+/** State Type文字列リテラル */
+export type StateType = State['Type']
+
+// =============================================================================
+// Convenience Type Aliases (後方互換)
+// =============================================================================
+
+/** Inline Map State (ProcessorModeが未設定 or INLINE) */
+export type InlineMapState = MapState & { ProcessorMode?: undefined }
+
+/** Distributed Map State (ProcessorMode === 'DISTRIBUTED') */
+export type DistributedMapState = MapState & { ProcessorMode: 'DISTRIBUTED' }
+
+/** JSONPath State (QueryLanguage !== 'JSONata') */
+export type JSONPathState = State & { QueryLanguage?: 'JSONPath' | undefined }
+
+/** JSONata State (QueryLanguage === 'JSONata') */
+export type JSONataState = State & { QueryLanguage: 'JSONata' }
+
+// =============================================================================
+// State Machine Definitions
+// =============================================================================
+
+/** ステートマシン共通インターフェース */
+interface StateMachineBase {
+  Comment?: string
+  StartAt: string
+  States: Record<string, State>
+  Version?: string
+  TimeoutSeconds?: number
+}
+
+/** JSONPathモードステートマシン */
+export interface JSONPathStateMachine extends StateMachineBase {
+  QueryLanguage?: 'JSONPath' | undefined
+}
+
+/** JSONataモードステートマシン */
+export interface JSONataStateMachine extends StateMachineBase {
+  QueryLanguage: 'JSONata'
+}
+
+/** 統合ステートマシン型 */
+export type StateMachine = JSONPathStateMachine | JSONataStateMachine
+
 // =============================================================================
 // Execution Context
 // =============================================================================
 
 /**
  * Step Functions実行コンテキスト
- * 内部的な実行状態とAWS Context Objectの両方を含む
  */
 export interface ExecutionContext {
-  // === 内部的な実行状態 ===
-  /** 現在のステートへの入力 */
   input: JsonValue
-  /** ステートの出力 */
   output?: JsonValue
-  /** Task/Map/Parallelステートの結果 */
   result?: JsonValue
-  /** エラー出力（Catchハンドラで利用） */
   errorOutput?: JsonValue
-  /** 現在実行中のステート名 */
   currentState: string
-  /** 実行パス（通過したステートの履歴） */
   executionPath: string[]
-  /** 変数ストア（Assignで設定された変数） */
   variables: JsonObject
-  /** 元の入力（変換前） */
   originalInput?: JsonValue
-  /** ステート実行の詳細情報 */
   stateExecutions?: StateExecution[]
-  /** 現在のステートパス（ネストしたステートの場合） */
   currentStatePath?: string[]
-  /** Map実行の情報 */
   mapExecutions?: Array<JsonObject>
-  /** Parallel実行の情報 */
   parallelExecutions?: Array<JsonObject>
 
-  // === AWS Context Object ($$.) ===
-  /** 実行情報 */
   Execution?: {
-    /** 実行ARN */
     Id: string
-    /** 実行への入力 */
     Input: JsonObject
-    /** 実行名 */
     Name: string
-    /** 実行ロールARN */
     RoleArn: string
-    /** 開始時刻（ISO 8601形式） */
     StartTime: string
-    /** リドライブ回数（リドライブ時のみ） */
     RedriveCount?: number
-    /** リドライブ時刻（リドライブ時のみ） */
     RedriveTime?: string
   }
-  /** 現在のステート情報 */
   State?: {
-    /** ステート開始時刻（ISO 8601形式） */
     EnteredTime: string
-    /** ステート名 */
     Name: string
-    /** リトライ回数 */
     RetryCount: number
   }
-  /** ステートマシン情報 */
   StateMachine?: {
-    /** ステートマシンARN */
     Id: string
-    /** ステートマシン名 */
     Name: string
   }
-  /** タスクトークン（.waitForTaskToken使用時） */
   Task?: {
     Token: string
   }
-  /** Mapステート内のイテレーション情報 */
   Map?: {
     Item: {
-      /** 現在のインデックス */
       Index: number
-      /** 現在処理中の値 */
       Value: JsonValue
     }
   }
 }
 
 // =============================================================================
-// Re-exports from other modules
+// Re-exports
 // =============================================================================
 
-// ChoiceRule関連の型をre-export
 export type { ChoiceRule } from './choice-rule.js'
-export {
-  JSONataChoiceRule,
-  JSONPathChoiceRule,
-} from './choice-rule.js'
-// 具体的なStateクラス実装をre-export（外部API用）
-export {
-  JSONataChoiceState,
-  JSONataDistributedMapState,
-  JSONataFailState,
-  JSONataInlineMapState,
-  JSONataParallelState,
-  JSONataPassState,
-  JSONataSucceedState,
-  // JSONata States
-  JSONataTaskState,
-  JSONataWaitState,
-  JSONPathChoiceState,
-  JSONPathDistributedMapState,
-  JSONPathFailState,
-  JSONPathInlineMapState,
-  JSONPathParallelState,
-  JSONPathPassState,
-  JSONPathSucceedState,
-  // JSONPath States
-  JSONPathTaskState,
-  JSONPathWaitState,
-} from './state-classes.js'
+export { JSONataChoiceRule, JSONPathChoiceRule } from './choice-rule.js'
 export { StateFactory } from './state-factory.js'
+export {
+  isChoice,
+  isDistributedMap,
+  isFail,
+  isInlineMap,
+  isJSONataState,
+  isJSONPathState,
+  isMap,
+  isParallel,
+  isPass,
+  isSucceed,
+  isTask,
+  isWait,
+} from './state-guards.js'
 
-// 内部使用：union型構築のためのインポート
-import type {
-  JSONataChoiceState,
-  JSONataDistributedMapState,
-  JSONataFailState,
-  JSONataInlineMapState,
-  JSONataParallelState,
-  JSONataPassState,
-  JSONataSucceedState,
-  JSONataTaskState,
-  JSONataWaitState,
-  JSONPathChoiceState,
-  JSONPathDistributedMapState,
-  JSONPathFailState,
-  JSONPathInlineMapState,
-  JSONPathParallelState,
-  JSONPathPassState,
-  JSONPathSucceedState,
-  JSONPathTaskState,
-  JSONPathWaitState,
-} from './state-classes.js'
+// 後方互換: 旧クラス名のエイリアス（型として）
+export type JSONPathTaskState = TaskState & { QueryLanguage?: 'JSONPath' | undefined }
+export type JSONataTaskState = TaskState & { QueryLanguage: 'JSONata' }
+export type JSONPathChoiceState = ChoiceState & { QueryLanguage?: 'JSONPath' | undefined }
+export type JSONataChoiceState = ChoiceState & { QueryLanguage: 'JSONata' }
+export type JSONPathInlineMapState = InlineMapState & { QueryLanguage?: 'JSONPath' | undefined }
+export type JSONataInlineMapState = InlineMapState & { QueryLanguage: 'JSONata' }
+export type JSONPathDistributedMapState = DistributedMapState & {
+  QueryLanguage?: 'JSONPath' | undefined
+}
+export type JSONataDistributedMapState = DistributedMapState & { QueryLanguage: 'JSONata' }
+export type JSONPathParallelState = ParallelState & { QueryLanguage?: 'JSONPath' | undefined }
+export type JSONataParallelState = ParallelState & { QueryLanguage: 'JSONata' }
+export type JSONPathPassState = PassState & { QueryLanguage?: 'JSONPath' | undefined }
+export type JSONataPassState = PassState & { QueryLanguage: 'JSONata' }
+export type JSONPathWaitState = WaitState & { QueryLanguage?: 'JSONPath' | undefined }
+export type JSONataWaitState = WaitState & { QueryLanguage: 'JSONata' }
+export type JSONPathSucceedState = SucceedState & { QueryLanguage?: 'JSONPath' | undefined }
+export type JSONataSucceedState = SucceedState & { QueryLanguage: 'JSONata' }
+export type JSONPathFailState = FailState & { QueryLanguage?: 'JSONPath' | undefined }
+export type JSONataFailState = FailState & { QueryLanguage: 'JSONata' }

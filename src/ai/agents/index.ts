@@ -1,7 +1,14 @@
 import { Anthropic } from '@anthropic-ai/sdk'
 import * as dotenv from 'dotenv'
 import { HTTP_STATUS_OK, LAMBDA_VERSION_LATEST } from '../../constants/defaults'
-import type { JsonObject, StateMachine } from '../../types/asl'
+import {
+  isChoice,
+  isDistributedMap,
+  isMap,
+  isParallel,
+  type JsonObject,
+  type StateMachine,
+} from '../../types/asl'
 import {
   generateMockWithClaudeCLI,
   generateTestWithClaudeCLI,
@@ -244,15 +251,15 @@ function analyzeStateMachineFeatures(stateMachine: StateMachine): JsonObject {
       })
     }
 
-    if (state.isChoice()) features.hasChoice = true
-    if (state.isMap()) {
-      if (state.isDistributedMap()) {
+    if (isChoice(state)) features.hasChoice = true
+    if (isMap(state)) {
+      if (isDistributedMap(state)) {
         features.hasDistributedMap = true
       } else {
         features.hasMap = true
       }
     }
-    if (state.isParallel()) features.hasParallel = true
+    if (isParallel(state)) features.hasParallel = true
 
     if (('Retry' in state && state.Retry) || ('Catch' in state && state.Catch))
       features.errorHandling = true

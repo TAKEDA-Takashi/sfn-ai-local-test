@@ -1,48 +1,222 @@
 /**
- * State Factory for converting ASL types to State classes
+ * State Factory - ASL JSON をバリデーション済み State オブジェクトに変換
  *
- * This factory converts pure ASL type definitions (from asl.ts)
- * into runtime State class instances (from state-classes.ts).
- *
- * Usage:
- * - Input: ASL State interface from JSON/YAML
- * - Output: State class instance with runtime behavior
+ * プレーンオブジェクト（discriminated union）を返す。
+ * 旧 state-classes.ts のバリデーションロジックを統合。
  */
 
-import type { JsonObject, StateMachine } from './asl.js'
-import {
-  JSONataChoiceState,
-  JSONataDistributedMapState,
-  JSONataFailState,
-  JSONataInlineMapState,
-  JSONataParallelState,
-  JSONataPassState,
-  JSONataSucceedState,
-  JSONataTaskState,
-  JSONataWaitState,
-  JSONPathChoiceState,
-  JSONPathDistributedMapState,
-  JSONPathFailState,
-  JSONPathInlineMapState,
-  JSONPathParallelState,
-  JSONPathPassState,
-  JSONPathSucceedState,
-  JSONPathTaskState,
-  JSONPathWaitState,
-  type State,
-} from './state-classes.js'
-import { isJsonObject, isString } from './type-guards.js'
+import type {
+  ChoiceState,
+  ItemProcessor,
+  JsonObject,
+  JsonValue,
+  MapState,
+  QueryLanguage,
+  State,
+  StateMachine,
+} from './asl.js'
+import { JSONataChoiceRule, JSONPathChoiceRule } from './choice-rule.js'
+import { isJsonArray, isJsonObject, isString } from './type-guards.js'
 
-type StateConstructor = new (config: JsonObject) => State
+// =============================================================================
+// フィールドバリデーション定義
+// =============================================================================
 
-/**
- * QueryLanguage値を検証して有効な値を返す
- * @param value 検証対象の値
- * @returns 有効なQueryLanguage値（'JSONPath' または 'JSONata'）
- * @throws {Error} 無効な値の場合
- */
-// AWS defaults to JSONPath when QueryLanguage not specified
-function getValidQueryLanguage(value: unknown): 'JSONPath' | 'JSONata' {
+const JSONPATH_UNSUPPORTED = new Set(['Arguments', 'Output'])
+
+const JSONATA_UNSUPPORTED = new Set([
+  'Parameters',
+  'InputPath',
+  'OutputPath',
+  'ResultPath',
+  'ResultSelector',
+])
+
+const JSONATA_MAP_UNSUPPORTED = new Set([
+  'Parameters',
+  'InputPath',
+  'OutputPath',
+  'ResultPath',
+  'ResultSelector',
+  'ItemsPath',
+])
+
+const JSONATA_PASS_UNSUPPORTED = new Set([
+  'Parameters',
+  'InputPath',
+  'OutputPath',
+  'ResultPath',
+  'ResultSelector',
+  'Arguments',
+])
+
+const CHOICE_UNSUPPORTED = new Set([
+  'Arguments',
+  'Output',
+  'InputPath',
+  'OutputPath',
+  'ResultPath',
+  'Parameters',
+  'ResultSelector',
+])
+
+const JSONATA_CHOICE_UNSUPPORTED = new Set([
+  'Parameters',
+  'InputPath',
+  'OutputPath',
+  'ResultPath',
+  'ResultSelector',
+  'Arguments',
+  'Output',
+])
+
+const JSONPATH_TERMINAL_UNSUPPORTED = new Set([
+  'Next',
+  'End',
+  'Retry',
+  'Catch',
+  'Arguments',
+  'Output',
+  'ResultPath',
+  'Parameters',
+  'ResultSelector',
+])
+
+const JSONATA_TERMINAL_UNSUPPORTED = new Set([
+  'Next',
+  'End',
+  'Retry',
+  'Catch',
+  'Parameters',
+  'InputPath',
+  'OutputPath',
+  'ResultPath',
+  'ResultSelector',
+  'Arguments',
+])
+
+const JSONATA_FAIL_UNSUPPORTED = new Set([
+  'Next',
+  'End',
+  'Retry',
+  'Catch',
+  'Parameters',
+  'InputPath',
+  'OutputPath',
+  'ResultPath',
+  'ResultSelector',
+  'Arguments',
+  'Output',
+  'CausePath',
+])
+
+const JSONATA_WAIT_UNSUPPORTED = new Set([
+  'Parameters',
+  'InputPath',
+  'OutputPath',
+  'ResultPath',
+  'ResultSelector',
+  'SecondsPath',
+  'TimestampPath',
+])
+
+// =============================================================================
+// バリデーションヘルパー
+// =============================================================================
+
+function getUnsupportedFieldSet(
+  stateType: string,
+  queryLanguage: QueryLanguage,
+  isDistributed?: boolean,
+): ReadonlySet<string> {
+  const isJSONata = queryLanguage === 'JSONata'
+
+  switch (stateType) {
+    case 'Task':
+      return isJSONata ? JSONATA_UNSUPPORTED : JSONPATH_UNSUPPORTED
+    case 'Pass':
+      return isJSONata ? JSONATA_PASS_UNSUPPORTED : JSONPATH_UNSUPPORTED
+    case 'Choice':
+      return isJSONata ? JSONATA_CHOICE_UNSUPPORTED : CHOICE_UNSUPPORTED
+    case 'Wait':
+      return isJSONata ? JSONATA_WAIT_UNSUPPORTED : JSONPATH_UNSUPPORTED
+    case 'Succeed':
+      return isJSONata ? JSONATA_TERMINAL_UNSUPPORTED : JSONPATH_TERMINAL_UNSUPPORTED
+    case 'Fail':
+      return isJSONata ? JSONATA_FAIL_UNSUPPORTED : JSONPATH_TERMINAL_UNSUPPORTED
+    case 'Map':
+      return isJSONata
+        ? isDistributed
+          ? JSONATA_MAP_UNSUPPORTED
+          : JSONATA_MAP_UNSUPPORTED
+        : JSONPATH_UNSUPPORTED
+    case 'Parallel':
+      return isJSONata ? JSONATA_UNSUPPORTED : JSONPATH_UNSUPPORTED
+    default:
+      return new Set()
+  }
+}
+
+function validateUnsupportedFields(
+  config: JsonObject,
+  stateType: string,
+  queryLanguage: QueryLanguage,
+  unsupported: ReadonlySet<string>,
+): void {
+  const provided = Object.keys(config).filter((field) => unsupported.has(field))
+  if (provided.length === 0) return
+
+  const isJSONataMode = queryLanguage === 'JSONata'
+
+  if (provided.length === 1) {
+    const field = provided[0]
+
+    if (field === 'Next' && (stateType === 'Succeed' || stateType === 'Fail')) {
+      throw new Error(`Terminal state ${stateType} cannot have a Next field`)
+    }
+
+    if (field === 'Arguments' && stateType === 'Pass') {
+      throw new Error('Pass state does not support Arguments field')
+    }
+
+    if (isJSONataMode) {
+      const jsonataFieldMap: Record<string, string> = {
+        Parameters: 'Arguments',
+        InputPath: 'Assign',
+        ResultPath: 'Output',
+        Variable: 'Condition',
+      }
+
+      const replacement = jsonataFieldMap[field]
+      if (replacement) {
+        throw new Error(
+          `${field} field is not supported in JSONata mode. Use ${replacement === 'Condition' ? `'${replacement}'` : replacement} field instead`,
+        )
+      }
+
+      if (field.endsWith('Path')) {
+        const baseField = field.replace('Path', '')
+        const pathToBaseFields = ['Output', 'Items', 'Seconds', 'Timestamp']
+
+        if (pathToBaseFields.includes(baseField)) {
+          throw new Error(
+            `${field} field is not supported in JSONata mode. Use ${baseField} field instead`,
+          )
+        }
+      }
+    }
+  }
+
+  throw new Error(
+    `${stateType} state does not support the following field${provided.length > 1 ? 's' : ''}: ${provided.join(', ')}`,
+  )
+}
+
+// =============================================================================
+// State 生成ヘルパー
+// =============================================================================
+
+function getValidQueryLanguage(value: unknown): QueryLanguage {
   if (value === undefined) {
     return 'JSONPath'
   }
@@ -54,70 +228,240 @@ function getValidQueryLanguage(value: unknown): 'JSONPath' | 'JSONata' {
   )
 }
 
-/**
- * Get State class based on state type, query language, and optional processor mode
- */
-function getStateClass(
-  stateType: string,
-  queryLanguage: 'JSONPath' | 'JSONata',
-  config?: JsonObject,
-): StateConstructor {
-  // Map states require ProcessorMode detection for class selection
-  if (stateType === 'Map') {
-    let processorMode: 'DISTRIBUTED' | 'INLINE' = 'INLINE'
-    if (config) {
-      const processorData = config.ItemProcessor || config.Iterator
-      if (
-        isJsonObject(processorData) &&
-        isJsonObject(processorData.ProcessorConfig) &&
-        processorData.ProcessorConfig.Mode === 'DISTRIBUTED'
-      ) {
-        processorMode = 'DISTRIBUTED'
-      }
-    }
-
-    if (processorMode === 'DISTRIBUTED') {
-      return queryLanguage === 'JSONata' ? JSONataDistributedMapState : JSONPathDistributedMapState
-    } else {
-      return queryLanguage === 'JSONata' ? JSONataInlineMapState : JSONPathInlineMapState
-    }
+function detectProcessorMode(config: JsonObject): 'DISTRIBUTED' | undefined {
+  const processorData = config.ItemProcessor || config.Iterator
+  if (
+    isJsonObject(processorData) &&
+    isJsonObject(processorData.ProcessorConfig) &&
+    processorData.ProcessorConfig.Mode === 'DISTRIBUTED'
+  ) {
+    return 'DISTRIBUTED'
   }
-
-  const stateClasses: Record<string, { JSONPath: StateConstructor; JSONata: StateConstructor }> = {
-    Parallel: { JSONPath: JSONPathParallelState, JSONata: JSONataParallelState },
-    Choice: { JSONPath: JSONPathChoiceState, JSONata: JSONataChoiceState },
-    Task: { JSONPath: JSONPathTaskState, JSONata: JSONataTaskState },
-    Pass: { JSONPath: JSONPathPassState, JSONata: JSONataPassState },
-    Wait: { JSONPath: JSONPathWaitState, JSONata: JSONataWaitState },
-    Succeed: { JSONPath: JSONPathSucceedState, JSONata: JSONataSucceedState },
-    Fail: { JSONPath: JSONPathFailState, JSONata: JSONataFailState },
-  }
-
-  const classes = stateClasses[stateType]
-  if (!classes) {
-    throw new Error(`Unknown state type: ${stateType}`)
-  }
-
-  return classes[queryLanguage]
+  return undefined
 }
 
+function createItemProcessor(config: JsonObject, queryLanguage: QueryLanguage): ItemProcessor {
+  const processorData = config.ItemProcessor || config.Iterator
+  if (!isJsonObject(processorData)) {
+    throw new Error('Map state requires ItemProcessor or Iterator field')
+  }
+
+  if (!isString(processorData.StartAt)) {
+    throw new Error('ItemProcessor/Iterator requires StartAt field')
+  }
+
+  const itemProcessor: ItemProcessor = {
+    ...processorData,
+    StartAt: processorData.StartAt,
+    States: {},
+  }
+
+  if (isJsonObject(processorData.States)) {
+    itemProcessor.States = StateFactory.createStates(
+      processorData.States,
+      (processorData.QueryLanguage as QueryLanguage) || queryLanguage,
+    )
+  }
+
+  return itemProcessor
+}
+
+function createBranches(config: JsonObject, queryLanguage: QueryLanguage): StateMachine[] {
+  const branchesData = config.Branches
+  if (!isJsonArray(branchesData)) {
+    throw new Error('Parallel state requires Branches array')
+  }
+  if (branchesData.length === 0) {
+    throw new Error('Parallel state requires non-empty Branches array')
+  }
+
+  return branchesData.map((branch) => {
+    if (!isJsonObject(branch)) {
+      throw new Error('Each branch must be an object')
+    }
+    if (!isString(branch.StartAt)) {
+      throw new Error('Branch must have a StartAt field')
+    }
+    if (!isJsonObject(branch.States)) {
+      throw new Error('Branch must have a States field')
+    }
+
+    const branchQueryLanguage = (branch.QueryLanguage as QueryLanguage) || queryLanguage
+
+    const branchStateMachine: StateMachine = {
+      ...branch,
+      StartAt: branch.StartAt,
+      States: StateFactory.createStates(branch.States, branchQueryLanguage),
+    }
+
+    return branchStateMachine
+  })
+}
+
+function createChoiceRules(
+  choicesData: JsonValue[],
+  queryLanguage: QueryLanguage,
+): (JSONPathChoiceRule | JSONataChoiceRule)[] {
+  return choicesData.map((choice) => {
+    if (queryLanguage === 'JSONata') {
+      return JSONataChoiceRule.fromJsonValue(choice as JsonValue)
+    }
+    return JSONPathChoiceRule.fromJsonValue(choice as JsonValue)
+  })
+}
+
+// =============================================================================
+// State 構築関数
+// =============================================================================
+
 /**
- * ASL定義からStateクラスインスタンスを生成するファクトリークラス
+ * configからQueryLanguageフィールドを除去し、JSONataの場合のみ追加するオブジェクトを返す
+ * undefinedをオブジェクトのフィールドにセットしないことで、isJsonValueチェックとの互換性を保つ
  */
+function stripAndSpreadQueryLanguage(config: JsonObject, queryLanguage: QueryLanguage): JsonObject {
+  const { QueryLanguage: _, ...rest } = config
+  return queryLanguage === 'JSONata' ? { ...rest, QueryLanguage: 'JSONata' } : rest
+}
+
+function buildTaskState(config: JsonObject, queryLanguage: QueryLanguage): State {
+  if (typeof config.Resource !== 'string') {
+    throw new Error('Task state requires Resource field')
+  }
+
+  if (
+    queryLanguage === 'JSONata' &&
+    typeof config.Resource === 'string' &&
+    config.Resource.includes(':::') &&
+    !('Arguments' in config)
+  ) {
+    throw new Error(`Arguments field is required for resource ARN: ${config.Resource}`)
+  }
+
+  return {
+    ...stripAndSpreadQueryLanguage(config, queryLanguage),
+    Type: 'Task' as const,
+    Resource: config.Resource,
+  } as State
+}
+
+function buildPassState(config: JsonObject, queryLanguage: QueryLanguage): State {
+  return {
+    ...stripAndSpreadQueryLanguage(config, queryLanguage),
+    Type: 'Pass' as const,
+  } as State
+}
+
+function buildChoiceState(config: JsonObject, queryLanguage: QueryLanguage): State {
+  if (!isJsonArray(config.Choices)) {
+    throw new Error('Choice state requires Choices array')
+  }
+  if (config.Choices.length === 0) {
+    throw new Error('Choice state requires non-empty Choices array')
+  }
+
+  const choices = createChoiceRules(config.Choices, queryLanguage)
+  const { Choices: _c, ...configWithoutChoices } = config
+
+  return {
+    ...stripAndSpreadQueryLanguage(configWithoutChoices, queryLanguage),
+    Type: 'Choice' as const,
+    Choices: choices,
+  } as ChoiceState
+}
+
+function buildWaitState(config: JsonObject, queryLanguage: QueryLanguage): State {
+  if (queryLanguage === 'JSONata') {
+    const waitConfigs = [config.Seconds, config.Timestamp].filter(Boolean)
+    if (waitConfigs.length > 1) {
+      throw new Error('Wait state must have exactly one wait duration field')
+    }
+  } else {
+    const waitConfigs = [
+      config.Seconds,
+      config.SecondsPath,
+      config.Timestamp,
+      config.TimestampPath,
+    ].filter(Boolean)
+    if (waitConfigs.length > 1) {
+      throw new Error('Wait state must have exactly one wait duration field')
+    }
+  }
+
+  return {
+    ...stripAndSpreadQueryLanguage(config, queryLanguage),
+    Type: 'Wait' as const,
+  } as State
+}
+
+function buildSucceedState(config: JsonObject, queryLanguage: QueryLanguage): State {
+  return {
+    ...stripAndSpreadQueryLanguage(config, queryLanguage),
+    Type: 'Succeed' as const,
+  } as State
+}
+
+function buildFailState(config: JsonObject, queryLanguage: QueryLanguage): State {
+  if (config.Cause && config.CausePath) {
+    throw new Error('Fail state cannot have both Cause and CausePath fields')
+  }
+  if (config.Error && config.ErrorPath) {
+    throw new Error('Fail state cannot have both Error and ErrorPath fields')
+  }
+
+  return {
+    ...stripAndSpreadQueryLanguage(config, queryLanguage),
+    Type: 'Fail' as const,
+  } as State
+}
+
+function buildMapState(config: JsonObject, queryLanguage: QueryLanguage): State {
+  const processorMode = detectProcessorMode(config)
+  const { ItemProcessor: _, Iterator: __, ...configWithoutProcessor } = config
+  const itemProcessor = createItemProcessor(config, queryLanguage)
+
+  return {
+    ...stripAndSpreadQueryLanguage(configWithoutProcessor, queryLanguage),
+    Type: 'Map' as const,
+    ItemProcessor: itemProcessor,
+    ...(processorMode ? { ProcessorMode: processorMode } : {}),
+  } as MapState
+}
+
+function buildParallelState(config: JsonObject, queryLanguage: QueryLanguage): State {
+  const branches = createBranches(config, queryLanguage)
+  const { Branches: _, ...configWithoutBranches } = config
+
+  return {
+    ...stripAndSpreadQueryLanguage(configWithoutBranches, queryLanguage),
+    Type: 'Parallel' as const,
+    Branches: branches,
+  } as State
+}
+
+const STATE_BUILDERS: Record<string, (config: JsonObject, ql: QueryLanguage) => State> = {
+  Task: buildTaskState,
+  Pass: buildPassState,
+  Choice: buildChoiceState,
+  Wait: buildWaitState,
+  Succeed: buildSucceedState,
+  Fail: buildFailState,
+  Map: buildMapState,
+  Parallel: buildParallelState,
+}
+
+// =============================================================================
+// StateFactory
+// =============================================================================
+
 export class StateFactory {
   /**
-   * Create a single State instance from ASL definition
+   * ASL定義からバリデーション済み State プレーンオブジェクトを生成
    */
-  static createState(
-    aslState: JsonObject,
-    stateMachineQueryLanguage?: 'JSONPath' | 'JSONata',
-  ): State {
-    // Type field is mandatory for all States per AWS spec
+  static createState(aslState: JsonObject, stateMachineQueryLanguage?: QueryLanguage): State {
     if (!isString(aslState.Type)) {
       throw new Error('State must have a Type field')
     }
 
-    // QueryLanguage priority: State > StateMachine > default (JSONPath)
     const queryLanguage =
       aslState.QueryLanguage !== undefined
         ? getValidQueryLanguage(aslState.QueryLanguage)
@@ -128,16 +472,26 @@ export class StateFactory {
       QueryLanguage: queryLanguage,
     }
 
-    const StateClass = getStateClass(aslState.Type, queryLanguage, config)
-    return new StateClass(config)
+    const builder = STATE_BUILDERS[aslState.Type]
+    if (!builder) {
+      throw new Error(`Unknown state type: ${aslState.Type}`)
+    }
+
+    // Map requires special unsupported field detection
+    const isDistributed =
+      aslState.Type === 'Map' ? detectProcessorMode(config) === 'DISTRIBUTED' : undefined
+    const unsupported = getUnsupportedFieldSet(aslState.Type, queryLanguage, isDistributed)
+    validateUnsupportedFields(config, aslState.Type, queryLanguage, unsupported)
+
+    return builder(config, queryLanguage)
   }
 
   /**
-   * Create State instances for a StateMachine's States object
+   * StateMachine の States オブジェクトを変換
    */
   static createStates(
     statesData: JsonObject,
-    defaultQueryLanguage?: 'JSONPath' | 'JSONata',
+    defaultQueryLanguage?: QueryLanguage,
   ): Record<string, State> {
     const states: Record<string, State> = {}
 
@@ -150,7 +504,6 @@ export class StateFactory {
         throw new Error(`State ${stateName} must be an object`)
       }
 
-      // Shallow copy to avoid mutating original ASL definition
       const stateData = { ...stateValue }
 
       if (!stateData.QueryLanguage && defaultQueryLanguage) {
@@ -164,13 +517,9 @@ export class StateFactory {
   }
 
   /**
-   * Create a complete StateMachine with all states converted to class instances
-   *
-   * @param stateMachineDefinition - Complete ASL StateMachine definition
-   * @returns StateMachine with all states as class instances
+   * 完全な StateMachine 定義をバリデーション・変換
    */
   static createStateMachine(stateMachineDefinition: JsonObject): StateMachine {
-    // ASL仕様: StateMachineはStatesフィールドが必須
     if (!('States' in stateMachineDefinition && isJsonObject(stateMachineDefinition.States))) {
       throw new Error('StateMachine must have a States field')
     }
@@ -182,12 +531,9 @@ export class StateFactory {
       throw new Error('StateMachine must have a StartAt field')
     }
 
-    // undefined is allowed here to enable default behavior
     const queryLanguage = getValidQueryLanguage(stateMachineDefinition.QueryLanguage)
-
     const states = StateFactory.createStates(stateMachineDefinition.States, queryLanguage)
 
-    // Only include QueryLanguage if explicitly specified to avoid forcing JSONPath
     const result: StateMachine = {
       ...stateMachineDefinition,
       StartAt: stateMachineDefinition.StartAt,

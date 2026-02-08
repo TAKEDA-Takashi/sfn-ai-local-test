@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { StateMachine } from '../../types/asl'
+import type { MapState, StateMachine } from '../../types/asl'
 import { StateFactory } from '../../types/asl'
-import type { MapState } from '../../types/state-classes'
 import {
   analyzeItemReaders,
   generateBasicSampleData,

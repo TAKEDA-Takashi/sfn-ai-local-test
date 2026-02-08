@@ -1,5 +1,4 @@
-import type { ChoiceRule, ExecutionContext, JsonValue } from '../../../types/asl'
-import type { ChoiceState } from '../../../types/state-classes'
+import type { ChoiceRule, ChoiceState, ExecutionContext, JsonValue } from '../../../types/asl'
 import { BaseStateExecutor } from './base'
 
 /**

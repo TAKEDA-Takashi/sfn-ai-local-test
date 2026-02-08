@@ -114,6 +114,112 @@ export function generateAndLogTestData(
   }
 }
 
+interface TestGenerationResult {
+  content: string
+  executionCorrections?: Array<{ testCase: string; state: string; reason: string }>
+  staticIssues?: Array<unknown>
+}
+
+/** Mock生成の統一ヘルパー */
+function performMockGeneration(
+  stateMachine: StateMachine,
+  options: { aiModel: string; timeout?: string; maxAttempts?: string },
+): Promise<string> {
+  return generateMockWithAI(
+    stateMachine,
+    options.aiModel,
+    parseTimeout(options.timeout),
+    parseMaxAttempts(options.maxAttempts),
+  )
+}
+
+/** Test生成の統一ヘルパー（Pipeline経由 or Fallback） */
+async function performTestGeneration(params: {
+  stateMachine: StateMachine
+  aiModel: string
+  timeout?: string
+  maxAttempts?: string
+  mockContent?: string
+  mockConfig?: MockConfig
+  mockFile?: string
+  aslFile: string
+  outputPath?: string
+  basePath?: string
+  verbose?: boolean
+}): Promise<TestGenerationResult> {
+  if (params.mockConfig) {
+    const timeout = parseTimeout(params.timeout)
+    const generator = createTestGeneratorAdapter(params.aiModel, timeout)
+    const pipeline = new TestGenerationPipeline(generator)
+    const pipelineResult = await pipeline.generateTest({
+      stateMachine: params.stateMachine,
+      maxAttempts: parseMaxAttempts(params.maxAttempts),
+      mockFile: params.mockFile ?? '',
+      aslFile: params.aslFile,
+      timeout: params.timeout ? timeout : undefined,
+      enableExecutionValidation: true,
+      mockConfig: params.mockConfig,
+      basePath: params.basePath,
+      verbose: params.verbose,
+    })
+    return {
+      content: pipelineResult.content,
+      executionCorrections: pipelineResult.executionCorrections,
+      staticIssues: pipelineResult.staticIssues,
+    }
+  }
+  // Fallback: 静的生成
+  const content = await generateTestWithAI(
+    params.stateMachine,
+    params.aiModel,
+    parseTimeout(params.timeout),
+    params.mockContent,
+    params.mockFile,
+    params.aslFile,
+    params.outputPath,
+  )
+  return { content }
+}
+
+/** テスト生成結果のログ出力 */
+function logTestGenerationResult(result: TestGenerationResult, verbose?: boolean): void {
+  if (result.executionCorrections && result.executionCorrections.length > 0) {
+    console.log(
+      chalk.cyan(
+        `\n✨ Improved ${result.executionCorrections.length} test expectation(s) through execution validation`,
+      ),
+    )
+    if (verbose) {
+      for (const correction of result.executionCorrections) {
+        console.log(
+          chalk.gray(`  • ${correction.testCase} - ${correction.state}: ${correction.reason}`),
+        )
+      }
+    }
+  }
+  if (result.staticIssues && result.staticIssues.length > 0) {
+    console.log(
+      chalk.yellow(
+        '\n⚠️ Note: Some static validation warnings remain (auto-correction applied where possible)',
+      ),
+    )
+  }
+}
+
+/** 生成結果のファイル書き込みと後処理 */
+function writeGenerationResult(
+  type: string,
+  resultContent: string,
+  outputPath: string,
+  stateMachine?: StateMachine,
+  verbose?: boolean,
+): void {
+  safeWriteFileSync(outputPath, resultContent)
+  if (type === 'mock' && stateMachine) {
+    generateAndLogTestData(stateMachine, resultContent, verbose)
+  }
+}
+
 /** AI APIが利用不可時のテンプレートファイルを生成する */
 export function generateFallbackTemplate(type: string): string {
   if (type === 'mock') {
@@ -331,15 +437,10 @@ export async function generateCommand(
                 ? resolveMockPath(config, sm.name)
                 : resolveTestSuitePath(config, sm.name)
 
-            let result: string
+            let resultContent: string
             switch (type) {
               case 'mock': {
-                result = await generateMockWithAI(
-                  currentStateMachine,
-                  options.aiModel,
-                  parseTimeout(options.timeout),
-                  parseMaxAttempts(options.maxAttempts),
-                )
+                resultContent = await performMockGeneration(currentStateMachine, options)
                 break
               }
               case 'test': {
@@ -357,76 +458,39 @@ export async function generateCommand(
                   }
                 }
 
-                if (mockConfig) {
-                  // Use TestGenerationPipeline for execution-based validation and correction
-                  const timeout = parseTimeout(options.timeout)
-                  const generator = createTestGeneratorAdapter(options.aiModel, timeout)
-                  const pipeline = new TestGenerationPipeline(generator)
-                  const pipelineResult = await pipeline.generateTest({
-                    stateMachine: currentStateMachine,
-                    maxAttempts: parseMaxAttempts(options.maxAttempts),
-                    mockFile: mockFileName ? `${sm.name}.mock.yaml` : currentConfigMockFileName,
-                    aslFile: sm.name,
-                    timeout: options.timeout ? timeout : undefined,
-                    enableExecutionValidation: true,
-                    mockConfig,
-                    basePath: testDataPath,
-                    verbose: options.verbose,
-                  })
-
-                  result = pipelineResult.content
-
-                  // Log corrections if any were made
-                  if (
-                    pipelineResult.executionCorrections &&
-                    pipelineResult.executionCorrections.length > 0
-                  ) {
-                    console.log(
-                      chalk.cyan(
-                        `\n✨ Improved ${pipelineResult.executionCorrections.length} test expectation(s) through execution validation`,
-                      ),
-                    )
-                    if (options.verbose) {
-                      pipelineResult.executionCorrections.forEach((correction) => {
-                        console.log(
-                          chalk.gray(
-                            `  • ${correction.testCase} - ${correction.state}: ${correction.reason}`,
-                          ),
-                        )
-                      })
-                    }
-                  }
-                } else {
-                  // Fallback to static generation without execution validation
-                  const aslPath = sm.name
-                  const mockPath = mockFileName ? `${sm.name}.mock.yaml` : currentConfigMockFileName
-
-                  result = await generateTestWithAI(
-                    currentStateMachine,
-                    options.aiModel,
-                    parseTimeout(options.timeout),
-                    mockContent,
-                    mockPath,
-                    aslPath,
-                    currentDefaultOutputPath,
-                  )
-                }
+                const testResult = await performTestGeneration({
+                  stateMachine: currentStateMachine,
+                  aiModel: options.aiModel,
+                  timeout: options.timeout,
+                  maxAttempts: options.maxAttempts,
+                  mockContent,
+                  mockConfig,
+                  mockFile: mockFileName ? `${sm.name}.mock.yaml` : currentConfigMockFileName,
+                  aslFile: sm.name,
+                  outputPath: currentDefaultOutputPath,
+                  basePath: testDataPath,
+                  verbose: options.verbose,
+                })
+                resultContent = testResult.content
+                logTestGenerationResult(testResult, options.verbose)
                 break
               }
               default:
                 throw new Error(`Unknown generation type: ${type}`)
             }
 
-            safeWriteFileSync(currentDefaultOutputPath, result)
-
-            if (type === 'mock' && currentStateMachine) {
-              generateAndLogTestData(currentStateMachine, result, options.verbose)
-            }
+            writeGenerationResult(
+              type,
+              resultContent,
+              currentDefaultOutputPath,
+              currentStateMachine,
+              options.verbose,
+            )
 
             return {
               stateMachine: sm,
               outputPath: currentDefaultOutputPath,
-              result,
+              result: resultContent,
             }
           },
           concurrency,
@@ -502,12 +566,7 @@ export async function generateCommand(
           spinner.text = `Generating mock with up to ${maxAttempts} attempts...`
         }
         stateMachineInstance = StateFactory.createStateMachine(ensureStateMachineData(stateMachine))
-        result = await generateMockWithAI(
-          stateMachineInstance,
-          options.aiModel,
-          parseTimeout(options.timeout),
-          maxAttempts,
-        )
+        result = await performMockGeneration(stateMachineInstance, options)
         break
       }
       case 'test': {
@@ -573,62 +632,22 @@ export async function generateCommand(
         stateMachineInstance = StateFactory.createStateMachine(ensureStateMachineData(stateMachine))
 
         if (mockConfig) {
-          // Use TestGenerationPipeline for execution-based validation and correction
           spinner.text = 'Generating and validating test cases with execution-based correction...'
-          const timeout = parseTimeout(options.timeout)
-          const generator = createTestGeneratorAdapter(options.aiModel, timeout)
-          const pipeline = new TestGenerationPipeline(generator)
-          const pipelineResult = await pipeline.generateTest({
-            stateMachine: stateMachineInstance,
-            maxAttempts: parseMaxAttempts(options.maxAttempts),
-            mockFile: mockPath,
-            aslFile: aslPath,
-            timeout: options.timeout ? timeout : undefined,
-            enableExecutionValidation: true,
-            mockConfig,
-            verbose: options.verbose,
-          })
-
-          result = pipelineResult.content
-
-          // Log corrections if any were made
-          if (
-            pipelineResult.executionCorrections &&
-            pipelineResult.executionCorrections.length > 0
-          ) {
-            console.log(
-              chalk.cyan(
-                `\n🔧 Auto-corrected ${pipelineResult.executionCorrections.length} expectation(s) based on actual execution:`,
-              ),
-            )
-            pipelineResult.executionCorrections.forEach((correction) => {
-              console.log(
-                chalk.gray(
-                  `  • ${correction.testCase} - ${correction.state}: ${correction.reason}`,
-                ),
-              )
-            })
-          }
-
-          if (pipelineResult.staticIssues.length > 0) {
-            console.log(
-              chalk.yellow(
-                `\n⚠️ Note: Some static validation warnings remain (auto-correction applied where possible)`,
-              ),
-            )
-          }
-        } else {
-          // Fallback to static generation without execution validation
-          result = await generateTestWithAI(
-            stateMachineInstance,
-            options.aiModel,
-            parseTimeout(options.timeout),
-            mockContent,
-            mockPath,
-            aslPath,
-            outputPath,
-          )
         }
+        const testResult = await performTestGeneration({
+          stateMachine: stateMachineInstance,
+          aiModel: options.aiModel,
+          timeout: options.timeout,
+          maxAttempts: options.maxAttempts,
+          mockContent,
+          mockConfig,
+          mockFile: mockPath,
+          aslFile: aslPath,
+          outputPath,
+          verbose: options.verbose,
+        })
+        result = testResult.content
+        logTestGenerationResult(testResult, options.verbose)
         break
       }
       default:
@@ -643,11 +662,7 @@ export async function generateCommand(
         (type === 'mock' ? DEFAULT_MOCK_FILENAME : DEFAULT_TEST_FILENAME)
     }
 
-    safeWriteFileSync(outputPath, result)
-
-    if (type === 'mock' && stateMachineInstance) {
-      generateAndLogTestData(stateMachineInstance, result, options.verbose)
-    }
+    writeGenerationResult(type, result, outputPath, stateMachineInstance, options.verbose)
 
     spinner.succeed(chalk.green(`Generated ${type} file: ${outputPath}`))
   } catch (error: unknown) {

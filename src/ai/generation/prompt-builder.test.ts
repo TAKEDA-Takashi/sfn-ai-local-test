@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { JsonObject, StateMachine } from '../../types/asl'
 import { StateFactory } from '../../types/state-factory'
 import { PromptBuilder } from './prompt-builder'
+import { detectChoiceLoops, hasProblematicChoicePatterns } from './prompt-sections/choice-analysis'
 
 // Helper function to create a StateMachine with proper State instances
 function createStateMachine(config: Record<string, unknown>): StateMachine {
@@ -57,7 +58,7 @@ describe('PromptBuilder', () => {
         },
       })
 
-      const result = builder.detectChoiceLoops(stateMachine)
+      const result = detectChoiceLoops(stateMachine)
 
       expect(result.hasProblematicPatterns).toBe(true)
       expect(result.problematicStates).toContain('CheckState')
@@ -89,7 +90,7 @@ describe('PromptBuilder', () => {
         },
       })
 
-      const result = builder.detectChoiceLoops(stateMachine)
+      const result = detectChoiceLoops(stateMachine)
 
       expect(result.hasStructuralLoops).toBe(true)
       expect(result.problematicStates).toContain('CheckCounter')
@@ -120,7 +121,7 @@ describe('PromptBuilder', () => {
         },
       })
 
-      const result = builder.detectChoiceLoops(stateMachine)
+      const result = detectChoiceLoops(stateMachine)
 
       expect(result.hasProblematicPatterns).toBe(true)
       expect(result.problematicStates).toContain('RandomChoice')
@@ -158,7 +159,7 @@ describe('PromptBuilder', () => {
         },
       })
 
-      const result = builder.detectChoiceLoops(stateMachine)
+      const result = detectChoiceLoops(stateMachine)
 
       expect(result.hasProblematicPatterns).toBe(false)
       expect(result.hasStructuralLoops).toBe(false)
@@ -193,7 +194,7 @@ describe('PromptBuilder', () => {
         },
       })
 
-      const result = builder.hasProblematicChoicePatterns(stateMachine)
+      const result = hasProblematicChoicePatterns(stateMachine)
 
       expect(result).toBe(true)
     })
@@ -215,7 +216,7 @@ describe('PromptBuilder', () => {
         },
       })
 
-      const result = builder.hasProblematicChoicePatterns(stateMachine)
+      const result = hasProblematicChoicePatterns(stateMachine)
 
       expect(result).toBe(false)
     })
@@ -451,7 +452,7 @@ mocks:
         },
       })
 
-      const result = builder.detectChoiceLoops(stateMachine)
+      const result = detectChoiceLoops(stateMachine)
 
       expect(result.hasProblematicPatterns).toBe(true)
       expect(result.problematicStates).toContain('ComplexChoice')
@@ -479,7 +480,7 @@ mocks:
         },
       })
 
-      const result = builder.detectChoiceLoops(stateMachine)
+      const result = detectChoiceLoops(stateMachine)
 
       expect(result.hasProblematicPatterns).toBe(true)
     })
@@ -490,7 +491,7 @@ mocks:
         States: {},
       })
 
-      const result = builder.detectChoiceLoops(stateMachine)
+      const result = detectChoiceLoops(stateMachine)
 
       expect(result.hasProblematicPatterns).toBe(false)
       expect(result.hasStructuralLoops).toBe(false)

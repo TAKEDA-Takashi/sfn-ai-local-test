@@ -377,25 +377,3 @@ export {
   isTask,
   isWait,
 } from './state-guards.js'
-
-// 後方互換: 旧クラス名のエイリアス（型として）
-export type JSONPathTaskState = TaskState & { QueryLanguage?: 'JSONPath' | undefined }
-export type JSONataTaskState = TaskState & { QueryLanguage: 'JSONata' }
-export type JSONPathChoiceState = ChoiceState & { QueryLanguage?: 'JSONPath' | undefined }
-export type JSONataChoiceState = ChoiceState & { QueryLanguage: 'JSONata' }
-export type JSONPathInlineMapState = InlineMapState & { QueryLanguage?: 'JSONPath' | undefined }
-export type JSONataInlineMapState = InlineMapState & { QueryLanguage: 'JSONata' }
-export type JSONPathDistributedMapState = DistributedMapState & {
-  QueryLanguage?: 'JSONPath' | undefined
-}
-export type JSONataDistributedMapState = DistributedMapState & { QueryLanguage: 'JSONata' }
-export type JSONPathParallelState = ParallelState & { QueryLanguage?: 'JSONPath' | undefined }
-export type JSONataParallelState = ParallelState & { QueryLanguage: 'JSONata' }
-export type JSONPathPassState = PassState & { QueryLanguage?: 'JSONPath' | undefined }
-export type JSONataPassState = PassState & { QueryLanguage: 'JSONata' }
-export type JSONPathWaitState = WaitState & { QueryLanguage?: 'JSONPath' | undefined }
-export type JSONataWaitState = WaitState & { QueryLanguage: 'JSONata' }
-export type JSONPathSucceedState = SucceedState & { QueryLanguage?: 'JSONPath' | undefined }
-export type JSONataSucceedState = SucceedState & { QueryLanguage: 'JSONata' }
-export type JSONPathFailState = FailState & { QueryLanguage?: 'JSONPath' | undefined }
-export type JSONataFailState = FailState & { QueryLanguage: 'JSONata' }

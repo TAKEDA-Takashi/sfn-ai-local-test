@@ -140,23 +140,6 @@ export function findStates(
 }
 
 /**
- * Check if any state matches a condition
- */
-export function hasState(stateMachine: StateMachine, filter: StateFilter): boolean {
-  let found = false
-
-  traverseStates(stateMachine, (name, state, context) => {
-    if (filter(name, state, context)) {
-      found = true
-      return false // Stop traversal
-    }
-    return undefined
-  })
-
-  return found
-}
-
-/**
  * Common filters for frequent use cases
  */
 export const StateFilters = {
@@ -187,40 +170,15 @@ export const StateFilters = {
     return 'Assign' in state && !!state.Assign
   },
 
-  /** Filter for Map states (including DistributedMap) */
-  isMapState: (_name: string, state: State, _context: TraversalContext) => {
-    return isMap(state)
-  },
-
   /** Filter for DistributedMap states */
   isDistributedMap: (_name: string, state: State, _context: TraversalContext) => {
     // After StateFactory processing, isDistributedMap() is sufficient
     return isDistributedMap(state)
   },
 
-  /** Filter for Parallel states */
-  isParallel: (_name: string, state: State, _context: TraversalContext) => {
-    return isParallel(state)
-  },
-
-  /** Filter for Choice states */
-  isChoice: (_name: string, state: State, _context: TraversalContext) => {
-    return isChoice(state)
-  },
-
   /** Filter for states using JSONata */
   usesJSONata: (_name: string, state: State, context: TraversalContext) => {
     return state.QueryLanguage === 'JSONata' || !!context.parentIsJSONata
-  },
-
-  /** Filter for nested states only */
-  isNested: (_name: string, _state: State, context: TraversalContext) => {
-    return context.depth > 0
-  },
-
-  /** Filter for top-level states only */
-  isTopLevel: (_name: string, _state: State, context: TraversalContext) => {
-    return context.depth === 0
   },
 }
 

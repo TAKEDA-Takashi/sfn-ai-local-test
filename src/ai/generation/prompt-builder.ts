@@ -12,7 +12,7 @@ import {
   getOutputTransformationDetails,
 } from '../analysis/output-transformation-detection'
 import { StateHierarchyAnalyzer } from '../analysis/state-hierarchy-analyzer'
-import { findStates, hasState, StateFilters } from '../utils/state-traversal'
+import { findStates, StateFilters } from '../utils/state-traversal'
 import {
   detectChoiceLoops,
   getChoiceMockGuidelines,
@@ -84,8 +84,9 @@ export class PromptBuilder {
     }
 
     // ItemReaderがある場合は必須モックとして明示
-    if (hasState(stateMachine, StateFilters.hasItemReader)) {
-      const allStates = findStates(stateMachine, StateFilters.hasItemReader)
+    const itemReaderAllStates = findStates(stateMachine, StateFilters.hasItemReader)
+    if (itemReaderAllStates.length > 0) {
+      const allStates = itemReaderAllStates
       const distributedMapStates = allStates.filter(({ state }) => isDistributedMap(state))
       const itemReaderStates = distributedMapStates
         .map(({ name, state }) => {
@@ -106,11 +107,11 @@ export class PromptBuilder {
     const mockableStates = this.analyzer.getMockableStates(hierarchy)
     sections.push(getMockableStatesGuidance(mockableStates))
 
-    if (hasState(stateMachine, StateFilters.isLambdaTask)) {
+    if (findStates(stateMachine, StateFilters.isLambdaTask).length > 0) {
       sections.push(getLambdaIntegrationRules())
     }
 
-    if (hasState(stateMachine, StateFilters.hasVariables)) {
+    if (findStates(stateMachine, StateFilters.hasVariables).length > 0) {
       sections.push(getVariablesRules())
     }
 
@@ -143,7 +144,7 @@ export class PromptBuilder {
     )
     sections.push('**START DIRECTLY WITH: version: "1.0"**')
 
-    if (hasState(stateMachine, StateFilters.hasItemReader)) {
+    if (findStates(stateMachine, StateFilters.hasItemReader).length > 0) {
       sections.push('')
       sections.push(
         '**⚠️ REMEMBER: Include all ItemReader mocks with dataFile references in the YAML ⚠️**',
@@ -193,7 +194,7 @@ export class PromptBuilder {
       sections.push(getDistributedMapTestGuidance())
     }
 
-    if (hasState(stateMachine, StateFilters.hasVariables)) {
+    if (findStates(stateMachine, StateFilters.hasVariables).length > 0) {
       sections.push(getVariablesTestGuidance())
     }
 
@@ -216,24 +217,6 @@ export class PromptBuilder {
     sections.push('**START DIRECTLY WITH: version: "1.0"**')
 
     return sections.join('\n\n')
-  }
-
-  /**
-   * Check if state machine has problematic Choice patterns (delegated to choice-analysis module)
-   */
-  hasProblematicChoicePatterns(stateMachine: StateMachine): boolean {
-    return hasProblematicChoicePatterns(stateMachine)
-  }
-
-  /**
-   * Detect Choice loops (delegated to choice-analysis module)
-   */
-  detectChoiceLoops(stateMachine: StateMachine): {
-    hasProblematicPatterns: boolean
-    hasStructuralLoops: boolean
-    problematicStates: string[]
-  } {
-    return detectChoiceLoops(stateMachine)
   }
 
   private getAvailableStatesSection(stateMachine: StateMachine): string {

@@ -241,6 +241,37 @@ export interface ComplexityMetrics {
   hasResultWriters: boolean
 }
 
+/**
+ * Find a state by name, searching all contexts including nested Map/Parallel states
+ */
+export function findStateByName(stateMachine: StateMachine, name: string): State | null {
+  let found: State | null = null
+
+  traverseStates(stateMachine, (stateName, state) => {
+    if (stateName === name) {
+      found = state
+      return false // Stop traversal
+    }
+    return undefined
+  })
+
+  return found
+}
+
+/**
+ * Get all state names including nested states in Map/Parallel
+ */
+export function getAllStateNames(stateMachine: StateMachine): string[] {
+  const names: string[] = []
+
+  traverseStates(stateMachine, (stateName) => {
+    names.push(stateName)
+    return undefined
+  })
+
+  return names
+}
+
 export function analyzeComplexity(stateMachine: StateMachine): ComplexityMetrics {
   const metrics: ComplexityMetrics = {
     totalStates: 0,

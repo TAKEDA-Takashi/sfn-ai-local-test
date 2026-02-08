@@ -2,14 +2,8 @@ import { StateMachineExecutor } from '../../core/interpreter/executor'
 import { MockEngine } from '../../core/mock/engine'
 import type { MockConfig } from '../../schemas/mock-schema'
 import type { TestCase, TestSuite } from '../../schemas/test-schema'
-import {
-  isMap,
-  isParallel,
-  isTask,
-  type JsonValue,
-  type State,
-  type StateMachine,
-} from '../../types/asl'
+import { isTask, type JsonValue, type StateMachine } from '../../types/asl'
+import { findStateByName } from '../utils/state-traversal'
 import { InvalidInputError, TestExecutionError } from './errors'
 
 export interface ValidationCorrection {
@@ -144,7 +138,7 @@ export class TestExecutionValidator {
     actual: JsonValue,
     stateMachine: StateMachine,
   ): string {
-    const state = this.findState(stateName, stateMachine.States)
+    const state = findStateByName(stateMachine, stateName)
 
     if (!state) {
       return 'State not found in state machine'
@@ -179,33 +173,6 @@ export class TestExecutionValidator {
     }
 
     return reasons.join('; ')
-  }
-
-  /**
-   * Find a state in the state machine (including nested states)
-   */
-  private findState(stateName: string, states: Record<string, State>): State | null {
-    if (states[stateName]) {
-      return states[stateName]
-    }
-
-    for (const state of Object.values(states)) {
-      if (isMap(state) && state.ItemProcessor?.States) {
-        const found = this.findState(stateName, state.ItemProcessor.States)
-        if (found) return found
-      }
-
-      if (isParallel(state) && state.Branches) {
-        for (const branch of state.Branches) {
-          if (branch.States) {
-            const found = this.findState(stateName, branch.States)
-            if (found) return found
-          }
-        }
-      }
-    }
-
-    return null
   }
 
   /**

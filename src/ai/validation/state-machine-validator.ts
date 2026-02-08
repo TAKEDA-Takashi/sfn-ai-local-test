@@ -3,14 +3,16 @@ import { HTTP_STATUS_OK, LAMBDA_VERSION_LATEST } from '../../constants/defaults'
 import {
   isDistributedMap,
   isMap,
-  isParallel,
   isTask,
   type JsonObject,
   type JsonValue,
-  type State,
   type StateMachine,
 } from '../../types/asl'
 import { isJsonArray, isJsonObject } from '../../types/type-guards'
+import { findStateByName, getAllStateNames } from '../utils/state-traversal'
+import { autoFixMock, autoFixTest } from './auto-fixer'
+import { findSimilarStateName } from './string-similarity'
+import { formatReport as formatReportFn } from './validation-report'
 
 export interface ValidationIssue {
   level: 'error' | 'warning' | 'info'
@@ -24,82 +26,6 @@ export interface ValidationIssue {
  */
 export class StateMachineValidator {
   /**
-   * Find a state by name (searches all contexts including nested)
-   * Based on sfn-ai-local-test specification: nested states are referenced by name only
-   */
-  private findStateByPath(stateName: string, states: Record<string, State>): State | null {
-    // Try direct match first
-    if (states[stateName]) {
-      return states[stateName]
-    }
-
-    // Search in nested contexts (Map/Parallel)
-    for (const [_parentName, state] of Object.entries(states)) {
-      if (isMap(state) && state.ItemProcessor && state.ItemProcessor.States) {
-        // ItemProcessor.States should already contain State instances
-        // if the StateMachine was properly created with StateFactory.createStateMachine
-        const nestedStates = state.ItemProcessor.States
-
-        const found = this.findStateByPath(stateName, nestedStates)
-        if (found) return found
-      }
-
-      if (isParallel(state) && state.Branches) {
-        const branches = state.Branches
-        for (const branch of branches) {
-          if (branch?.States) {
-            // Branch.States should already contain State instances
-            // if the StateMachine was properly created with StateFactory.createStateMachine
-            const branchStates = branch.States
-
-            const found = this.findStateByPath(stateName, branchStates)
-            if (found) return found
-          }
-        }
-      }
-    }
-
-    return null
-  }
-
-  /**
-   * Get all state names including those in nested contexts (Map/Parallel)
-   * Based on sfn-ai-local-test specification: nested states are referenced by name only
-   */
-  private getAllStateNames(states: Record<string, State>): string[] {
-    const stateNames: string[] = []
-
-    for (const [stateName, state] of Object.entries(states)) {
-      stateNames.push(stateName)
-
-      if (isMap(state) && state.ItemProcessor?.States) {
-        // ItemProcessor.States should already contain State instances
-        // if the StateMachine was properly created with StateFactory.createStateMachine
-        const nestedStates = state.ItemProcessor.States
-
-        // Add ItemProcessor states directly (nested states are referenced by name only)
-        const itemProcessorStates = this.getAllStateNames(nestedStates)
-        stateNames.push(...itemProcessorStates)
-      }
-
-      if (isParallel(state) && state.Branches) {
-        state.Branches.forEach((branch) => {
-          if (branch.States) {
-            // Branch.States should already contain State instances
-            // if the StateMachine was properly created with StateFactory.createStateMachine
-            const branchStates = branch.States
-
-            const nestedBranchStates = this.getAllStateNames(branchStates)
-            stateNames.push(...nestedBranchStates)
-          }
-        })
-      }
-    }
-
-    return stateNames
-  }
-
-  /**
    * Validate generated mock content
    */
   validateMockContent(content: string, stateMachine: StateMachine): ValidationIssue[] {
@@ -108,7 +34,6 @@ export class StateMachineValidator {
     try {
       const parsed = yaml.load(content)
 
-      // Type check the parsed YAML
       if (!isJsonObject(parsed)) {
         issues.push({
           level: 'error',
@@ -117,8 +42,6 @@ export class StateMachineValidator {
         })
         return issues
       }
-
-      // State machine is already parsed JsonObject
 
       if (!parsed.mocks) {
         issues.push({
@@ -138,10 +61,12 @@ export class StateMachineValidator {
         return issues
       }
 
-      const mockStateNames = new Map<string, number>()
       if (!isJsonArray(parsed.mocks)) {
         return issues
       }
+
+      // Duplicate check
+      const mockStateNames = new Map<string, number>()
       for (const mock of parsed.mocks) {
         if (!isJsonObject(mock)) continue
         const stateName = mock.state
@@ -161,73 +86,76 @@ export class StateMachineValidator {
         }
       }
 
-      if (parsed.mocks) {
-        for (const mock of parsed.mocks) {
-          if (!isJsonObject(mock) || typeof mock.state !== 'string') continue
-          const state = this.findStateByPath(mock.state, stateMachine.States)
-          const resource = state && isTask(state) ? state.Resource : null
+      // Inline Lambda validation
+      for (const mock of parsed.mocks) {
+        if (!isJsonObject(mock) || typeof mock.state !== 'string') continue
+        const state = findStateByName(stateMachine, mock.state)
+        const resource = state && isTask(state) ? state.Resource : null
 
-          if (resource && typeof resource === 'string' && resource.includes('lambda:invoke')) {
-            if (
-              'response' in mock &&
-              mock.response &&
-              isJsonObject(mock.response) &&
-              !mock.response.Payload
-            ) {
-              issues.push({
-                level: 'error',
-                message: `Lambda mock for "${mock.state}" missing Payload wrapper`,
-                suggestion: 'Wrap response in { Payload: {...}, StatusCode: 200 }',
-              })
-            }
-            if (
-              'response' in mock &&
-              mock.response &&
-              isJsonObject(mock.response) &&
-              !mock.response.StatusCode
-            ) {
-              issues.push({
-                level: 'warning',
-                message: `Lambda mock for "${mock.state}" missing StatusCode`,
-                suggestion: 'Add StatusCode: 200',
-              })
-            }
+        if (resource && typeof resource === 'string' && resource.includes('lambda:invoke')) {
+          if (
+            'response' in mock &&
+            mock.response &&
+            isJsonObject(mock.response) &&
+            !mock.response.Payload
+          ) {
+            issues.push({
+              level: 'error',
+              message: `Lambda mock for "${mock.state}" missing Payload wrapper`,
+              suggestion: 'Wrap response in { Payload: {...}, StatusCode: 200 }',
+            })
+          }
+          if (
+            'response' in mock &&
+            mock.response &&
+            isJsonObject(mock.response) &&
+            !mock.response.StatusCode
+          ) {
+            issues.push({
+              level: 'warning',
+              message: `Lambda mock for "${mock.state}" missing StatusCode`,
+              suggestion: 'Add StatusCode: 200',
+            })
           }
         }
+      }
 
-        if (parsed.mocks && isJsonArray(parsed.mocks)) {
-          for (const mock of parsed.mocks) {
-            if (!isJsonObject(mock) || mock.type !== 'conditional') continue
-            const state = this.findStateByPath(
-              typeof mock.state === 'string' ? mock.state : '',
-              stateMachine.States,
-            )
-            const resource = state && isTask(state) ? state.Resource : null
+      // Conditional Lambda validation
+      for (const mock of parsed.mocks) {
+        if (!isJsonObject(mock) || mock.type !== 'conditional') continue
+        const state = findStateByName(
+          stateMachine,
+          typeof mock.state === 'string' ? mock.state : '',
+        )
+        const resource = state && isTask(state) ? state.Resource : null
 
-            if (mock.conditions && isJsonArray(mock.conditions)) {
-              for (const condition of mock.conditions) {
-                if (!isJsonObject(condition)) continue
-                if (
-                  condition.when &&
-                  isJsonObject(condition.when) &&
-                  condition.when.input &&
-                  resource &&
-                  typeof resource === 'string' &&
-                  resource.includes('lambda:invoke')
-                ) {
-                  if (isJsonObject(condition.when.input) && !condition.when.input.Payload) {
-                    issues.push({
-                      level: 'error',
-                      message: `Conditional mock for Lambda "${mock.state}" MUST use input.Payload structure`,
-                      suggestion: 'Wrap condition in { input: { Payload: {...} } }',
-                    })
-                  }
-                }
+        if (mock.conditions && isJsonArray(mock.conditions)) {
+          for (const condition of mock.conditions) {
+            if (!isJsonObject(condition)) continue
+            if (
+              condition.when &&
+              isJsonObject(condition.when) &&
+              condition.when.input &&
+              resource &&
+              typeof resource === 'string' &&
+              resource.includes('lambda:invoke')
+            ) {
+              if (isJsonObject(condition.when.input) && !condition.when.input.Payload) {
+                issues.push({
+                  level: 'error',
+                  message: `Conditional mock for Lambda "${mock.state}" MUST use input.Payload structure`,
+                  suggestion: 'Wrap condition in { input: { Payload: {...} } }',
+                })
               }
             }
           }
         }
       }
+
+      // State-aware validations using already-parsed data
+      issues.push(...this.checkStateExistence(parsed, stateMachine))
+      issues.push(...this.checkMapStates(parsed, stateMachine))
+      issues.push(...this.checkLambdaStructure(parsed, stateMachine))
     } catch (error) {
       issues.push({
         level: 'error',
@@ -236,18 +164,11 @@ export class StateMachineValidator {
       })
     }
 
-    // Add state-aware validations
-    issues.push(...this.validateStateExistence(content, stateMachine))
-    issues.push(...this.validateMapStates(content, stateMachine))
-    issues.push(...this.validateLambdaStructure(content, stateMachine))
-
     return issues
   }
 
   /**
    * Validate generated test content
-   * Note: For runtime validation and automatic correction of test expectations,
-   * use TestExecutionValidator instead. This method performs static validation only.
    */
   validateTestContent(content: string, stateMachine: StateMachine): ValidationIssue[] {
     const issues: ValidationIssue[] = []
@@ -255,7 +176,6 @@ export class StateMachineValidator {
     try {
       const parsed = yaml.load(content)
 
-      // Type check the parsed YAML
       if (!isJsonObject(parsed)) {
         issues.push({
           level: 'error',
@@ -347,6 +267,9 @@ export class StateMachineValidator {
           }
         }
       }
+
+      // State-aware validations using already-parsed data
+      issues.push(...this.checkTestStateReferences(parsed, stateMachine))
     } catch (error) {
       issues.push({
         level: 'error',
@@ -355,325 +278,266 @@ export class StateMachineValidator {
       })
     }
 
-    // Add state-aware validations for test content
-    issues.push(...this.validateTestStateReferences(content, stateMachine))
-    // Note: JSONata Output validation removed - static analysis cannot accurately
-    // determine what JSONata expressions will return. Use TestExecutionValidator
-    // for dynamic validation instead.
-
     return issues
   }
 
-  /**
-   * Validate that all mocked states exist in the state machine
-   */
-  validateStateExistence(content: string, stateMachine: StateMachine): ValidationIssue[] {
-    const issues: ValidationIssue[] = []
+  // --- Public API wrappers (for direct test access) ---
 
+  validateStateExistence(content: string, stateMachine: StateMachine): ValidationIssue[] {
     try {
       const parsed = yaml.load(content)
-      if (!isJsonObject(parsed)) return issues
-
-      if (!(parsed.mocks && isJsonArray(parsed.mocks))) {
-        return issues
-      }
-
-      const availableStates = this.getAllStateNames(stateMachine.States)
-
-      for (const mock of parsed.mocks) {
-        if (!isJsonObject(mock) || typeof mock.state !== 'string') continue
-        if (!availableStates.includes(mock.state)) {
-          // Try to find similar state name
-          const suggestion = this.findSimilarStateName(mock.state, availableStates)
-
-          issues.push({
-            level: 'error',
-            message: `State "${mock.state}" does not exist in the state machine`,
-            suggestion: suggestion
-              ? `Did you mean "${suggestion}"?`
-              : `Available states: ${availableStates.join(', ')}`,
-          })
-        }
-      }
+      if (!isJsonObject(parsed)) return []
+      return this.checkStateExistence(parsed, stateMachine)
     } catch (_error) {
-      // Ignore parsing errors - handled elsewhere
+      return []
+    }
+  }
+
+  validateMapStates(content: string, stateMachine: StateMachine): ValidationIssue[] {
+    try {
+      const parsed = yaml.load(content)
+      if (!isJsonObject(parsed)) return []
+      return this.checkMapStates(parsed, stateMachine)
+    } catch (_error) {
+      return []
+    }
+  }
+
+  validateLambdaStructure(content: string, stateMachine: StateMachine): ValidationIssue[] {
+    try {
+      const parsed = yaml.load(content)
+      if (!isJsonObject(parsed)) return []
+      return this.checkLambdaStructure(parsed, stateMachine)
+    } catch (_error) {
+      return []
+    }
+  }
+
+  validateTestStateReferences(content: string, stateMachine: StateMachine): ValidationIssue[] {
+    try {
+      const parsed = yaml.load(content)
+      if (!isJsonObject(parsed)) return []
+      return this.checkTestStateReferences(parsed, stateMachine)
+    } catch (_error) {
+      return []
+    }
+  }
+
+  // --- Delegate methods for backward compatibility ---
+
+  formatReport(issues: ValidationIssue[]): string {
+    return formatReportFn(issues)
+  }
+
+  autoFix(content: string, type: 'test' | 'mock', stateMachine: StateMachine): string {
+    return type === 'mock' ? autoFixMock(content, stateMachine) : autoFixTest(content)
+  }
+
+  // --- Internal validation methods (operate on parsed objects) ---
+
+  private checkStateExistence(parsed: JsonObject, stateMachine: StateMachine): ValidationIssue[] {
+    const issues: ValidationIssue[] = []
+
+    if (!(parsed.mocks && isJsonArray(parsed.mocks))) {
+      return issues
+    }
+
+    const availableStates = getAllStateNames(stateMachine)
+
+    for (const mock of parsed.mocks) {
+      if (!isJsonObject(mock) || typeof mock.state !== 'string') continue
+      if (!availableStates.includes(mock.state)) {
+        const suggestion = findSimilarStateName(mock.state, availableStates)
+
+        issues.push({
+          level: 'error',
+          message: `State "${mock.state}" does not exist in the state machine`,
+          suggestion: suggestion
+            ? `Did you mean "${suggestion}"?`
+            : `Available states: ${availableStates.join(', ')}`,
+        })
+      }
     }
 
     return issues
   }
 
-  /**
-   * Validate Map and DistributedMap states return arrays
-   */
-  validateMapStates(content: string, stateMachine: StateMachine): ValidationIssue[] {
+  private checkMapStates(parsed: JsonObject, stateMachine: StateMachine): ValidationIssue[] {
     const issues: ValidationIssue[] = []
 
-    try {
-      const parsed = yaml.load(content)
-      if (!isJsonObject(parsed)) return issues
+    if (!(parsed.mocks && isJsonArray(parsed.mocks))) {
+      return issues
+    }
 
-      if (!(parsed.mocks && isJsonArray(parsed.mocks))) {
-        return issues
-      }
+    for (const mock of parsed.mocks) {
+      if (!isJsonObject(mock)) continue
 
-      for (const mock of parsed.mocks) {
-        if (!isJsonObject(mock)) continue
+      const state = findStateByName(stateMachine, typeof mock.state === 'string' ? mock.state : '')
 
-        // Find the state, supporting nested states
-        const state = this.findStateByPath(
-          typeof mock.state === 'string' ? mock.state : '',
-          stateMachine.States,
-        )
+      if (state && isMap(state)) {
+        // Special case: DistributedMap with ResultWriter returns metadata object
+        if (isDistributedMap(state) && state.ResultWriter) {
+          // Skip array validation for this case
+        } else {
+          if (mock.response && !Array.isArray(mock.response)) {
+            const stateType = isDistributedMap(state) ? 'DistributedMap' : 'Map'
+            issues.push({
+              level: 'error',
+              message: `${stateType} state "${mock.state}" must return an array`,
+              suggestion: `Change response to an array of results. Example:\nresponse:\n  - item1Result\n  - item2Result`,
+            })
+          }
+        }
 
-        if (state && isMap(state)) {
-          // Special case: DistributedMap with ResultWriter returns metadata object
-          if (isDistributedMap(state) && state.ResultWriter) {
-            // DistributedMap with ResultWriter returns metadata, not array
-            // Skip array validation for this case
-          } else {
-            if (mock.response && !Array.isArray(mock.response)) {
+        // For conditional mocks
+        if (
+          mock.type === 'conditional' &&
+          mock.conditions &&
+          isJsonArray(mock.conditions) &&
+          !(isDistributedMap(state) && state.ResultWriter)
+        ) {
+          for (const condition of mock.conditions) {
+            if (!isJsonObject(condition)) continue
+            const response =
+              'response' in condition
+                ? condition.response
+                : 'default' in condition
+                  ? condition.default
+                  : undefined
+            if (response && !isJsonArray(response)) {
               const stateType = isDistributedMap(state) ? 'DistributedMap' : 'Map'
               issues.push({
                 level: 'error',
-                message: `${stateType} state "${mock.state}" must return an array`,
-                suggestion: `Change response to an array of results. Example:\nresponse:\n  - item1Result\n  - item2Result`,
+                message: `${stateType} state "${mock.state}" conditional response must return an array`,
+                suggestion:
+                  'Each condition response should be an array for Map/DistributedMap states',
               })
             }
           }
-
-          // For conditional mocks, check each response (unless ResultWriter is present)
-          if (
-            mock.type === 'conditional' &&
-            mock.conditions &&
-            isJsonArray(mock.conditions) &&
-            !(isDistributedMap(state) && state.ResultWriter)
-          ) {
-            for (const condition of mock.conditions) {
-              if (!isJsonObject(condition)) continue
-              const response =
-                'response' in condition
-                  ? condition.response
-                  : 'default' in condition
-                    ? condition.default
-                    : undefined
-              if (response && !isJsonArray(response)) {
-                const stateType = isDistributedMap(state) ? 'DistributedMap' : 'Map'
-                issues.push({
-                  level: 'error',
-                  message: `${stateType} state "${mock.state}" conditional response must return an array`,
-                  suggestion:
-                    'Each condition response should be an array for Map/DistributedMap states',
-                })
-              }
-            }
-          }
-
-          // For stateful mocks, check each response (unless ResultWriter is present)
-          if (
-            mock.type === 'stateful' &&
-            mock.responses &&
-            Array.isArray(mock.responses) &&
-            !(isDistributedMap(state) && state.ResultWriter)
-          ) {
-            for (let i = 0; i < mock.responses.length; i++) {
-              if (!Array.isArray(mock.responses[i])) {
-                const stateType = isDistributedMap(state) ? 'DistributedMap' : 'Map'
-                issues.push({
-                  level: 'error',
-                  message: `${stateType} state "${mock.state}" stateful response #${i + 1} must return an array`,
-                  suggestion: 'All responses should be arrays for Map/DistributedMap states',
-                })
-              }
-            }
-          }
         }
-      }
-    } catch (_error) {
-      // Ignore parsing errors
-    }
 
-    return issues
-  }
-
-  /**
-   * Lambda structure validation with detailed error messages
-   */
-  validateLambdaStructure(content: string, stateMachine: StateMachine): ValidationIssue[] {
-    const issues: ValidationIssue[] = []
-
-    try {
-      const parsed = yaml.load(content)
-      if (!isJsonObject(parsed)) return issues
-
-      if (!(parsed.mocks && isJsonArray(parsed.mocks))) {
-        return issues
-      }
-
-      for (const mock of parsed.mocks) {
-        if (!isJsonObject(mock)) continue
-        const state = this.findStateByPath(
-          typeof mock.state === 'string' ? mock.state : '',
-          stateMachine.States,
-        )
-
-        const stateResource = state && isTask(state) ? state.Resource : null
+        // For stateful mocks
         if (
-          stateResource &&
-          typeof stateResource === 'string' &&
-          stateResource.includes('lambda:invoke')
+          mock.type === 'stateful' &&
+          mock.responses &&
+          Array.isArray(mock.responses) &&
+          !(isDistributedMap(state) && state.ResultWriter)
         ) {
-          if (mock.type === 'conditional' && 'conditions' in mock && isJsonArray(mock.conditions)) {
-            for (const condition of mock.conditions) {
-              if (!isJsonObject(condition)) continue
-              if (
-                condition.when &&
-                isJsonObject(condition.when) &&
-                condition.when.input &&
-                isJsonObject(condition.when.input) &&
-                !condition.when.input.Payload
-              ) {
-                const detailedMessage = this.formatLambdaError(
-                  typeof mock.state === 'string' ? mock.state : '',
-                  condition.when || null,
-                  condition.response || null,
-                )
-
-                issues.push({
-                  level: 'error',
-                  message: detailedMessage,
-                  suggestion:
-                    'Fix the structure as shown in the "Required structure" example above',
-                })
-              }
+          for (let i = 0; i < mock.responses.length; i++) {
+            if (!Array.isArray(mock.responses[i])) {
+              const stateType = isDistributedMap(state) ? 'DistributedMap' : 'Map'
+              issues.push({
+                level: 'error',
+                message: `${stateType} state "${mock.state}" stateful response #${i + 1} must return an array`,
+                suggestion: 'All responses should be arrays for Map/DistributedMap states',
+              })
             }
           }
         }
       }
-    } catch (_error) {
-      // Ignore parsing errors
     }
 
     return issues
   }
 
-  /**
-   * Validate state references in test content
-   */
-  validateTestStateReferences(content: string, stateMachine: StateMachine): ValidationIssue[] {
+  private checkLambdaStructure(parsed: JsonObject, stateMachine: StateMachine): ValidationIssue[] {
     const issues: ValidationIssue[] = []
 
-    try {
-      const parsed = yaml.load(content)
-      if (!isJsonObject(parsed)) return issues
+    if (!(parsed.mocks && isJsonArray(parsed.mocks))) {
+      return issues
+    }
 
-      const availableStates = this.getAllStateNames(stateMachine.States)
+    for (const mock of parsed.mocks) {
+      if (!isJsonObject(mock)) continue
+      const state = findStateByName(stateMachine, typeof mock.state === 'string' ? mock.state : '')
 
-      // Check expectedPath
-      if (parsed.testCases && isJsonArray(parsed.testCases)) {
-        for (let i = 0; i < parsed.testCases.length; i++) {
-          const testCase = parsed.testCases[i]
-          if (!isJsonObject(testCase)) continue
+      const stateResource = state && isTask(state) ? state.Resource : null
+      if (
+        stateResource &&
+        typeof stateResource === 'string' &&
+        stateResource.includes('lambda:invoke')
+      ) {
+        if (mock.type === 'conditional' && 'conditions' in mock && isJsonArray(mock.conditions)) {
+          for (const condition of mock.conditions) {
+            if (!isJsonObject(condition)) continue
+            if (
+              condition.when &&
+              isJsonObject(condition.when) &&
+              condition.when.input &&
+              isJsonObject(condition.when.input) &&
+              !condition.when.input.Payload
+            ) {
+              const detailedMessage = this.formatLambdaError(
+                typeof mock.state === 'string' ? mock.state : '',
+                condition.when || null,
+                condition.response || null,
+              )
 
-          if (testCase.expectedPath && Array.isArray(testCase.expectedPath)) {
-            for (const stateName of testCase.expectedPath) {
-              if (typeof stateName === 'string' && !availableStates.includes(stateName)) {
-                const suggestion = this.findSimilarStateName(stateName, availableStates)
-                issues.push({
-                  level: 'error',
-                  message: `Test case #${i + 1}: State "${stateName}" in expectedPath does not exist`,
-                  suggestion: suggestion
-                    ? `Did you mean "${suggestion}"?`
-                    : `Available states: ${availableStates.slice(0, 5).join(', ')}...`,
-                })
-              }
-            }
-          }
-
-          // Check stateExpectations
-          if (testCase.stateExpectations && isJsonArray(testCase.stateExpectations)) {
-            for (const expectation of testCase.stateExpectations) {
-              if (!isJsonObject(expectation)) continue
-              if (
-                expectation.state &&
-                typeof expectation.state === 'string' &&
-                !availableStates.includes(expectation.state)
-              ) {
-                const suggestion = this.findSimilarStateName(expectation.state, availableStates)
-                issues.push({
-                  level: 'error',
-                  message: `Test case #${i + 1}: State "${expectation.state}" in stateExpectations does not exist`,
-                  suggestion: suggestion
-                    ? `Did you mean "${suggestion}"?`
-                    : `Available states: ${availableStates.slice(0, 5).join(', ')}...`,
-                })
-              }
+              issues.push({
+                level: 'error',
+                message: detailedMessage,
+                suggestion: 'Fix the structure as shown in the "Required structure" example above',
+              })
             }
           }
         }
       }
-    } catch (_error) {
-      // Ignore parsing errors
     }
 
     return issues
   }
 
-  /**
-   * Find similar state name using Levenshtein distance
-   */
-  private findSimilarStateName(input: string, availableStates: string[]): string | null {
-    let minDistance = Number.POSITIVE_INFINITY
-    let closestMatch: string | null = null
+  private checkTestStateReferences(
+    parsed: JsonObject,
+    stateMachine: StateMachine,
+  ): ValidationIssue[] {
+    const issues: ValidationIssue[] = []
 
-    for (const state of availableStates) {
-      const distance = this.levenshteinDistance(input.toLowerCase(), state.toLowerCase())
+    const availableStates = getAllStateNames(stateMachine)
 
-      // If distance is small relative to string length, consider it similar
-      if (distance < minDistance && distance <= Math.max(input.length, state.length) * 0.3) {
-        minDistance = distance
-        closestMatch = state
-      }
-    }
+    if (parsed.testCases && isJsonArray(parsed.testCases)) {
+      for (let i = 0; i < parsed.testCases.length; i++) {
+        const testCase = parsed.testCases[i]
+        if (!isJsonObject(testCase)) continue
 
-    return closestMatch
-  }
+        if (testCase.expectedPath && Array.isArray(testCase.expectedPath)) {
+          for (const stateName of testCase.expectedPath) {
+            if (typeof stateName === 'string' && !availableStates.includes(stateName)) {
+              const suggestion = findSimilarStateName(stateName, availableStates)
+              issues.push({
+                level: 'error',
+                message: `Test case #${i + 1}: State "${stateName}" in expectedPath does not exist`,
+                suggestion: suggestion
+                  ? `Did you mean "${suggestion}"?`
+                  : `Available states: ${availableStates.slice(0, 5).join(', ')}...`,
+              })
+            }
+          }
+        }
 
-  /**
-   * Calculate Levenshtein distance between two strings
-   */
-  private levenshteinDistance(a: string, b: string): number {
-    const matrix: number[][] = []
-
-    for (let i = 0; i <= b.length; i++) {
-      matrix[i] = [i]
-    }
-
-    for (let j = 0; j <= a.length; j++) {
-      if (matrix[0]) {
-        matrix[0][j] = j
-      }
-    }
-
-    for (let i = 1; i <= b.length; i++) {
-      const currentRow = matrix[i]
-      const prevRow = matrix[i - 1]
-      if (!(currentRow && prevRow)) continue
-
-      for (let j = 1; j <= a.length; j++) {
-        if (b.charAt(i - 1) === a.charAt(j - 1)) {
-          currentRow[j] = prevRow[j - 1] ?? 0
-        } else {
-          currentRow[j] = Math.min(
-            (prevRow[j - 1] ?? 0) + 1, // substitution
-            (currentRow[j - 1] ?? 0) + 1, // insertion
-            (prevRow[j] ?? 0) + 1, // deletion
-          )
+        if (testCase.stateExpectations && isJsonArray(testCase.stateExpectations)) {
+          for (const expectation of testCase.stateExpectations) {
+            if (!isJsonObject(expectation)) continue
+            if (
+              expectation.state &&
+              typeof expectation.state === 'string' &&
+              !availableStates.includes(expectation.state)
+            ) {
+              const suggestion = findSimilarStateName(expectation.state, availableStates)
+              issues.push({
+                level: 'error',
+                message: `Test case #${i + 1}: State "${expectation.state}" in stateExpectations does not exist`,
+                suggestion: suggestion
+                  ? `Did you mean "${suggestion}"?`
+                  : `Available states: ${availableStates.slice(0, 5).join(', ')}...`,
+              })
+            }
+          }
         }
       }
     }
 
-    const lastRow = matrix[b.length]
-    return lastRow?.[a.length] ?? 0
+    return issues
   }
 
   /**
@@ -694,7 +558,6 @@ Lambda mock structure error in "${stateName}"
 
 Your current structure:
 ${yaml.dump(currentStructure, { indent: 2 })}
-
 Required structure:
 when:
   input:
@@ -707,148 +570,5 @@ response:
   ExecutedVersion: "${LAMBDA_VERSION_LATEST}"
 
 The 'Payload' wrapper is REQUIRED for Lambda invoke tasks.`
-  }
-
-  /**
-   * Auto-fix common issues
-   */
-  autoFix(content: string, type: 'test' | 'mock', stateMachine: StateMachine): string {
-    let fixed = content
-
-    if (type === 'test') {
-      // Auto-fix outputMatching: "exact" to "partial"
-      fixed = fixed.replace(/outputMatching:\s*["']exact["']/g, 'outputMatching: "partial"')
-
-      // Don't add outputMatching automatically - it breaks indentation
-      // The AI should generate it correctly
-    } else if (type === 'mock') {
-      try {
-        const parsed = yaml.load(content)
-        if (!isJsonObject(parsed)) return fixed
-
-        // stateMachine is already parsed JsonObject
-        if (!isJsonObject(stateMachine)) return fixed
-
-        let modified = false
-
-        if (parsed.mocks && isJsonArray(parsed.mocks)) {
-          for (const mock of parsed.mocks) {
-            if (!isJsonObject(mock) || typeof mock.state !== 'string') continue
-            const state = this.findStateByPath(mock.state, stateMachine.States)
-
-            // Check if this is a Lambda invoke task
-            const resource = state && isTask(state) ? state.Resource : null
-            if (resource && typeof resource === 'string' && resource.includes('lambda:invoke')) {
-              // Fix conditional mocks for Lambda
-              if (mock.type === 'conditional' && mock.conditions && isJsonArray(mock.conditions)) {
-                for (const condition of mock.conditions) {
-                  if (!isJsonObject(condition)) continue
-
-                  if (
-                    condition.when &&
-                    isJsonObject(condition.when) &&
-                    condition.when.input &&
-                    isJsonObject(condition.when.input) &&
-                    !condition.when.input.Payload
-                  ) {
-                    // Wrap input in Payload
-                    condition.when.input = {
-                      Payload: condition.when.input,
-                    }
-                    modified = true
-                  }
-
-                  // Fix response format for Lambda
-                  if (
-                    condition.response &&
-                    isJsonObject(condition.response) &&
-                    !condition.response.Payload
-                  ) {
-                    condition.response = {
-                      Payload: condition.response,
-                      StatusCode: 200,
-                    }
-                    modified = true
-                  }
-                }
-              }
-
-              // Fix fixed mock response for Lambda
-              if (
-                mock.type === 'fixed' &&
-                mock.response &&
-                isJsonObject(mock.response) &&
-                !mock.response.Payload
-              ) {
-                mock.response = {
-                  Payload: mock.response,
-                  StatusCode: 200,
-                }
-                modified = true
-              }
-            }
-          }
-        }
-
-        if (modified) {
-          fixed = yaml.dump(parsed, {
-            indent: 2,
-            lineWidth: -1,
-            noRefs: true,
-            sortKeys: false,
-          })
-        }
-      } catch {
-        // If parsing fails, return original content
-      }
-    }
-
-    return fixed
-  }
-
-  /**
-   * Format validation report
-   */
-  formatReport(issues: ValidationIssue[]): string {
-    if (issues.length === 0) {
-      return '✅ No issues found!'
-    }
-
-    const errors = issues.filter((i) => i.level === 'error')
-    const warnings = issues.filter((i) => i.level === 'warning')
-    const info = issues.filter((i) => i.level === 'info')
-
-    let report = ''
-
-    if (errors.length > 0) {
-      report += `❌ Errors (${errors.length}):\n`
-      for (const error of errors) {
-        report += `  - ${error.message}\n`
-        if (error.suggestion) {
-          report += `    💡 ${error.suggestion}\n`
-        }
-      }
-      report += '\n'
-    }
-
-    if (warnings.length > 0) {
-      report += `⚠️ Warnings (${warnings.length}):\n`
-      for (const warning of warnings) {
-        report += `  - ${warning.message}\n`
-        if (warning.suggestion) {
-          report += `    💡 ${warning.suggestion}\n`
-        }
-      }
-      report += '\n'
-    }
-
-    if (info.length > 0) {
-      report += `ℹ️ Info (${info.length}):\n`
-      for (const item of info) {
-        report += `  - ${item.message}\n`
-      }
-    }
-
-    return report
   }
 }

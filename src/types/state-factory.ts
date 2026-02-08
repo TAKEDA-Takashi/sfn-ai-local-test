@@ -22,9 +22,10 @@ import { isJsonArray, isJsonObject, isString } from './type-guards.js'
 // フィールドバリデーション定義
 // =============================================================================
 
-const JSONPATH_UNSUPPORTED = new Set(['Arguments', 'Output'])
+// --- ベースフィールドグループ（意味的なグルーピング） ---
 
-const JSONATA_UNSUPPORTED = new Set([
+/** JSONPathモードでのみ有効なフィールド（JSONataモードでは使用不可） */
+const JSONPATH_ONLY_FIELDS = new Set([
   'Parameters',
   'InputPath',
   'OutputPath',
@@ -32,93 +33,61 @@ const JSONATA_UNSUPPORTED = new Set([
   'ResultSelector',
 ])
 
-const JSONATA_MAP_UNSUPPORTED = new Set([
-  'Parameters',
-  'InputPath',
-  'OutputPath',
-  'ResultPath',
-  'ResultSelector',
-  'ItemsPath',
-])
+/** JSONataモードでのみ有効なフィールド（JSONPathモードでは使用不可） */
+const JSONATA_ONLY_FIELDS = new Set(['Arguments', 'Output'])
 
-const JSONATA_PASS_UNSUPPORTED = new Set([
-  'Parameters',
-  'InputPath',
-  'OutputPath',
-  'ResultPath',
-  'ResultSelector',
-  'Arguments',
-])
+/** 終端ステート（Succeed/Fail）では使用不可のフィールド */
+const TERMINAL_FIELDS = new Set(['Next', 'End', 'Retry', 'Catch'])
 
-const CHOICE_UNSUPPORTED = new Set([
-  'Arguments',
-  'Output',
-  'InputPath',
-  'OutputPath',
-  'ResultPath',
-  'Parameters',
-  'ResultSelector',
-])
+/** 結果処理フィールド（終端ステートのJSONPathモードで使用不可） */
+const RESULT_PROCESSING_FIELDS = new Set(['Parameters', 'ResultPath', 'ResultSelector'])
 
-const JSONATA_CHOICE_UNSUPPORTED = new Set([
-  'Parameters',
-  'InputPath',
-  'OutputPath',
-  'ResultPath',
-  'ResultSelector',
-  'Arguments',
-  'Output',
-])
+function mergeFieldSets(
+  ...sets: Array<ReadonlySet<string> | readonly string[]>
+): ReadonlySet<string> {
+  const result = new Set<string>()
+  for (const s of sets) {
+    for (const item of s) result.add(item)
+  }
+  return result
+}
 
-const JSONPATH_TERMINAL_UNSUPPORTED = new Set([
-  'Next',
-  'End',
-  'Retry',
-  'Catch',
-  'Arguments',
-  'Output',
-  'ResultPath',
-  'Parameters',
-  'ResultSelector',
-])
+// --- ステートタイプ別の非対応フィールドセット ---
 
-const JSONATA_TERMINAL_UNSUPPORTED = new Set([
-  'Next',
-  'End',
-  'Retry',
-  'Catch',
-  'Parameters',
-  'InputPath',
-  'OutputPath',
-  'ResultPath',
-  'ResultSelector',
-  'Arguments',
-])
+/** Choiceステート: I/O処理フィールドすべて使用不可（両モード共通） */
+const CHOICE_UNSUPPORTED = mergeFieldSets(JSONPATH_ONLY_FIELDS, JSONATA_ONLY_FIELDS)
 
-const JSONATA_FAIL_UNSUPPORTED = new Set([
-  'Next',
-  'End',
-  'Retry',
-  'Catch',
-  'Parameters',
-  'InputPath',
-  'OutputPath',
-  'ResultPath',
-  'ResultSelector',
-  'Arguments',
-  'Output',
-  'CausePath',
-])
+/** JSONataモード - Passステート: JSONPath系 + Arguments（Passは引数を取らない） */
+const JSONATA_PASS_UNSUPPORTED = mergeFieldSets(JSONPATH_ONLY_FIELDS, ['Arguments'])
 
-const JSONATA_WAIT_UNSUPPORTED = new Set([
-  'Parameters',
-  'InputPath',
-  'OutputPath',
-  'ResultPath',
-  'ResultSelector',
+/** JSONataモード - Mapステート: JSONPath系 + ItemsPath（Itemsを使用） */
+const JSONATA_MAP_UNSUPPORTED = mergeFieldSets(JSONPATH_ONLY_FIELDS, ['ItemsPath'])
+
+/** JSONataモード - Waitステート: JSONPath系 + Path系の待機フィールド */
+const JSONATA_WAIT_UNSUPPORTED = mergeFieldSets(JSONPATH_ONLY_FIELDS, [
   'SecondsPath',
   'TimestampPath',
 ])
+
+/** JSONPathモード - 終端ステート: 終端系 + JSONata系 + 結果処理系 */
+const JSONPATH_TERMINAL_UNSUPPORTED = mergeFieldSets(
+  TERMINAL_FIELDS,
+  JSONATA_ONLY_FIELDS,
+  RESULT_PROCESSING_FIELDS,
+)
+
+/** JSONataモード - Succeedステート: 終端系 + JSONPath系 + Arguments */
+const JSONATA_TERMINAL_UNSUPPORTED = mergeFieldSets(TERMINAL_FIELDS, JSONPATH_ONLY_FIELDS, [
+  'Arguments',
+])
+
+/** JSONataモード - Failステート: 終端系 + 全I/O系 + CausePath */
+const JSONATA_FAIL_UNSUPPORTED = mergeFieldSets(
+  TERMINAL_FIELDS,
+  JSONPATH_ONLY_FIELDS,
+  JSONATA_ONLY_FIELDS,
+  ['CausePath'],
+)
 
 // =============================================================================
 // バリデーションヘルパー
@@ -127,33 +96,34 @@ const JSONATA_WAIT_UNSUPPORTED = new Set([
 function getUnsupportedFieldSet(
   stateType: string,
   queryLanguage: QueryLanguage,
-  isDistributed?: boolean,
 ): ReadonlySet<string> {
-  const isJSONata = queryLanguage === 'JSONata'
+  // Choice: I/O処理フィールドすべて使用不可（両モード共通）
+  if (stateType === 'Choice') return CHOICE_UNSUPPORTED
 
+  if (queryLanguage === 'JSONata') {
+    switch (stateType) {
+      case 'Pass':
+        return JSONATA_PASS_UNSUPPORTED
+      case 'Wait':
+        return JSONATA_WAIT_UNSUPPORTED
+      case 'Map':
+        return JSONATA_MAP_UNSUPPORTED
+      case 'Succeed':
+        return JSONATA_TERMINAL_UNSUPPORTED
+      case 'Fail':
+        return JSONATA_FAIL_UNSUPPORTED
+      default: // Task, Parallel
+        return JSONPATH_ONLY_FIELDS
+    }
+  }
+
+  // JSONPathモード
   switch (stateType) {
-    case 'Task':
-      return isJSONata ? JSONATA_UNSUPPORTED : JSONPATH_UNSUPPORTED
-    case 'Pass':
-      return isJSONata ? JSONATA_PASS_UNSUPPORTED : JSONPATH_UNSUPPORTED
-    case 'Choice':
-      return isJSONata ? JSONATA_CHOICE_UNSUPPORTED : CHOICE_UNSUPPORTED
-    case 'Wait':
-      return isJSONata ? JSONATA_WAIT_UNSUPPORTED : JSONPATH_UNSUPPORTED
     case 'Succeed':
-      return isJSONata ? JSONATA_TERMINAL_UNSUPPORTED : JSONPATH_TERMINAL_UNSUPPORTED
     case 'Fail':
-      return isJSONata ? JSONATA_FAIL_UNSUPPORTED : JSONPATH_TERMINAL_UNSUPPORTED
-    case 'Map':
-      return isJSONata
-        ? isDistributed
-          ? JSONATA_MAP_UNSUPPORTED
-          : JSONATA_MAP_UNSUPPORTED
-        : JSONPATH_UNSUPPORTED
-    case 'Parallel':
-      return isJSONata ? JSONATA_UNSUPPORTED : JSONPATH_UNSUPPORTED
-    default:
-      return new Set()
+      return JSONPATH_TERMINAL_UNSUPPORTED
+    default: // Task, Pass, Wait, Map, Parallel
+      return JSONATA_ONLY_FIELDS
   }
 }
 
@@ -477,10 +447,7 @@ export class StateFactory {
       throw new Error(`Unknown state type: ${aslState.Type}`)
     }
 
-    // Map requires special unsupported field detection
-    const isDistributed =
-      aslState.Type === 'Map' ? detectProcessorMode(config) === 'DISTRIBUTED' : undefined
-    const unsupported = getUnsupportedFieldSet(aslState.Type, queryLanguage, isDistributed)
+    const unsupported = getUnsupportedFieldSet(aslState.Type, queryLanguage)
     validateUnsupportedFields(config, aslState.Type, queryLanguage, unsupported)
 
     return builder(config, queryLanguage)

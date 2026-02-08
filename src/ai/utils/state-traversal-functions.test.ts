@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { StateFactory } from '../../types/state-factory'
 import type { JsonObject } from '../../types/asl'
+import { StateFactory } from '../../types/state-factory'
 import { findStateByName, getAllStateNames } from './state-traversal'
 
 const createStateMachine = (json: any) => StateFactory.createStateMachine(json as JsonObject)
@@ -27,7 +27,11 @@ describe('findStateByName', () => {
           ItemProcessor: {
             StartAt: 'NestedTask',
             States: {
-              NestedTask: { Type: 'Task', Resource: 'arn:aws:lambda:us-east-1:123:function:fn', End: true },
+              NestedTask: {
+                Type: 'Task',
+                Resource: 'arn:aws:lambda:us-east-1:123:function:fn',
+                End: true,
+              },
             },
           },
           End: true,

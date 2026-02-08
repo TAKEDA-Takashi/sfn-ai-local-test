@@ -191,7 +191,7 @@ export class StateMachineExecutor {
               const stateExecution: StateExecution = {
                 statePath: [...(context.currentStatePath || []), context.currentState],
                 state: context.currentState,
-                input: result.processedInput !== undefined ? result.processedInput : stateInput,
+                input: stateInput,
                 output: result.output !== undefined ? deepClone(result.output) : context.input,
                 variablesBefore,
                 variablesAfter: deepClone(context.variables),
@@ -202,7 +202,7 @@ export class StateMachineExecutor {
               const parallelExecution: StateExecution = {
                 statePath: [...(context.currentStatePath || []), context.currentState],
                 state: context.currentState,
-                input: result.processedInput !== undefined ? result.processedInput : stateInput,
+                input: stateInput,
                 output: result.output !== undefined ? deepClone(result.output) : context.input,
                 variablesBefore,
                 variablesAfter: deepClone(context.variables),

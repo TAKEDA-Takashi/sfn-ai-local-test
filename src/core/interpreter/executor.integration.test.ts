@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { JsonObject } from '../../types/asl'
 import { StateFactory } from '../../types/state-factory'
+import type { StateExecution } from '../../types/test'
 import { MockEngine } from '../mock/engine'
 import { StateMachineExecutor } from './executor'
 
@@ -41,6 +42,89 @@ describe('StateMachineExecutor Integration Tests', () => {
       const result = await executor.execute({ value: 50 })
       expect(result.success).toBe(false)
       expect(result.error).toContain('No matching choice found and no default specified')
+    })
+  })
+
+  describe('stateExecution records raw input before Parameters processing', () => {
+    it('should record state input before Parameters transformation for Task state', async () => {
+      const stateMachine = StateFactory.createStateMachine({
+        StartAt: 'LambdaTask',
+        States: {
+          LambdaTask: {
+            Type: 'Task',
+            Resource: 'arn:aws:states:::lambda:invoke',
+            Parameters: {
+              FunctionName: 'MyFunction',
+              'Payload.$': '$',
+            },
+            ResultSelector: {
+              'name.$': '$.Payload.name',
+            },
+            Next: 'Done',
+          },
+          Done: {
+            Type: 'Succeed',
+          },
+        },
+      })
+
+      const mockEngine = new MockEngine({
+        version: '1.0',
+        mocks: [
+          {
+            state: 'LambdaTask',
+            type: 'fixed',
+            response: {
+              Payload: { name: 'Alice' },
+              StatusCode: 200,
+            },
+          },
+        ],
+      })
+
+      const executor = new StateMachineExecutor(stateMachine, mockEngine)
+      const result = await executor.execute({ userId: '123' })
+
+      expect(result.success).toBe(true)
+
+      const stateExecutions = result.stateExecutions as StateExecution[]
+      expect(stateExecutions).toBeDefined()
+
+      const lambdaExecution = stateExecutions.find((s) => s.state === 'LambdaTask')
+      expect(lambdaExecution).toBeDefined()
+
+      // stateExecution.input should be the RAW input (before Parameters processing)
+      expect(lambdaExecution!.input).toEqual({ userId: '123' })
+      // NOT { FunctionName: 'MyFunction', Payload: { userId: '123' } }
+    })
+
+    it('should record state input before Parameters for Pass state', async () => {
+      const stateMachine = StateFactory.createStateMachine({
+        StartAt: 'FormatOutput',
+        States: {
+          FormatOutput: {
+            Type: 'Pass',
+            Parameters: {
+              'message.$': '$.name',
+            },
+            End: true,
+          },
+        },
+      })
+
+      const mockEngine = new MockEngine({ version: '1.0', mocks: [] })
+      const executor = new StateMachineExecutor(stateMachine, mockEngine)
+      const result = await executor.execute({ name: 'Bob', age: 30 })
+
+      expect(result.success).toBe(true)
+
+      const stateExecutions = result.stateExecutions as StateExecution[]
+      const passExecution = stateExecutions.find((s) => s.state === 'FormatOutput')
+      expect(passExecution).toBeDefined()
+
+      // stateExecution.input should be the RAW input
+      expect(passExecution!.input).toEqual({ name: 'Bob', age: 30 })
+      // NOT { message: 'Bob' }
     })
   })
 

@@ -28,6 +28,7 @@ import type { JsonObject, StateMachine } from '../../types/asl'
 import { StateFactory } from '../../types/state-factory'
 import type { TestSuiteResult } from '../../types/test'
 import { isJsonObject } from '../../types/type-guards'
+import { extractStateMachineFromCDK } from '../../utils/cdk-extractor'
 
 interface RunOptions {
   // テストスイート実行用
@@ -468,7 +469,9 @@ async function runSingleExecution(options: RunOptions): Promise<void> {
         const cdkContent = readFileSync(options.cdk, 'utf-8')
         const cdkTemplate = JSON.parse(cdkContent)
         stateMachine = StateFactory.createStateMachine(
-          extractStateMachineFromCDK(cdkTemplate, options.cdkStateMachine),
+          extractStateMachineFromCDK(cdkTemplate, {
+            stateMachineName: options.cdkStateMachine,
+          }),
         )
       }
     } else {
@@ -590,72 +593,6 @@ async function runSingleExecution(options: RunOptions): Promise<void> {
     console.error(error)
     process.exit(1)
   }
-}
-
-function extractStateMachineFromCDK(
-  cdkTemplate: JsonObject,
-  stateMachineName?: string,
-): JsonObject {
-  const resources = cdkTemplate.Resources || {}
-  const stateMachines: { [key: string]: JsonObject } = {}
-
-  // すべてのステートマシンを収集
-  for (const [logicalId, resource] of Object.entries(resources)) {
-    if (!isJsonObject(resource)) continue
-    if (resource.Type === 'AWS::StepFunctions::StateMachine') {
-      stateMachines[logicalId] = resource
-    }
-  }
-
-  const stateMachineCount = Object.keys(stateMachines).length
-
-  if (stateMachineCount === 0) {
-    throw new Error('No Step Functions state machine found in CDK template')
-  }
-
-  // 特定のステートマシンが指定されている場合
-  if (stateMachineName) {
-    const resource = stateMachines[stateMachineName]
-    if (!resource) {
-      const availableNames = Object.keys(stateMachines).join(', ')
-      throw new Error(`State machine '${stateMachineName}' not found. Available: ${availableNames}`)
-    }
-    const properties = isJsonObject(resource.Properties) ? resource.Properties : undefined
-    const definition = properties?.Definition || properties?.DefinitionString
-    if (typeof definition === 'string') {
-      return JSON.parse(definition)
-    }
-    if (isJsonObject(definition)) {
-      return definition
-    }
-    throw new Error(`Invalid state machine definition in resource '${stateMachineName}'`)
-  }
-
-  // ステートマシンが1つだけの場合は自動的に選択
-  if (stateMachineCount === 1) {
-    const entry = Object.entries(stateMachines)[0]
-    if (!entry) {
-      throw new Error('No state machine found')
-    }
-    const [logicalId, resource] = entry
-    console.log(chalk.gray(`  Auto-selected state machine: ${logicalId}`))
-    const properties = isJsonObject(resource.Properties) ? resource.Properties : undefined
-    const definition = properties?.Definition || properties?.DefinitionString
-    if (typeof definition === 'string') {
-      return JSON.parse(definition)
-    }
-    if (isJsonObject(definition)) {
-      return definition
-    }
-    throw new Error(`Invalid state machine definition in resource '${logicalId}'`)
-  }
-
-  // 複数のステートマシンがある場合はエラー
-  const availableNames = Object.keys(stateMachines).join(', ')
-  throw new Error(
-    `Multiple state machines found in CDK template. Please specify one with --cdk-state-machine option.\n` +
-      `Available: ${availableNames}`,
-  )
 }
 
 // テストスイート実行関数

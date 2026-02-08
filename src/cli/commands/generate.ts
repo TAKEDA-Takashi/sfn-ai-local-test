@@ -62,6 +62,149 @@ function createTestGeneratorAdapter(
   }
 }
 
+interface LoadedMock {
+  content: string
+  config: MockConfig
+  filePath: string
+}
+
+/** モックファイルを読み込みパースする。失敗時はnullを返す */
+export function loadMockConfig(filePath: string): LoadedMock | null {
+  try {
+    const content = readFileSync(filePath, 'utf-8')
+    const rawConfig = yaml.load(content)
+    const config = mockConfigSchema.parse(rawConfig)
+    return { content, config, filePath }
+  } catch {
+    return null
+  }
+}
+
+export function parseTimeout(value: string | undefined): number {
+  return value ? Number.parseInt(value, 10) : 300000
+}
+
+export function parseMaxAttempts(value: string | undefined): number {
+  return value ? Number.parseInt(value, 10) : 2
+}
+
+export function parseConcurrency(value: string | undefined): number {
+  const parsed = value ? Number.parseInt(value, 10) : 1
+  return Number.isNaN(parsed) || parsed < 1 ? 1 : parsed
+}
+
+/** Mockファイル生成時に、テストデータファイルも自動生成しログ出力する */
+export function generateAndLogTestData(
+  stateMachine: StateMachine,
+  mockYaml: string,
+  verbose?: boolean,
+): void {
+  try {
+    const dataFiles = generateTestDataFiles(stateMachine, mockYaml)
+    if (dataFiles.length > 0 && verbose) {
+      console.log(
+        chalk.cyan(`\n📦 Generated ${dataFiles.length} test data file(s) for ItemReader:`),
+      )
+      for (const file of dataFiles) {
+        console.log(chalk.green(`  ✓ ${file.path} (${file.format})`))
+      }
+    }
+  } catch (error) {
+    console.warn(chalk.yellow('⚠️ Could not generate test data files:', error))
+  }
+}
+
+/** AI APIが利用不可時のテンプレートファイルを生成する */
+export function generateFallbackTemplate(type: string): string {
+  if (type === 'mock') {
+    return `version: "1.0"
+description: "Manual mock configuration template"
+mocks:
+  # Lambda task mock (with Payload wrapping)
+  - state: "YourTaskStateName"
+    type: "fixed"
+    response:
+      ExecutedVersion: "$LATEST"
+      Payload:
+        # Your Lambda function response here
+        result: "success"
+        data: "example"
+      StatusCode: 200
+
+  # Simple task mock (without Lambda)
+  - state: "SimpleTask"
+    type: "fixed"
+    response:
+      result: "processed"
+
+  # Conditional mock
+  - state: "ConditionalTask"
+    type: "conditional"
+    conditions:
+      - when:
+          input:
+            amount: { "$gt": 100 }
+        response:
+          approved: true
+      - default:
+          approved: false
+
+  # Error simulation
+  - state: "ErrorTask"
+    type: "error"
+    error:
+      type: "States.TaskFailed"
+      cause: "Simulated error"`
+  }
+
+  if (type === 'test') {
+    return `version: "1.0"
+name: "Manual test suite template"
+stateMachine: "./your-state-machine.asl.json"
+baseMock: "./sfn-test.mock.yaml"
+
+testCases:
+  - name: "Success case"
+    input:
+      # Your test input
+      userId: "test-user"
+      amount: 100
+    expectedOutput:
+      # Expected final output
+      status: "success"
+    expectedPath:
+      # Expected execution path
+      - "FirstState"
+      - "SecondState"
+      - "FinalState"
+
+  - name: "Error case"
+    input:
+      userId: "test-user"
+      amount: -1
+    mockOverrides:
+      - state: "ValidationState"
+        type: "error"
+        error:
+          type: "ValidationError"
+          cause: "Invalid amount"
+    expectedPath:
+      - "FirstState"
+      - "ValidationState"
+      - "ErrorHandler"
+
+settings:
+  timeout: 10000
+  verbose: false
+
+assertions:
+  outputMatching: "partial"
+  pathMatching: "exact"`
+  }
+
+  return ''
+}
+
 interface GenerateOptions {
   name?: string
   asl?: string
@@ -165,9 +308,7 @@ export async function generateCommand(
         }
       } else if (config?.stateMachines && config.stateMachines.length > 1) {
         // 複数ある場合は並列実行または順次実行
-        const parsedConcurrency = options.concurrency ? Number.parseInt(options.concurrency, 10) : 1
-        const concurrency =
-          Number.isNaN(parsedConcurrency) || parsedConcurrency < 1 ? 1 : parsedConcurrency // 無効な値の場合は1にフォールバック
+        const concurrency = parseConcurrency(options.concurrency)
         const mode = concurrency > 1 ? 'parallel' : 'sequential'
 
         spinner.text = `Processing ${config.stateMachines.length} state machines ${mode === 'parallel' ? `(concurrency: ${concurrency})` : '(sequential)'}...`
@@ -193,14 +334,11 @@ export async function generateCommand(
             let result: string
             switch (type) {
               case 'mock': {
-                const maxAttempts = options.maxAttempts
-                  ? Number.parseInt(options.maxAttempts, 10)
-                  : 2
                 result = await generateMockWithAI(
-                  currentStateMachine, // Pass StateMachine directly (already has State instances)
+                  currentStateMachine,
                   options.aiModel,
-                  options.timeout ? Number.parseInt(options.timeout, 10) : 300000,
-                  maxAttempts,
+                  parseTimeout(options.timeout),
+                  parseMaxAttempts(options.maxAttempts),
                 )
                 break
               }
@@ -211,29 +349,25 @@ export async function generateCommand(
 
                 const autoMockPath = resolveMockPath(config, sm.name)
                 if (existsSync(autoMockPath)) {
-                  try {
-                    mockContent = readFileSync(autoMockPath, 'utf-8')
-                    const rawConfig = yaml.load(mockContent)
-                    mockConfig = mockConfigSchema.parse(rawConfig)
-                    mockFileName = autoMockPath
-                  } catch (_err) {
-                    // エラーの場合は静かに無視（モックなしで続行）
+                  const loaded = loadMockConfig(autoMockPath)
+                  if (loaded) {
+                    mockContent = loaded.content
+                    mockConfig = loaded.config
+                    mockFileName = loaded.filePath
                   }
                 }
 
                 if (mockConfig) {
                   // Use TestGenerationPipeline for execution-based validation and correction
-                  const generator = createTestGeneratorAdapter(
-                    options.aiModel,
-                    options.timeout ? Number.parseInt(options.timeout, 10) : 300000,
-                  )
+                  const timeout = parseTimeout(options.timeout)
+                  const generator = createTestGeneratorAdapter(options.aiModel, timeout)
                   const pipeline = new TestGenerationPipeline(generator)
                   const pipelineResult = await pipeline.generateTest({
                     stateMachine: currentStateMachine,
-                    maxAttempts: options.maxAttempts ? Number.parseInt(options.maxAttempts, 10) : 2,
+                    maxAttempts: parseMaxAttempts(options.maxAttempts),
                     mockFile: mockFileName ? `${sm.name}.mock.yaml` : currentConfigMockFileName,
                     aslFile: sm.name,
-                    timeout: options.timeout ? Number.parseInt(options.timeout, 10) : undefined,
+                    timeout: options.timeout ? timeout : undefined,
                     enableExecutionValidation: true,
                     mockConfig,
                     basePath: testDataPath,
@@ -268,9 +402,9 @@ export async function generateCommand(
                   const mockPath = mockFileName ? `${sm.name}.mock.yaml` : currentConfigMockFileName
 
                   result = await generateTestWithAI(
-                    currentStateMachine, // Pass StateMachine directly (already has State instances)
+                    currentStateMachine,
                     options.aiModel,
-                    options.timeout ? Number.parseInt(options.timeout, 10) : 300000,
+                    parseTimeout(options.timeout),
                     mockContent,
                     mockPath,
                     aslPath,
@@ -286,23 +420,7 @@ export async function generateCommand(
             safeWriteFileSync(currentDefaultOutputPath, result)
 
             if (type === 'mock' && currentStateMachine) {
-              try {
-                const dataFiles = generateTestDataFiles(currentStateMachine, result)
-                if (dataFiles.length > 0 && options.verbose) {
-                  console.log(
-                    chalk.cyan(
-                      `\n📦 Generated ${dataFiles.length} test data file(s) for ItemReader:`,
-                    ),
-                  )
-                  dataFiles.forEach((file) => {
-                    console.log(chalk.green(`  ✓ ${file.path} (${file.format})`))
-                  })
-                }
-              } catch (error) {
-                if (mode === 'sequential') {
-                  console.warn(chalk.yellow('⚠️ Could not generate test data files:', error))
-                }
-              }
+              generateAndLogTestData(currentStateMachine, result, options.verbose)
             }
 
             return {
@@ -379,15 +497,15 @@ export async function generateCommand(
     switch (type) {
       case 'mock': {
         spinner.text = 'Generating mock configuration with AI...'
-        const maxAttempts = options.maxAttempts ? Number.parseInt(options.maxAttempts, 10) : 2
+        const maxAttempts = parseMaxAttempts(options.maxAttempts)
         if (maxAttempts > 1) {
           spinner.text = `Generating mock with up to ${maxAttempts} attempts...`
         }
         stateMachineInstance = StateFactory.createStateMachine(ensureStateMachineData(stateMachine))
         result = await generateMockWithAI(
-          stateMachineInstance, // Pass StateMachine directly
+          stateMachineInstance,
           options.aiModel,
-          options.timeout ? Number.parseInt(options.timeout, 10) : 300000,
+          parseTimeout(options.timeout),
           maxAttempts,
         )
         break
@@ -400,14 +518,14 @@ export async function generateCommand(
 
         // --mockオプションが明示的に指定された場合
         if (options.mock) {
-          try {
-            mockContent = readFileSync(options.mock, 'utf-8')
-            const rawConfig = yaml.load(mockContent)
-            mockConfig = mockConfigSchema.parse(rawConfig)
+          const loaded = loadMockConfig(options.mock)
+          if (loaded) {
+            mockContent = loaded.content
+            mockConfig = loaded.config
             // Keep the full path for correct relative path calculation
-            mockFileName = options.mock
+            mockFileName = loaded.filePath
             spinner.text = 'Generating test cases with AI using provided mock...'
-          } catch (_err) {
+          } else {
             console.warn(
               chalk.yellow(
                 `Warning: Could not read mock file ${options.mock}, generating without it`,
@@ -423,17 +541,15 @@ export async function generateCommand(
           if (config) {
             const autoMockPath = resolveMockPath(config, options.name)
             if (existsSync(autoMockPath)) {
-              try {
-                mockContent = readFileSync(autoMockPath, 'utf-8')
-                const rawConfig = yaml.load(mockContent)
-                mockConfig = mockConfigSchema.parse(rawConfig)
-                mockFileName = autoMockPath
+              const loaded = loadMockConfig(autoMockPath)
+              if (loaded) {
+                mockContent = loaded.content
+                mockConfig = loaded.config
+                mockFileName = loaded.filePath
                 spinner.text = `Generating test cases with AI using auto-detected mock: ${autoMockPath}...`
                 if (options.verbose) {
                   console.log(chalk.gray(`  Auto-detected mock file: ${autoMockPath}`))
                 }
-              } catch (_err) {
-                // エラーの場合は静かに無視（モックなしで続行）
               }
             }
           }
@@ -459,17 +575,15 @@ export async function generateCommand(
         if (mockConfig) {
           // Use TestGenerationPipeline for execution-based validation and correction
           spinner.text = 'Generating and validating test cases with execution-based correction...'
-          const generator = createTestGeneratorAdapter(
-            options.aiModel,
-            options.timeout ? Number.parseInt(options.timeout, 10) : 300000,
-          )
+          const timeout = parseTimeout(options.timeout)
+          const generator = createTestGeneratorAdapter(options.aiModel, timeout)
           const pipeline = new TestGenerationPipeline(generator)
           const pipelineResult = await pipeline.generateTest({
             stateMachine: stateMachineInstance,
-            maxAttempts: options.maxAttempts ? Number.parseInt(options.maxAttempts, 10) : 2,
+            maxAttempts: parseMaxAttempts(options.maxAttempts),
             mockFile: mockPath,
             aslFile: aslPath,
-            timeout: options.timeout ? Number.parseInt(options.timeout, 10) : undefined,
+            timeout: options.timeout ? timeout : undefined,
             enableExecutionValidation: true,
             mockConfig,
             verbose: options.verbose,
@@ -506,9 +620,9 @@ export async function generateCommand(
         } else {
           // Fallback to static generation without execution validation
           result = await generateTestWithAI(
-            stateMachineInstance, // Pass StateMachine directly
+            stateMachineInstance,
             options.aiModel,
-            options.timeout ? Number.parseInt(options.timeout, 10) : 300000,
+            parseTimeout(options.timeout),
             mockContent,
             mockPath,
             aslPath,
@@ -532,20 +646,7 @@ export async function generateCommand(
     safeWriteFileSync(outputPath, result)
 
     if (type === 'mock' && stateMachineInstance) {
-      try {
-        // stateMachineInstance is a StateMachine with State instances
-        const dataFiles = generateTestDataFiles(stateMachineInstance, result)
-        if (dataFiles.length > 0 && options.verbose) {
-          console.log(
-            chalk.cyan(`\n📦 Generated ${dataFiles.length} test data file(s) for ItemReader:`),
-          )
-          dataFiles.forEach((file) => {
-            console.log(chalk.green(`  ✓ ${file.path} (${file.format})`))
-          })
-        }
-      } catch (error) {
-        console.warn(chalk.yellow('⚠️ Could not generate test data files:', error))
-      }
+      generateAndLogTestData(stateMachineInstance, result, options.verbose)
     }
 
     spinner.succeed(chalk.green(`Generated ${type} file: ${outputPath}`))
@@ -578,91 +679,7 @@ export async function generateCommand(
       // サンプルファイルを生成
       const outputPath =
         options.output || (type === 'mock' ? DEFAULT_MOCK_FILENAME : DEFAULT_TEST_FILENAME)
-      let sampleContent: string
-
-      if (type === 'mock') {
-        sampleContent = `version: "1.0"
-description: "Manual mock configuration template"
-mocks:
-  # Lambda task mock (with Payload wrapping)
-  - state: "YourTaskStateName"
-    type: "fixed"
-    response:
-      ExecutedVersion: "$LATEST"
-      Payload:
-        # Your Lambda function response here
-        result: "success"
-        data: "example"
-      StatusCode: 200
-  
-  # Simple task mock (without Lambda)
-  - state: "SimpleTask"
-    type: "fixed"
-    response:
-      result: "processed"
-  
-  # Conditional mock
-  - state: "ConditionalTask"
-    type: "conditional"
-    conditions:
-      - when:
-          input:
-            amount: { "$gt": 100 }
-        response:
-          approved: true
-      - default:
-          approved: false
-  
-  # Error simulation
-  - state: "ErrorTask"
-    type: "error"
-    error:
-      type: "States.TaskFailed"
-      cause: "Simulated error"`
-      } else {
-        sampleContent = `version: "1.0"
-name: "Manual test suite template"
-stateMachine: "./your-state-machine.asl.json"
-baseMock: "./sfn-test.mock.yaml"
-
-testCases:
-  - name: "Success case"
-    input:
-      # Your test input
-      userId: "test-user"
-      amount: 100
-    expectedOutput:
-      # Expected final output
-      status: "success"
-    expectedPath:
-      # Expected execution path
-      - "FirstState"
-      - "SecondState"
-      - "FinalState"
-  
-  - name: "Error case"
-    input:
-      userId: "test-user"
-      amount: -1
-    mockOverrides:
-      - state: "ValidationState"
-        type: "error"
-        error:
-          type: "ValidationError"
-          cause: "Invalid amount"
-    expectedPath:
-      - "FirstState"
-      - "ValidationState"
-      - "ErrorHandler"
-
-settings:
-  timeout: 10000
-  verbose: false
-
-assertions:
-  outputMatching: "partial"
-  pathMatching: "exact"`
-      }
+      const sampleContent = generateFallbackTemplate(type)
 
       safeWriteFileSync(outputPath, sampleContent)
       console.log(chalk.green(`\n✅ Template file created: ${outputPath}`))

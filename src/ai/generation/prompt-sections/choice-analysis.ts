@@ -114,7 +114,7 @@ Consider using stateful mocks to break these loops after a reasonable number of 
   return guidelines
 }
 
-export function getDefaultChoiceMockGuidelines(): string {
+function getDefaultChoiceMockGuidelines(): string {
   return `## Choice State Mock Guidelines
 
 ⚠️ IMPORTANT: Only mock Choice states for these specific cases:
@@ -154,7 +154,7 @@ Example for non-deterministic conditions:
 \`\`\``
 }
 
-export function buildStateGraph(states: Record<string, State>): Map<string, string[]> {
+function buildStateGraph(states: Record<string, State>): Map<string, string[]> {
   const graph = new Map<string, string[]>()
 
   for (const [stateName, state] of Object.entries(states || {})) {
@@ -179,7 +179,7 @@ export function buildStateGraph(states: Record<string, State>): Map<string, stri
   return graph
 }
 
-export function checkChoiceForVariablePatterns(
+function checkChoiceForVariablePatterns(
   choices: ChoiceRule[],
   jsonPathPatterns: string[],
   jsonataPatterns: string[],
@@ -199,7 +199,7 @@ export function checkChoiceForVariablePatterns(
   return false
 }
 
-export function checkJSONPathChoiceForPatterns(choice: ChoiceRule, patterns: string[]): boolean {
+function checkJSONPathChoiceForPatterns(choice: ChoiceRule, patterns: string[]): boolean {
   if (!choice.isJSONPath()) {
     return false
   }
@@ -223,7 +223,7 @@ export function checkJSONPathChoiceForPatterns(choice: ChoiceRule, patterns: str
   return false
 }
 
-export function getChoiceNextStates(choiceState: ChoiceState): string[] {
+function getChoiceNextStates(choiceState: ChoiceState): string[] {
   const nextStates: string[] = []
   const choices = choiceState.Choices || []
   for (const choice of choices) {
@@ -234,7 +234,7 @@ export function getChoiceNextStates(choiceState: ChoiceState): string[] {
   return nextStates
 }
 
-export function canReachState(
+function canReachState(
   graph: Map<string, string[]>,
   from: string,
   target: string,

@@ -25,7 +25,7 @@ export const executionContextSchema = z
 /**
  * State machine configuration schema
  */
-export const stateMachineConfigSchema = z.object({
+const stateMachineConfigSchema = z.object({
   name: z.string().describe('State machine identifier'),
   source: z.object({
     type: z.enum(['cdk', 'asl']).describe('Source type: CDK template or ASL JSON'),

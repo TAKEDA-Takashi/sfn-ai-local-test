@@ -30,7 +30,7 @@ export function getDistributedMapSpecializedPrompt(promptsDir: string): string {
   }
 }
 
-export function getDefaultParallelPrompt(): string {
+function getDefaultParallelPrompt(): string {
   return `## Parallel State Guidance
 
 ### ⚠️ CRITICAL: Parallel State Mock Pattern ⚠️
@@ -71,7 +71,7 @@ export function getDefaultParallelPrompt(): string {
 - Each branch runs independently with its own mocks`
 }
 
-export function getDefaultMapPrompt(): string {
+function getDefaultMapPrompt(): string {
   return `## Map State Guidance
 - Can mock entire Map state or individual nested states inside Map
 - For nested states: use ONLY the state name (e.g., "ProcessItem" NOT "MapState.ItemProcessor.ProcessItem")
@@ -79,7 +79,7 @@ export function getDefaultMapPrompt(): string {
 - Consider using conditional mocks for item-specific logic`
 }
 
-export function getDefaultDistributedMapPrompt(): string {
+function getDefaultDistributedMapPrompt(): string {
   return `## Distributed Map Guidance
 
 ### ⚠️⚠️⚠️ CRITICAL: DistributedMap REQUIRES TWO MOCKS ⚠️⚠️⚠️

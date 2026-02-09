@@ -2,7 +2,7 @@
  * Custom error types for test execution validation
  */
 
-export class ValidationError extends Error {
+class ValidationError extends Error {
   constructor(
     message: string,
     public readonly stateName?: string,

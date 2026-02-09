@@ -31,7 +31,7 @@ export type JsonArray = JsonValue[]
 // =============================================================================
 
 /** リトライルール定義 */
-export interface RetryRule {
+interface RetryRule {
   ErrorEquals: string[]
   IntervalSeconds?: number
   MaxAttempts?: number
@@ -41,21 +41,18 @@ export interface RetryRule {
 }
 
 /** JSONPath用Catchルール */
-export interface JSONPathCatchRule {
+interface JSONPathCatchRule {
   ErrorEquals: string[]
   Next?: string
   ResultPath?: string
 }
 
 /** JSONata用Catchルール */
-export interface JSONataCatchRule {
+interface JSONataCatchRule {
   ErrorEquals: string[]
   Next?: string
   Output?: JsonValue
 }
-
-/** Catchルール統合型 */
-export type CatchRule = JSONPathCatchRule | JSONataCatchRule
 
 // =============================================================================
 // Query Language
@@ -180,7 +177,7 @@ export interface ReaderConfig {
 }
 
 /** JSONPath用ItemReader */
-export interface JSONPathItemReader {
+interface JSONPathItemReader {
   Resource: string
   ReaderConfig?: ReaderConfig & {
     MaxItemsPath?: string
@@ -189,7 +186,7 @@ export interface JSONPathItemReader {
 }
 
 /** JSONata用ItemReader */
-export interface JSONataItemReader {
+interface JSONataItemReader {
   Resource: string
   ReaderConfig?: ReaderConfig
   Arguments?: string | JsonObject
@@ -208,12 +205,12 @@ interface ResultWriterBase {
 }
 
 /** JSONPath用ResultWriter */
-export interface JSONPathResultWriter extends ResultWriterBase {
+interface JSONPathResultWriter extends ResultWriterBase {
   Parameters?: JsonObject
 }
 
 /** JSONata用ResultWriter */
-export interface JSONataResultWriter extends ResultWriterBase {
+interface JSONataResultWriter extends ResultWriterBase {
   Arguments?: string | JsonObject
 }
 
@@ -294,12 +291,12 @@ interface StateMachineBase {
 }
 
 /** JSONPathモードステートマシン */
-export interface JSONPathStateMachine extends StateMachineBase {
+interface JSONPathStateMachine extends StateMachineBase {
   QueryLanguage?: 'JSONPath' | undefined
 }
 
 /** JSONataモードステートマシン */
-export interface JSONataStateMachine extends StateMachineBase {
+interface JSONataStateMachine extends StateMachineBase {
   QueryLanguage: 'JSONata'
 }
 

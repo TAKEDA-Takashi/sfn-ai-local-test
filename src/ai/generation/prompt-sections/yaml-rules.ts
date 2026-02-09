@@ -25,7 +25,7 @@ export function getTestYamlOutputRules(promptsDir: string): string {
   }
 }
 
-export function getDefaultMockYamlOutputRules(): string {
+function getDefaultMockYamlOutputRules(): string {
   return `# OUTPUT FORMAT RULES
 
 ⚠️⚠️⚠️ CRITICAL: OUTPUT MUST BE PURE YAML - NO EXPLANATIONS ⚠️⚠️⚠️

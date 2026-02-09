@@ -27,6 +27,11 @@ import {
   getDataFlowGuidance,
   getOutputTransformationGuidance,
 } from './prompt-sections/data-flow-guidance'
+import {
+  extractCatchInfo,
+  getErrorHandlingMockRules,
+  getErrorHandlingTestRules,
+} from './prompt-sections/error-handling-rules'
 import { getLambdaIntegrationRules } from './prompt-sections/lambda-rules'
 import {
   getDistributedMapSpecializedPrompt,
@@ -103,6 +108,11 @@ export class PromptBuilder {
     if (hasProblematicChoicePatterns(stateMachine)) {
       const analysis = detectChoiceLoops(stateMachine)
       systemSections.push(getChoiceMockGuidelines(this.promptsDir, analysis))
+    }
+
+    const catchInfos = extractCatchInfo(stateMachine.States || {})
+    if (catchInfos.length > 0) {
+      systemSections.push(getErrorHandlingMockRules(catchInfos))
     }
 
     systemSections.push(getExecutionContextInfo())
@@ -222,6 +232,11 @@ export class PromptBuilder {
 
     if (findStates(stateMachine, StateFilters.hasVariables).length > 0) {
       systemSections.push(getVariablesTestGuidance())
+    }
+
+    const catchInfos = extractCatchInfo(stateMachine.States || {})
+    if (catchInfos.length > 0) {
+      systemSections.push(getErrorHandlingTestRules(catchInfos))
     }
 
     // User: State machine data and task request

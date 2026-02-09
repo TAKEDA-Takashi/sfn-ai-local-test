@@ -41,6 +41,11 @@ import {
 import { getVariablesRules, getVariablesTestGuidance } from './prompt-sections/variables-rules'
 import { getMockYamlOutputRules, getTestYamlOutputRules } from './prompt-sections/yaml-rules'
 
+export interface StructuredPrompt {
+  system: string
+  user: string
+}
+
 export class PromptBuilder {
   private analyzer: StateHierarchyAnalyzer
   private dataFlowAnalyzer?: DataFlowAnalyzer
@@ -51,21 +56,25 @@ export class PromptBuilder {
   }
 
   /**
-   * Build mock generation prompt with hierarchy understanding
+   * Build mock generation prompt as a single string (for Claude CLI path)
    */
   buildMockPrompt(stateMachine: StateMachine): string {
-    const sections: string[] = []
+    const { system, user } = this.buildStructuredMockPrompt(stateMachine)
+    return `${system}\n\n${user}`
+  }
+
+  /**
+   * Build structured mock prompt with system/user separation (for Direct API path)
+   */
+  buildStructuredMockPrompt(stateMachine: StateMachine): StructuredPrompt {
+    const systemSections: string[] = []
+    const userSections: string[] = []
     const hierarchy = this.analyzer.analyzeHierarchy(stateMachine)
 
-    sections.push(getMockYamlOutputRules(this.promptsDir))
-    sections.push(MOCK_TYPE_DEFINITIONS)
-    sections.push(this.getAvailableStatesSection(stateMachine))
-    sections.push(getCriticalRules())
-
-    const structureExplanation = this.analyzer.generateStructureExplanation(hierarchy)
-    if (structureExplanation) {
-      sections.push(structureExplanation)
-    }
+    // System: Rules, type definitions, guidelines
+    systemSections.push(getMockYamlOutputRules(this.promptsDir))
+    systemSections.push(MOCK_TYPE_DEFINITIONS)
+    systemSections.push(getCriticalRules())
 
     const hasParallel = Object.values(hierarchy.nestedStructures).some((s) => s.type === 'Parallel')
     const hasMap = Object.values(hierarchy.nestedStructures).some((s) => s.type === 'Map')
@@ -74,13 +83,47 @@ export class PromptBuilder {
     )
 
     if (hasParallel) {
-      sections.push(getParallelSpecializedPrompt(this.promptsDir))
+      systemSections.push(getParallelSpecializedPrompt(this.promptsDir))
     }
     if (hasMap && !hasDistributedMap) {
-      sections.push(getMapSpecializedPrompt(this.promptsDir))
+      systemSections.push(getMapSpecializedPrompt(this.promptsDir))
     }
     if (hasDistributedMap) {
-      sections.push(getDistributedMapSpecializedPrompt(this.promptsDir))
+      systemSections.push(getDistributedMapSpecializedPrompt(this.promptsDir))
+    }
+
+    if (findStates(stateMachine, StateFilters.isLambdaTask).length > 0) {
+      systemSections.push(getLambdaIntegrationRules())
+    }
+
+    if (findStates(stateMachine, StateFilters.hasVariables).length > 0) {
+      systemSections.push(getVariablesRules())
+    }
+
+    if (hasProblematicChoicePatterns(stateMachine)) {
+      const analysis = detectChoiceLoops(stateMachine)
+      systemSections.push(getChoiceMockGuidelines(this.promptsDir, analysis))
+    }
+
+    systemSections.push(getExecutionContextInfo())
+
+    this.dataFlowAnalyzer = new DataFlowAnalyzer(stateMachine)
+    const dataFlowAnalysis = this.dataFlowAnalyzer?.analyzeDataFlowConsistency() || {
+      consistency: {
+        isConsistent: true,
+        breaks: [],
+        warnings: [],
+      },
+      recommendations: [],
+    }
+    systemSections.push(getDataFlowGuidance(dataFlowAnalysis))
+
+    // User: State machine data and task request
+    userSections.push(this.getAvailableStatesSection(stateMachine))
+
+    const structureExplanation = this.analyzer.generateStructureExplanation(hierarchy)
+    if (structureExplanation) {
+      userSections.push(structureExplanation)
     }
 
     // ItemReaderがある場合は必須モックとして明示
@@ -101,81 +144,64 @@ export class PromptBuilder {
           (item): item is { name: string; itemReader: ItemReader; hasResultWriter: boolean } =>
             item !== null && item.itemReader !== undefined,
         )
-      sections.push(getItemReaderMandatorySection(itemReaderStates))
+      userSections.push(getItemReaderMandatorySection(itemReaderStates))
     }
 
     const mockableStates = this.analyzer.getMockableStates(hierarchy)
-    sections.push(getMockableStatesGuidance(mockableStates))
+    userSections.push(getMockableStatesGuidance(mockableStates))
 
-    if (findStates(stateMachine, StateFilters.isLambdaTask).length > 0) {
-      sections.push(getLambdaIntegrationRules())
-    }
+    userSections.push('## State Machine Definition')
+    userSections.push('```json')
+    userSections.push(JSON.stringify(stateMachine, null, 2))
+    userSections.push('```')
 
-    if (findStates(stateMachine, StateFilters.hasVariables).length > 0) {
-      sections.push(getVariablesRules())
-    }
-
-    if (hasProblematicChoicePatterns(stateMachine)) {
-      const analysis = detectChoiceLoops(stateMachine)
-      sections.push(getChoiceMockGuidelines(this.promptsDir, analysis))
-    }
-
-    sections.push(getExecutionContextInfo())
-
-    this.dataFlowAnalyzer = new DataFlowAnalyzer(stateMachine)
-    const dataFlowAnalysis = this.dataFlowAnalyzer?.analyzeDataFlowConsistency() || {
-      consistency: {
-        isConsistent: true,
-        breaks: [],
-        warnings: [],
-      },
-      recommendations: [],
-    }
-    sections.push(getDataFlowGuidance(dataFlowAnalysis))
-
-    sections.push('## State Machine Definition')
-    sections.push('```json')
-    sections.push(JSON.stringify(stateMachine, null, 2))
-    sections.push('```')
-
-    sections.push('## FINAL REMINDER')
-    sections.push(
+    userSections.push('Generate a mock configuration YAML for the above state machine.')
+    userSections.push(
       '**OUTPUT ONLY THE YAML CONTENT. NO EXPLANATIONS, NO MARKDOWN, NO COMMENTS OUTSIDE YAML.**',
     )
-    sections.push('**START DIRECTLY WITH: version: "1.0"**')
+    userSections.push('**START DIRECTLY WITH: version: "1.0"**')
 
-    if (findStates(stateMachine, StateFilters.hasItemReader).length > 0) {
-      sections.push('')
-      sections.push(
+    if (itemReaderAllStates.length > 0) {
+      userSections.push('')
+      userSections.push(
         '**⚠️ REMEMBER: Include all ItemReader mocks with dataFile references in the YAML ⚠️**',
       )
-      sections.push('**Data files will be generated separately based on your YAML configuration.**')
+      userSections.push(
+        '**Data files will be generated separately based on your YAML configuration.**',
+      )
     }
 
-    return sections.join('\n\n')
+    return {
+      system: systemSections.join('\n\n'),
+      user: userSections.join('\n\n'),
+    }
   }
 
   /**
-   * Build test generation prompt
+   * Build test generation prompt as a single string (for Claude CLI path)
    */
   buildTestPrompt(stateMachine: StateMachine, mockContent?: string): string {
-    const sections: string[] = []
+    const { system, user } = this.buildStructuredTestPrompt(stateMachine, mockContent)
+    return `${system}\n\n${user}`
+  }
+
+  /**
+   * Build structured test prompt with system/user separation (for Direct API path)
+   */
+  buildStructuredTestPrompt(stateMachine: StateMachine, mockContent?: string): StructuredPrompt {
+    const systemSections: string[] = []
+    const userSections: string[] = []
     const hierarchy = this.analyzer.analyzeHierarchy(stateMachine)
 
-    sections.push(getTestYamlOutputRules(this.promptsDir))
-    sections.push(TEST_TYPE_DEFINITIONS)
-    sections.push(this.getAvailableStatesSection(stateMachine))
-    sections.push(getTestCriticalRules())
+    // System: Rules, type definitions, guidelines
+    systemSections.push(getTestYamlOutputRules(this.promptsDir))
+    systemSections.push(TEST_TYPE_DEFINITIONS)
+    systemSections.push(getTestCriticalRules())
 
     const hasOutputTransformation = detectOutputTransformation(stateMachine)
     if (hasOutputTransformation) {
       const transformationDetails = getOutputTransformationDetails(stateMachine)
-      sections.push(getOutputTransformationGuidance(transformationDetails))
-    }
-
-    const structureExplanation = this.analyzer.generateStructureExplanation(hierarchy)
-    if (structureExplanation) {
-      sections.push(structureExplanation)
+      systemSections.push(getOutputTransformationGuidance(transformationDetails))
     }
 
     const hasParallel = Object.values(hierarchy.nestedStructures).some((s) => s.type === 'Parallel')
@@ -185,38 +211,49 @@ export class PromptBuilder {
     )
 
     if (hasParallel) {
-      sections.push(getParallelTestGuidance())
+      systemSections.push(getParallelTestGuidance())
     }
     if (hasMap) {
-      sections.push(getMapTestGuidance())
+      systemSections.push(getMapTestGuidance())
     }
     if (hasDistributedMap) {
-      sections.push(getDistributedMapTestGuidance())
+      systemSections.push(getDistributedMapTestGuidance())
     }
 
     if (findStates(stateMachine, StateFilters.hasVariables).length > 0) {
-      sections.push(getVariablesTestGuidance())
+      systemSections.push(getVariablesTestGuidance())
     }
 
-    sections.push('## State Machine Definition')
-    sections.push('```json')
-    sections.push(JSON.stringify(stateMachine, null, 2))
-    sections.push('```')
+    // User: State machine data and task request
+    userSections.push(this.getAvailableStatesSection(stateMachine))
+
+    const structureExplanation = this.analyzer.generateStructureExplanation(hierarchy)
+    if (structureExplanation) {
+      userSections.push(structureExplanation)
+    }
+
+    userSections.push('## State Machine Definition')
+    userSections.push('```json')
+    userSections.push(JSON.stringify(stateMachine, null, 2))
+    userSections.push('```')
 
     if (mockContent) {
-      sections.push('## Mock Configuration')
-      sections.push('```yaml')
-      sections.push(mockContent)
-      sections.push('```')
+      userSections.push('## Mock Configuration')
+      userSections.push('```yaml')
+      userSections.push(mockContent)
+      userSections.push('```')
     }
 
-    sections.push('## FINAL REMINDER')
-    sections.push(
+    userSections.push('Generate a test suite YAML for the above state machine.')
+    userSections.push(
       '**OUTPUT ONLY THE YAML CONTENT. NO EXPLANATIONS, NO MARKDOWN, NO COMMENTS OUTSIDE YAML.**',
     )
-    sections.push('**START DIRECTLY WITH: version: "1.0"**')
+    userSections.push('**START DIRECTLY WITH: version: "1.0"**')
 
-    return sections.join('\n\n')
+    return {
+      system: systemSections.join('\n\n'),
+      user: userSections.join('\n\n'),
+    }
   }
 
   private getAvailableStatesSection(stateMachine: StateMachine): string {

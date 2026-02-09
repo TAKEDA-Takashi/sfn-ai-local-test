@@ -12,6 +12,9 @@ export const DEFAULT_MOCKS_DIR = './sfn-test/mocks'
 export const DEFAULT_TEST_SUITES_DIR = './sfn-test/test-suites'
 export const DEFAULT_TEST_DATA_DIR = './sfn-test/test-data'
 
+export const DEFAULT_AI_MODEL = 'claude-sonnet-4-5-20250929'
+export const DEFAULT_AI_MAX_TOKENS = 16_384
+
 export const DEFAULT_AI_TIMEOUT_MS = 180000
 
 export const DEFAULT_TEST_TIMEOUT_MS = 30_000

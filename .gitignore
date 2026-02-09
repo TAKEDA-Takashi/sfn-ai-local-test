@@ -51,6 +51,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Package manager
+package-lock.json
 .npm
 .yarn/cache
 .yarn/unplugged

@@ -88,7 +88,7 @@ describe('StateFactory.createStateMachine', () => {
     if (mapState && isMap(mapState)) {
       expect(mapState.ItemProcessor).toBeDefined()
       expect(mapState.ItemProcessor?.States.ProcessItem).toBeDefined()
-      expect(isTask(mapState.ItemProcessor?.States.ProcessItem!)).toBe(true)
+      expect(isTask(mapState.ItemProcessor!.States.ProcessItem!)).toBe(true)
     }
   })
 

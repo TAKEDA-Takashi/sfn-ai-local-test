@@ -6,10 +6,10 @@ This guide explains the basic workflow from installing sfn-ai-local-test to runn
 
 ```bash
 # Global installation (recommended)
-npm install -g sfn-ai-local-test
+pnpm add -g sfn-ai-local-test
 
 # Or, install locally to project
-npm install --save-dev sfn-ai-local-test
+pnpm add -D sfn-ai-local-test
 ```
 
 ## Environment Setup

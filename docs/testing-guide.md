@@ -733,11 +733,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
-      - uses: actions/setup-node@v3
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          
-      - run: npm ci
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
       
       - name: Synthesize CDK
         run: npx cdk synth

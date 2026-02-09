@@ -156,12 +156,7 @@ export const StateFilters = {
 
   /** Filter for Lambda tasks */
   isLambdaTask: (_name: string, state: State, _context: TraversalContext) => {
-    return (
-      isTask(state) &&
-      'Resource' in state &&
-      typeof state.Resource === 'string' &&
-      state.Resource.includes('lambda:invoke')
-    )
+    return isTask(state) && state.Resource.includes('lambda:invoke')
   },
 
   /** Filter for states with Variables/Assign */

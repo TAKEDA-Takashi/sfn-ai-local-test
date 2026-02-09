@@ -7,13 +7,20 @@
 
 import type {
   ChoiceState,
+  FailState,
   ItemProcessor,
   JsonObject,
   JsonValue,
   MapState,
+  ParallelState,
+  PassState,
   QueryLanguage,
   State,
   StateMachine,
+  StateType,
+  SucceedState,
+  TaskState,
+  WaitState,
 } from './asl.js'
 import { JSONataChoiceRule, JSONPathChoiceRule } from './choice-rule.js'
 import { isJsonArray, isJsonObject, isString } from './type-guards.js'
@@ -293,7 +300,7 @@ function stripAndSpreadQueryLanguage(config: JsonObject, queryLanguage: QueryLan
   return queryLanguage === 'JSONata' ? { ...rest, QueryLanguage: 'JSONata' } : rest
 }
 
-function buildTaskState(config: JsonObject, queryLanguage: QueryLanguage): State {
+function buildTaskState(config: JsonObject, queryLanguage: QueryLanguage): TaskState {
   if (typeof config.Resource !== 'string') {
     throw new Error('Task state requires Resource field')
   }
@@ -311,14 +318,14 @@ function buildTaskState(config: JsonObject, queryLanguage: QueryLanguage): State
     ...stripAndSpreadQueryLanguage(config, queryLanguage),
     Type: 'Task' as const,
     Resource: config.Resource,
-  } as State
+  } as TaskState
 }
 
-function buildPassState(config: JsonObject, queryLanguage: QueryLanguage): State {
+function buildPassState(config: JsonObject, queryLanguage: QueryLanguage): PassState {
   return {
     ...stripAndSpreadQueryLanguage(config, queryLanguage),
     Type: 'Pass' as const,
-  } as State
+  } as PassState
 }
 
 function buildChoiceState(config: JsonObject, queryLanguage: QueryLanguage): State {
@@ -339,7 +346,7 @@ function buildChoiceState(config: JsonObject, queryLanguage: QueryLanguage): Sta
   } as ChoiceState
 }
 
-function buildWaitState(config: JsonObject, queryLanguage: QueryLanguage): State {
+function buildWaitState(config: JsonObject, queryLanguage: QueryLanguage): WaitState {
   if (queryLanguage === 'JSONata') {
     const waitConfigs = [config.Seconds, config.Timestamp].filter(Boolean)
     if (waitConfigs.length > 1) {
@@ -360,17 +367,17 @@ function buildWaitState(config: JsonObject, queryLanguage: QueryLanguage): State
   return {
     ...stripAndSpreadQueryLanguage(config, queryLanguage),
     Type: 'Wait' as const,
-  } as State
+  } as WaitState
 }
 
-function buildSucceedState(config: JsonObject, queryLanguage: QueryLanguage): State {
+function buildSucceedState(config: JsonObject, queryLanguage: QueryLanguage): SucceedState {
   return {
     ...stripAndSpreadQueryLanguage(config, queryLanguage),
     Type: 'Succeed' as const,
-  } as State
+  } as SucceedState
 }
 
-function buildFailState(config: JsonObject, queryLanguage: QueryLanguage): State {
+function buildFailState(config: JsonObject, queryLanguage: QueryLanguage): FailState {
   if (config.Cause && config.CausePath) {
     throw new Error('Fail state cannot have both Cause and CausePath fields')
   }
@@ -381,10 +388,10 @@ function buildFailState(config: JsonObject, queryLanguage: QueryLanguage): State
   return {
     ...stripAndSpreadQueryLanguage(config, queryLanguage),
     Type: 'Fail' as const,
-  } as State
+  } as FailState
 }
 
-function buildMapState(config: JsonObject, queryLanguage: QueryLanguage): State {
+function buildMapState(config: JsonObject, queryLanguage: QueryLanguage): MapState {
   const processorMode = detectProcessorMode(config)
   const { ItemProcessor: _, Iterator: __, ...configWithoutProcessor } = config
   const itemProcessor = createItemProcessor(config, queryLanguage)
@@ -397,7 +404,7 @@ function buildMapState(config: JsonObject, queryLanguage: QueryLanguage): State 
   } as MapState
 }
 
-function buildParallelState(config: JsonObject, queryLanguage: QueryLanguage): State {
+function buildParallelState(config: JsonObject, queryLanguage: QueryLanguage): ParallelState {
   const branches = createBranches(config, queryLanguage)
   const { Branches: _, ...configWithoutBranches } = config
 
@@ -405,10 +412,10 @@ function buildParallelState(config: JsonObject, queryLanguage: QueryLanguage): S
     ...stripAndSpreadQueryLanguage(configWithoutBranches, queryLanguage),
     Type: 'Parallel' as const,
     Branches: branches,
-  } as State
+  } as ParallelState
 }
 
-const STATE_BUILDERS: Record<string, (config: JsonObject, ql: QueryLanguage) => State> = {
+const STATE_BUILDERS: Record<StateType, (config: JsonObject, ql: QueryLanguage) => State> = {
   Task: buildTaskState,
   Pass: buildPassState,
   Choice: buildChoiceState,
@@ -442,13 +449,14 @@ export class StateFactory {
       QueryLanguage: queryLanguage,
     }
 
-    const builder = STATE_BUILDERS[aslState.Type]
+    const stateType = aslState.Type as StateType
+    const builder = STATE_BUILDERS[stateType]
     if (!builder) {
       throw new Error(`Unknown state type: ${aslState.Type}`)
     }
 
-    const unsupported = getUnsupportedFieldSet(aslState.Type, queryLanguage)
-    validateUnsupportedFields(config, aslState.Type, queryLanguage, unsupported)
+    const unsupported = getUnsupportedFieldSet(stateType, queryLanguage)
+    validateUnsupportedFields(config, stateType, queryLanguage, unsupported)
 
     return builder(config, queryLanguage)
   }

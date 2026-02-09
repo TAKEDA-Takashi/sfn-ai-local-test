@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { JsonObject, MapState } from './asl'
 import { StateFactory } from './state-factory'
-import { isMap, isTask } from './state-guards'
+import { isDistributedMap, isInlineMap, isMap, isTask } from './state-guards'
 
 describe('StateFactory.createStateMachine', () => {
   it('should create a StateMachine with all states converted', () => {
@@ -564,6 +564,224 @@ describe('StateFactory Field Validation', () => {
           End: true,
         }),
       ).toThrow('ItemsPath field is not supported in JSONata mode. Use Items field instead')
+    })
+  })
+})
+
+describe('StateFactory Validation Boundary Tests', () => {
+  describe('JSONPath mode rejects JSONata-only fields', () => {
+    it('should throw error when Task state has Arguments in JSONPath mode', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Task',
+          Resource: 'arn:aws:lambda:test',
+          Arguments: { key: 'value' },
+          End: true,
+        }),
+      ).toThrow('Task state does not support the following field: Arguments')
+    })
+
+    it('should throw error when Pass state has Output in JSONPath mode', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Pass',
+          Output: { key: 'value' },
+          End: true,
+        }),
+      ).toThrow('Pass state does not support the following field: Output')
+    })
+
+    it('should throw error when Wait state has Arguments in JSONPath mode', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Wait',
+          Seconds: 10,
+          Arguments: { key: 'value' },
+          End: true,
+        }),
+      ).toThrow('Wait state does not support the following field: Arguments')
+    })
+  })
+
+  describe('JSONata mode rejects JSONPath-only fields', () => {
+    it('should throw error when JSONata Pass state has Parameters', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Pass',
+          QueryLanguage: 'JSONata',
+          Parameters: { key: 'value' },
+          End: true,
+        }),
+      ).toThrow('Parameters field is not supported in JSONata mode. Use Arguments field instead')
+    })
+
+    it('should throw error when JSONata Wait state has SecondsPath', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Wait',
+          QueryLanguage: 'JSONata',
+          SecondsPath: '$.delay',
+          End: true,
+        }),
+      ).toThrow('SecondsPath field is not supported in JSONata mode. Use Seconds field instead')
+    })
+
+    it('should throw error when JSONata Wait state has TimestampPath', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Wait',
+          QueryLanguage: 'JSONata',
+          TimestampPath: '$.ts',
+          End: true,
+        }),
+      ).toThrow('TimestampPath field is not supported in JSONata mode. Use Timestamp field instead')
+    })
+  })
+
+  describe('Map/DistributedMap field validation', () => {
+    it('should create InlineMap state without ProcessorMode', () => {
+      const state = StateFactory.createState({
+        Type: 'Map',
+        ItemProcessor: {
+          StartAt: 'Process',
+          States: { Process: { Type: 'Pass', End: true } },
+        },
+        End: true,
+      })
+      expect(isInlineMap(state)).toBe(true)
+      expect(isDistributedMap(state)).toBe(false)
+    })
+
+    it('should create DistributedMap state with ProcessorMode DISTRIBUTED', () => {
+      const state = StateFactory.createState({
+        Type: 'Map',
+        ItemProcessor: {
+          ProcessorConfig: { Mode: 'DISTRIBUTED' },
+          StartAt: 'Process',
+          States: { Process: { Type: 'Pass', End: true } },
+        },
+        End: true,
+      })
+      expect(isDistributedMap(state)).toBe(true)
+      expect(isInlineMap(state)).toBe(false)
+    })
+
+    it('should throw error when Map state has no ItemProcessor or Iterator', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Map',
+          End: true,
+        }),
+      ).toThrow('Map state requires ItemProcessor or Iterator field')
+    })
+
+    it('should throw error when ItemProcessor has no StartAt', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Map',
+          ItemProcessor: {
+            States: { Process: { Type: 'Pass', End: true } },
+          },
+          End: true,
+        }),
+      ).toThrow('ItemProcessor/Iterator requires StartAt field')
+    })
+  })
+
+  describe('Unsupported Set composition (JSONata + specific state types)', () => {
+    it('should allow JSONata Task state with Arguments', () => {
+      const state = StateFactory.createState({
+        Type: 'Task',
+        QueryLanguage: 'JSONata',
+        Resource: 'arn:aws:states:::lambda:invoke',
+        Arguments: { FunctionName: 'test', Payload: '{% $states.input %}' },
+        End: true,
+      })
+      expect(state.Type).toBe('Task')
+      expect(state.QueryLanguage).toBe('JSONata')
+    })
+
+    it('should allow JSONata Map state with Items', () => {
+      const state = StateFactory.createState({
+        Type: 'Map',
+        QueryLanguage: 'JSONata',
+        Items: '{% $states.input.items %}',
+        ItemProcessor: {
+          StartAt: 'Process',
+          States: { Process: { Type: 'Pass', End: true } },
+        },
+        End: true,
+      })
+      expect(state.Type).toBe('Map')
+      expect(state.QueryLanguage).toBe('JSONata')
+    })
+
+    it('should allow JSONata Parallel state with Arguments and Output', () => {
+      const state = StateFactory.createState({
+        Type: 'Parallel',
+        QueryLanguage: 'JSONata',
+        Arguments: { data: '{% $states.input %}' },
+        Output: '{% $states.result %}',
+        Branches: [{ StartAt: 'B', States: { B: { Type: 'Pass', End: true } } }],
+        End: true,
+      })
+      expect(state.Type).toBe('Parallel')
+      expect(state.QueryLanguage).toBe('JSONata')
+    })
+
+    it('should reject multiple JSONPath-only fields in JSONata mode', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Task',
+          QueryLanguage: 'JSONata',
+          Resource: 'arn:aws:states:::lambda:invoke',
+          Arguments: { FunctionName: 'test' },
+          InputPath: '$.data',
+          OutputPath: '$.result',
+          End: true,
+        }),
+      ).toThrow('does not support the following fields: InputPath, OutputPath')
+    })
+  })
+
+  describe('Terminal state field restrictions', () => {
+    it('should throw error when Succeed state has Next field', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Succeed',
+          Next: 'SomeState',
+        }),
+      ).toThrow('Terminal state Succeed cannot have a Next field')
+    })
+
+    it('should throw error when Fail state has Next field', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Fail',
+          Error: 'E',
+          Next: 'SomeState',
+        }),
+      ).toThrow('Terminal state Fail cannot have a Next field')
+    })
+
+    it('should throw error when Fail state has both Cause and CausePath', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Fail',
+          Cause: 'cause',
+          CausePath: '$.cause',
+        }),
+      ).toThrow('Fail state cannot have both Cause and CausePath fields')
+    })
+
+    it('should throw error when Fail state has both Error and ErrorPath', () => {
+      expect(() =>
+        StateFactory.createState({
+          Type: 'Fail',
+          Error: 'error',
+          ErrorPath: '$.error',
+        }),
+      ).toThrow('Fail state cannot have both Error and ErrorPath fields')
     })
   })
 })

@@ -30,14 +30,10 @@ jobs:
           # Personal Access Tokenを使用（他のワークフローをトリガーするため）
           token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
 
       - name: Configure Git
         run: |
@@ -86,17 +82,14 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.version.outputs.changed == 'true'
-        uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.version.outputs.version }}
-          release_name: Release ${{ steps.version.outputs.version }}
-          body: |
-            ## Changes in this release
-            ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.version }}" \
+            --title "Release ${{ steps.version.outputs.version }}" \
+            --notes "## Changes in this release
 
-            ---
-            *Released by GitHub Actions*
-          draft: false
-          prerelease: false
+          ${{ github.event.pull_request.body }}
+
+          ---
+          *Released by GitHub Actions*"

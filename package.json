@@ -12,6 +12,10 @@
   ],
   "author": "TAKEDA-Takashi",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TAKEDA-Takashi/sfn-ai-local-test.git"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

@@ -17,7 +17,7 @@
 4. **PRをマージ** - マージすると自動的に：
    - Gitタグが作成される
    - GitHub Releaseが作成される
-   - pnpm publishがトリガーされる
+   - npm publishがトリガーされる（OIDC Trusted Publishing）
 
 ### 2. 手動リリース
 
@@ -42,29 +42,44 @@ git push origin main --tags
 
 ### publish.yml
 - **トリガー**: `v*`形式のタグがプッシュされた時
+- **認証**: OIDC Trusted Publishing（npm トークン不要）
 - **処理**:
   1. 依存関係のインストール
   2. テスト・型チェック・Lintの実行
   3. ビルド（バージョン情報の注入）
-  4. npmへのパブリッシュ
+  4. npmへのパブリッシュ（provenance付き）
 
 ## セットアップ
 
+### npm Trusted Publishing（OIDC）
+
+npm publishの認証にはOIDC Trusted Publishingを使用しています。長期トークン（NPM_TOKEN）は不要です。
+
+**初回セットアップ手順:**
+
+1. npmjs.comでパッケージの設定ページにアクセス:
+   `https://www.npmjs.com/package/sfn-test/access`
+2. 「Trusted Publisher」セクションでGitHub連携を設定:
+   - Repository owner: `TAKEDA-Takashi`
+   - Repository name: `sfn-ai-local-test`
+   - Workflow filename: `publish.yml`
+3. GitHub Actionsワークフローに`id-token: write`パーミッションが設定済み
+
+**仕組み:**
+- GitHub ActionsがOIDCトークンを発行し、npmに直接認証
+- 短命トークンのため、シークレットの漏洩リスクなし
+- Provenance（来歴証明）が自動的に付与される
+
 ### 必要なGitHub Secrets
 
-1. **NPM_TOKEN**
-   - npmjs.comでAccess Tokenを生成
-   - Settings → Access Tokens → Generate New Token
-   - Type: Automation（推奨）
-   - GitHubリポジトリのSettings → Secrets → Actions → New repository secret
-
-2. **RELEASE_PAT**（自動化に必要）
+1. **RELEASE_PAT**（自動化に必要）
    - GitHub Personal Access Tokenを生成
    - https://github.com/settings/tokens/new
    - 必要なスコープ: `repo`, `workflow`
    - GitHubリポジトリのSettings → Secrets → Actions → New repository secret
    - **重要**: このトークンにより、Release ProcessワークフローがタグをプッシュしたときにPublish to npmワークフローが自動的にトリガーされます
 
+> **Note**: `NPM_TOKEN`はOIDC Trusted Publishingへの移行により不要になりました。
 
 ## バージョン注入の仕組み
 
@@ -85,8 +100,10 @@ git push origin main --tags
 タグとpackage.jsonのバージョンが一致しない場合、publish.ymlが失敗します。
 手動でタグを作成する場合は、必ず`pnpm version`コマンドを使用してください。
 
-### pnpm publish失敗
-- NPM_TOKENが正しく設定されているか確認
+### npm publish失敗
+- Trusted Publishingがnpmjs.comで正しく設定されているか確認
+- `id-token: write`パーミッションがワークフローに設定されているか確認
+- npm CLI 11.5.1以上がインストールされているか確認
 - パッケージ名が既に使用されていないか確認
 - スコープ付きパッケージの場合は`--access public`が必要
 

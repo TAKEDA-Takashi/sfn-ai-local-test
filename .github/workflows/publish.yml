@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm provenance用（オプション）
+      id-token: write # OIDC Trusted Publishing用
 
     steps:
       - name: Checkout code
@@ -64,7 +64,9 @@ jobs:
           PACKAGE_VERSION="v$(node -p "require('./package.json').version")"
           echo "Publishing version: $PACKAGE_VERSION"
 
+      # npm CLI 11.5.1以上が必要（Trusted Publishing対応）
+      - name: Update npm for Trusted Publishing
+        run: npm install -g npm@latest
+
       - name: Publish to npm
-        run: pnpm publish --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public

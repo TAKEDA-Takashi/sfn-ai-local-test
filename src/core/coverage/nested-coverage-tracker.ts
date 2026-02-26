@@ -3,6 +3,7 @@
  */
 
 import type { StateMachine } from '../../types/asl.js'
+import { isChoice, isDistributedMap, isMap, isParallel } from '../../types/asl.js'
 
 // Basic state type guard
 
@@ -80,11 +81,11 @@ export class NestedCoverageTracker {
       totalStates++
 
       // Count branches for Choice states
-      if (state.isChoice()) {
+      if (isChoice(state)) {
         totalBranches += (state.Choices?.length || 0) + (state.Default ? 1 : 0)
       }
 
-      if (state.isMap()) {
+      if (isMap(state)) {
         const processor = state.ItemProcessor
         if (processor?.States) {
           this.nestedStateMachines.set(stateName, processor)
@@ -92,7 +93,7 @@ export class NestedCoverageTracker {
         }
       }
 
-      if (state.isDistributedMap()) {
+      if (isDistributedMap(state)) {
         const processor = state.ItemProcessor
         if (processor?.States) {
           this.nestedStateMachines.set(stateName, processor)
@@ -100,7 +101,7 @@ export class NestedCoverageTracker {
         }
       }
 
-      if (state.isParallel()) {
+      if (isParallel(state)) {
         const branches = state.Branches
         if (branches) {
           this.coverage.nestedStates.set(stateName, new Set())
@@ -130,7 +131,7 @@ export class NestedCoverageTracker {
 
       const state = this.stateMachine.States?.[stateName]
       if (state && typeof state === 'object') {
-        if (state.isChoice()) {
+        if (isChoice(state)) {
           this.trackChoiceBranches(stateName, executionPath)
         }
       }
@@ -171,7 +172,7 @@ export class NestedCoverageTracker {
             const nestedStateMachine = this.nestedStateMachines.get(mapExec.state)
             const nestedRawState = nestedStateMachine?.States?.[stateName]
             if (nestedRawState && typeof nestedRawState === 'object') {
-              if (nestedRawState.isChoice()) {
+              if (isChoice(nestedRawState)) {
                 this.trackNestedChoiceBranches(mapExec.state, stateName, path)
               }
             }
@@ -209,7 +210,7 @@ export class NestedCoverageTracker {
             const nestedStateMachine = this.nestedStateMachines.get(branchKey)
             const nestedState = nestedStateMachine?.States?.[stateName]
             if (nestedState && typeof nestedState === 'object') {
-              if (nestedState.isChoice()) {
+              if (isChoice(nestedState)) {
                 this.trackNestedChoiceBranches(branchKey, stateName, branchPath)
               }
             }
@@ -339,7 +340,7 @@ export class NestedCoverageTracker {
 
     const states = this.stateMachine.States || {}
     for (const [stateName, state] of Object.entries(states)) {
-      if (state.isChoice()) {
+      if (isChoice(state)) {
         if (state.Choices) {
           for (let i = 0; i < state.Choices.length; i++) {
             const choice = state.Choices[i]
@@ -367,7 +368,7 @@ export class NestedCoverageTracker {
     for (const [parentState, nestedStateMachine] of this.nestedStateMachines.entries()) {
       if (nestedStateMachine?.States) {
         for (const [stateName, state] of Object.entries(nestedStateMachine.States)) {
-          if (state.isChoice()) {
+          if (isChoice(state)) {
             if (state.Choices) {
               for (const choice of state.Choices) {
                 const branchId = `${parentState}.${stateName}->${choice.Next}`

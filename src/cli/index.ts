@@ -2,6 +2,7 @@
 import chalk from 'chalk'
 import { Command } from 'commander'
 import {
+  DEFAULT_AI_MODEL,
   DEFAULT_AI_TIMEOUT_MS,
   DEFAULT_CONFIG_FILE,
   DEFAULT_TEST_REPORTER,
@@ -41,11 +42,7 @@ program
   .option('--cdk-state-machine <name>', 'Logical ID of state machine in CDK template')
   .option('-o, --output <path>', 'Output file path')
   .option('-m, --mock <path>', 'Path to mock file (for test generation)')
-  .option(
-    '--ai-model <model>',
-    'AI model to use',
-    process.env.AI_MODEL || 'claude-sonnet-4-20250522',
-  )
+  .option('--ai-model <model>', 'AI model to use', process.env.AI_MODEL || DEFAULT_AI_MODEL)
   .option('--timeout <ms>', 'AI generation timeout in milliseconds', String(DEFAULT_AI_TIMEOUT_MS))
   .option('--max-attempts <number>', 'Maximum generation attempts with validation feedback', '2')
   .option(

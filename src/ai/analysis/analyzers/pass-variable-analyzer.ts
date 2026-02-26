@@ -1,4 +1,10 @@
-import type { State, StateMachine } from '../../../types/asl'
+import {
+  isJSONataState,
+  isJSONPathState,
+  isPass,
+  type State,
+  type StateMachine,
+} from '../../../types/asl'
 import type {
   ChoiceCompatibilityInfo,
   ChoiceDependency,
@@ -21,7 +27,7 @@ export class PassVariableAnalyzer {
     const states = this.stateMachine.States || {}
 
     for (const [stateName, state] of Object.entries(states)) {
-      if (!state.isPass()) continue
+      if (!isPass(state)) continue
 
       const flow = this.analyzePassState(stateName, state, choiceDependencies)
       if (flow) {
@@ -40,7 +46,7 @@ export class PassVariableAnalyzer {
     passState: State,
     choiceDependencies: ChoiceDependency[],
   ): PassVariableFlow | null {
-    const isJSONata = passState.isJSONataState()
+    const isJSONata = isJSONataState(passState)
 
     let inputPath: string | undefined
     const variables: Record<string, string> = {}
@@ -55,7 +61,7 @@ export class PassVariableAnalyzer {
         producedFields.push(...Object.keys(passState.Assign))
       }
 
-      if (passState.isJSONataState()) {
+      if (isJSONataState(passState)) {
         if ('Output' in passState && passState.Output && typeof passState.Output === 'string') {
           outputPath = passState.Output
           const outputFields = this.extractOutputFields(passState.Output, true)
@@ -63,7 +69,7 @@ export class PassVariableAnalyzer {
         }
       }
     } else {
-      if (passState.isJSONPathState()) {
+      if (isJSONPathState(passState)) {
         if ('InputPath' in passState) {
           inputPath = passState.InputPath
         }

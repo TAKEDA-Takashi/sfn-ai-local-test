@@ -3,23 +3,53 @@
  * Handles complex state structure understanding
  */
 
-import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { HTTP_STATUS_OK } from '../../constants/defaults'
-import type { ChoiceRule, ChoiceState, ItemReader, State, StateMachine } from '../../types/asl'
+import { type ItemReader, isDistributedMap, type StateMachine } from '../../types/asl'
 import { MOCK_TYPE_DEFINITIONS, TEST_TYPE_DEFINITIONS } from '../agents/embedded-types'
-import {
-  type ChoiceDependency,
-  DataFlowAnalyzer,
-  type MapOutputSpec,
-  type PassVariableFlow,
-} from '../analysis/data-flow-analyzer'
+import { DataFlowAnalyzer } from '../analysis/data-flow-analyzer'
 import {
   detectOutputTransformation,
   getOutputTransformationDetails,
 } from '../analysis/output-transformation-detection'
 import { StateHierarchyAnalyzer } from '../analysis/state-hierarchy-analyzer'
-import { findStates, hasState, StateFilters } from '../utils/state-traversal'
+import { findStates, StateFilters } from '../utils/state-traversal'
+import {
+  detectChoiceLoops,
+  getChoiceMockGuidelines,
+  hasProblematicChoicePatterns,
+} from './prompt-sections/choice-analysis'
+import {
+  getCriticalRules,
+  getExecutionContextInfo,
+  getTestCriticalRules,
+} from './prompt-sections/critical-rules'
+import {
+  getDataFlowGuidance,
+  getOutputTransformationGuidance,
+} from './prompt-sections/data-flow-guidance'
+import {
+  extractCatchInfo,
+  getErrorHandlingMockRules,
+  getErrorHandlingTestRules,
+} from './prompt-sections/error-handling-rules'
+import { getLambdaIntegrationRules } from './prompt-sections/lambda-rules'
+import {
+  getDistributedMapSpecializedPrompt,
+  getDistributedMapTestGuidance,
+  getItemReaderMandatorySection,
+  getMapSpecializedPrompt,
+  getMapTestGuidance,
+  getMockableStatesGuidance,
+  getParallelSpecializedPrompt,
+  getParallelTestGuidance,
+} from './prompt-sections/state-specialized'
+import { getVariablesRules, getVariablesTestGuidance } from './prompt-sections/variables-rules'
+import { getMockYamlOutputRules, getTestYamlOutputRules } from './prompt-sections/yaml-rules'
+
+export interface StructuredPrompt {
+  system: string
+  user: string
+}
 
 export class PromptBuilder {
   private analyzer: StateHierarchyAnalyzer
@@ -28,35 +58,29 @@ export class PromptBuilder {
 
   constructor() {
     this.analyzer = new StateHierarchyAnalyzer()
-    // DataFlowAnalyzer will be initialized per state machine in buildMockPrompt
   }
 
   /**
-   * Build mock generation prompt with hierarchy understanding
+   * Build mock generation prompt as a single string (for Claude CLI path)
    */
   buildMockPrompt(stateMachine: StateMachine): string {
-    const sections: string[] = []
+    const { system, user } = this.buildStructuredMockPrompt(stateMachine)
+    return `${system}\n\n${user}`
+  }
+
+  /**
+   * Build structured mock prompt with system/user separation (for Direct API path)
+   */
+  buildStructuredMockPrompt(stateMachine: StateMachine): StructuredPrompt {
+    const systemSections: string[] = []
+    const userSections: string[] = []
     const hierarchy = this.analyzer.analyzeHierarchy(stateMachine)
 
-    // モック専用のYAMLルールを最初に置くことでAIが確実に遵守
-    sections.push(this.getMockYamlOutputRules())
+    // System: Rules, type definitions, guidelines
+    systemSections.push(getMockYamlOutputRules(this.promptsDir))
+    systemSections.push(MOCK_TYPE_DEFINITIONS)
+    systemSections.push(getCriticalRules())
 
-    // TypeScript型定義から生成したスキーマを提示（モック部分のみ）
-    sections.push(MOCK_TYPE_DEFINITIONS)
-
-    // 利用可能なステート名を明示して誤りを防止
-    sections.push(this.getAvailableStatesSection(stateMachine))
-
-    // バリデーションエラーを避けるための必須ルール
-    sections.push(this.getCriticalRules())
-
-    // ネスト構造の解析結果をAIに提供
-    const structureExplanation = this.analyzer.generateStructureExplanation(hierarchy)
-    if (structureExplanation) {
-      sections.push(structureExplanation)
-    }
-
-    // ステートタイプごとの特別な処理が必要
     const hasParallel = Object.values(hierarchy.nestedStructures).some((s) => s.type === 'Parallel')
     const hasMap = Object.values(hierarchy.nestedStructures).some((s) => s.type === 'Map')
     const hasDistributedMap = Object.values(hierarchy.nestedStructures).some(
@@ -64,54 +88,34 @@ export class PromptBuilder {
     )
 
     if (hasParallel) {
-      sections.push(this.getParallelSpecializedPrompt())
+      systemSections.push(getParallelSpecializedPrompt(this.promptsDir))
     }
     if (hasMap && !hasDistributedMap) {
-      sections.push(this.getMapSpecializedPrompt())
+      systemSections.push(getMapSpecializedPrompt(this.promptsDir))
     }
     if (hasDistributedMap) {
-      sections.push(this.getDistributedMapSpecializedPrompt())
+      systemSections.push(getDistributedMapSpecializedPrompt(this.promptsDir))
     }
 
-    // ItemReaderがある場合は必須モックとして明示
-    if (hasState(stateMachine, StateFilters.hasItemReader)) {
-      const allStates = findStates(stateMachine, StateFilters.hasItemReader)
-      const distributedMapStates = allStates.filter(({ state }) => state.isDistributedMap())
-      const itemReaderStates = distributedMapStates
-        .map(({ name, state }) => {
-          // isDistributedMap()でフィルタ済みだが、TypeScriptが推論できない場合がある
-          if (!state.isDistributedMap()) return null
-          return {
-            name,
-            itemReader: state.ItemReader,
-            hasResultWriter: !!state.ResultWriter,
-          }
-        })
-        .filter(
-          (item): item is { name: string; itemReader: ItemReader; hasResultWriter: boolean } =>
-            item !== null && item.itemReader !== undefined,
-        )
-      sections.push(this.getItemReaderMandatorySection(itemReaderStates))
+    if (findStates(stateMachine, StateFilters.isLambdaTask).length > 0) {
+      systemSections.push(getLambdaIntegrationRules())
     }
 
-    // モックが必要なステートの明確化
-    const mockableStates = this.analyzer.getMockableStates(hierarchy)
-    sections.push(this.getMockableStatesGuidance(mockableStates))
-
-    if (hasState(stateMachine, StateFilters.isLambdaTask)) {
-      sections.push(this.getLambdaIntegrationRules())
+    if (findStates(stateMachine, StateFilters.hasVariables).length > 0) {
+      systemSections.push(getVariablesRules())
     }
 
-    if (hasState(stateMachine, StateFilters.hasVariables)) {
-      sections.push(this.getVariablesRules())
+    if (hasProblematicChoicePatterns(stateMachine)) {
+      const analysis = detectChoiceLoops(stateMachine)
+      systemSections.push(getChoiceMockGuidelines(this.promptsDir, analysis))
     }
 
-    if (this.hasProblematicChoicePatterns(stateMachine)) {
-      const analysis = this.detectChoiceLoops(stateMachine)
-      sections.push(this.getChoiceMockGuidelines(analysis))
+    const catchInfos = extractCatchInfo(stateMachine.States || {})
+    if (catchInfos.length > 0) {
+      systemSections.push(getErrorHandlingMockRules(catchInfos))
     }
 
-    sections.push(this.getExecutionContextInfo())
+    systemSections.push(getExecutionContextInfo())
 
     this.dataFlowAnalyzer = new DataFlowAnalyzer(stateMachine)
     const dataFlowAnalysis = this.dataFlowAnalyzer?.analyzeDataFlowConsistency() || {
@@ -122,61 +126,92 @@ export class PromptBuilder {
       },
       recommendations: [],
     }
-    sections.push(this.getDataFlowGuidance(dataFlowAnalysis))
+    systemSections.push(getDataFlowGuidance(dataFlowAnalysis))
 
-    sections.push('## State Machine Definition')
-    sections.push('```json')
-    sections.push(JSON.stringify(stateMachine, null, 2))
-    sections.push('```')
+    // User: State machine data and task request
+    userSections.push(this.getAvailableStatesSection(stateMachine))
 
-    // Re-emphasize the output format at the end
-    sections.push('## FINAL REMINDER')
-    sections.push(
-      '**OUTPUT ONLY THE YAML CONTENT. NO EXPLANATIONS, NO MARKDOWN, NO COMMENTS OUTSIDE YAML.**',
-    )
-    sections.push('**START DIRECTLY WITH: version: "1.0"**')
-
-    // If there are ItemReaders, remind about data file references
-    if (hasState(stateMachine, StateFilters.hasItemReader)) {
-      sections.push('')
-      sections.push(
-        '**⚠️ REMEMBER: Include all ItemReader mocks with dataFile references in the YAML ⚠️**',
-      )
-      sections.push('**Data files will be generated separately based on your YAML configuration.**')
+    const structureExplanation = this.analyzer.generateStructureExplanation(hierarchy)
+    if (structureExplanation) {
+      userSections.push(structureExplanation)
     }
 
-    return sections.join('\n\n')
+    // ItemReaderがある場合は必須モックとして明示
+    const itemReaderAllStates = findStates(stateMachine, StateFilters.hasItemReader)
+    if (itemReaderAllStates.length > 0) {
+      const allStates = itemReaderAllStates
+      const distributedMapStates = allStates.filter(({ state }) => isDistributedMap(state))
+      const itemReaderStates = distributedMapStates
+        .map(({ name, state }) => {
+          if (!isDistributedMap(state)) return null
+          return {
+            name,
+            itemReader: state.ItemReader,
+            hasResultWriter: !!state.ResultWriter,
+          }
+        })
+        .filter(
+          (item): item is { name: string; itemReader: ItemReader; hasResultWriter: boolean } =>
+            item !== null && item.itemReader !== undefined,
+        )
+      userSections.push(getItemReaderMandatorySection(itemReaderStates))
+    }
+
+    const mockableStates = this.analyzer.getMockableStates(hierarchy)
+    userSections.push(getMockableStatesGuidance(mockableStates))
+
+    userSections.push('## State Machine Definition')
+    userSections.push('```json')
+    userSections.push(JSON.stringify(stateMachine, null, 2))
+    userSections.push('```')
+
+    userSections.push('Generate a mock configuration YAML for the above state machine.')
+    userSections.push(
+      '**OUTPUT ONLY THE YAML CONTENT. NO EXPLANATIONS, NO MARKDOWN, NO COMMENTS OUTSIDE YAML.**',
+    )
+    userSections.push('**START DIRECTLY WITH: version: "1.0"**')
+
+    if (itemReaderAllStates.length > 0) {
+      userSections.push('')
+      userSections.push(
+        '**⚠️ REMEMBER: Include all ItemReader mocks with dataFile references in the YAML ⚠️**',
+      )
+      userSections.push(
+        '**Data files will be generated separately based on your YAML configuration.**',
+      )
+    }
+
+    return {
+      system: systemSections.join('\n\n'),
+      user: userSections.join('\n\n'),
+    }
   }
 
   /**
-   * Build test generation prompt
+   * Build test generation prompt as a single string (for Claude CLI path)
    */
   buildTestPrompt(stateMachine: StateMachine, mockContent?: string): string {
-    const sections: string[] = []
+    const { system, user } = this.buildStructuredTestPrompt(stateMachine, mockContent)
+    return `${system}\n\n${user}`
+  }
+
+  /**
+   * Build structured test prompt with system/user separation (for Direct API path)
+   */
+  buildStructuredTestPrompt(stateMachine: StateMachine, mockContent?: string): StructuredPrompt {
+    const systemSections: string[] = []
+    const userSections: string[] = []
     const hierarchy = this.analyzer.analyzeHierarchy(stateMachine)
 
-    // テスト専用のYAMLルールを最初に置くことでAIが確実に遵守
-    sections.push(this.getTestYamlOutputRules())
-
-    // TypeScript型定義から生成したスキーマを提示（テスト部分のみ）
-    sections.push(TEST_TYPE_DEFINITIONS)
-
-    // 利用可能なステート名を明示して誤りを防止
-    sections.push(this.getAvailableStatesSection(stateMachine))
-
-    // Critical test rules
-    sections.push(this.getTestCriticalRules())
+    // System: Rules, type definitions, guidelines
+    systemSections.push(getTestYamlOutputRules(this.promptsDir))
+    systemSections.push(TEST_TYPE_DEFINITIONS)
+    systemSections.push(getTestCriticalRules())
 
     const hasOutputTransformation = detectOutputTransformation(stateMachine)
     if (hasOutputTransformation) {
       const transformationDetails = getOutputTransformationDetails(stateMachine)
-      sections.push(this.getOutputTransformationGuidance(transformationDetails))
-    }
-
-    // Structure analysis
-    const structureExplanation = this.analyzer.generateStructureExplanation(hierarchy)
-    if (structureExplanation) {
-      sections.push(structureExplanation)
+      systemSections.push(getOutputTransformationGuidance(transformationDetails))
     }
 
     const hasParallel = Object.values(hierarchy.nestedStructures).some((s) => s.type === 'Parallel')
@@ -186,39 +221,54 @@ export class PromptBuilder {
     )
 
     if (hasParallel) {
-      sections.push(this.getParallelTestGuidance())
+      systemSections.push(getParallelTestGuidance())
     }
     if (hasMap) {
-      sections.push(this.getMapTestGuidance())
+      systemSections.push(getMapTestGuidance())
     }
     if (hasDistributedMap) {
-      sections.push(this.getDistributedMapTestGuidance())
+      systemSections.push(getDistributedMapTestGuidance())
     }
 
-    if (hasState(stateMachine, StateFilters.hasVariables)) {
-      sections.push(this.getVariablesTestGuidance())
+    if (findStates(stateMachine, StateFilters.hasVariables).length > 0) {
+      systemSections.push(getVariablesTestGuidance())
     }
 
-    sections.push('## State Machine Definition')
-    sections.push('```json')
-    sections.push(JSON.stringify(stateMachine, null, 2))
-    sections.push('```')
+    const catchInfos = extractCatchInfo(stateMachine.States || {})
+    if (catchInfos.length > 0) {
+      systemSections.push(getErrorHandlingTestRules(catchInfos))
+    }
+
+    // User: State machine data and task request
+    userSections.push(this.getAvailableStatesSection(stateMachine))
+
+    const structureExplanation = this.analyzer.generateStructureExplanation(hierarchy)
+    if (structureExplanation) {
+      userSections.push(structureExplanation)
+    }
+
+    userSections.push('## State Machine Definition')
+    userSections.push('```json')
+    userSections.push(JSON.stringify(stateMachine, null, 2))
+    userSections.push('```')
 
     if (mockContent) {
-      sections.push('## Mock Configuration')
-      sections.push('```yaml')
-      sections.push(mockContent)
-      sections.push('```')
+      userSections.push('## Mock Configuration')
+      userSections.push('```yaml')
+      userSections.push(mockContent)
+      userSections.push('```')
     }
 
-    // Re-emphasize the output format at the end
-    sections.push('## FINAL REMINDER')
-    sections.push(
+    userSections.push('Generate a test suite YAML for the above state machine.')
+    userSections.push(
       '**OUTPUT ONLY THE YAML CONTENT. NO EXPLANATIONS, NO MARKDOWN, NO COMMENTS OUTSIDE YAML.**',
     )
-    sections.push('**START DIRECTLY WITH: version: "1.0"**')
+    userSections.push('**START DIRECTLY WITH: version: "1.0"**')
 
-    return sections.join('\n\n')
+    return {
+      system: systemSections.join('\n\n'),
+      user: userSections.join('\n\n'),
+    }
   }
 
   private getAvailableStatesSection(stateMachine: StateMachine): string {
@@ -234,1181 +284,9 @@ export class PromptBuilder {
 The following states exist in the state machine:
 ${states.map((s) => `- "${s}"`).join('\n')}
 
-**Critical**: 
+**Critical**:
 - Use these exact state names (case-sensitive)
 - Do NOT create or reference states that are not in this list
 - This list shows TOP-LEVEL states only. See "Mockable States" section for all states that can be mocked`
-  }
-
-  private getMockYamlOutputRules(): string {
-    try {
-      const common = fs.readFileSync(
-        path.join(this.promptsDir, 'yaml-output-rules-common.md'),
-        'utf-8',
-      )
-      const mock = fs.readFileSync(path.join(this.promptsDir, 'yaml-output-rules-mock.md'), 'utf-8')
-      return `${common}\n\n${mock}`
-    } catch {
-      return this.getDefaultMockYamlOutputRules()
-    }
-  }
-
-  private getTestYamlOutputRules(): string {
-    try {
-      const common = fs.readFileSync(
-        path.join(this.promptsDir, 'yaml-output-rules-common.md'),
-        'utf-8',
-      )
-      const test = fs.readFileSync(path.join(this.promptsDir, 'yaml-output-rules-test.md'), 'utf-8')
-      return `${common}\n\n${test}`
-    } catch {
-      return this.getDefaultTestYamlOutputRules()
-    }
-  }
-
-  private getDefaultMockYamlOutputRules(): string {
-    return `# OUTPUT FORMAT RULES
-
-⚠️⚠️⚠️ CRITICAL: OUTPUT MUST BE PURE YAML - NO EXPLANATIONS ⚠️⚠️⚠️
-
-**OUTPUT ONLY VALID YAML. NO EXPLANATIONS, NO MARKDOWN MARKERS.**
-
-## MOCK FILE STRUCTURE
-The output MUST:
-1. Start with: version: "1.0"
-2. Be valid YAML from first to last character
-3. NOT include \`\`\`yaml or \`\`\` markers
-4. Contain 'mocks:' array with mock definitions
-5. NOT contain 'testCases:' or 'stateMachine:' fields
-
-## EXAMPLE OF CORRECT MOCK FILE:
-version: "1.0"
-mocks:
-  - state: "StateName"
-    type: "fixed"
-    response:
-      Payload: {...}
-      StatusCode: 200
-
-**OUTPUT ONLY THE YAML CONTENT. NOTHING ELSE.**`
-  }
-
-  private getDefaultTestYamlOutputRules(): string {
-    return `# OUTPUT FORMAT RULES
-
-⚠️⚠️⚠️ CRITICAL: OUTPUT MUST BE PURE YAML - NO EXPLANATIONS ⚠️⚠️⚠️
-
-**OUTPUT ONLY VALID YAML. NO EXPLANATIONS, NO MARKDOWN MARKERS.**
-
-## TEST FILE STRUCTURE
-The output MUST:
-1. Start with: version: "1.0"
-2. Be valid YAML from first to last character
-3. NOT include \`\`\`yaml or \`\`\` markers
-4. Use 'testCases' (NOT 'tests') for test definitions
-5. NOT contain top-level 'mocks:' array
-
-## EXAMPLE OF CORRECT TEST FILE:
-version: "1.0"
-name: "Test Suite Name"
-stateMachine: "path/to/stateMachine.asl.json"  # Optional
-testCases:  # NOT "tests"
-  - name: "Test case 1"
-    input: {...}
-    stateExpectations:
-      - state: "StateName"  # NOT "stateName"
-        outputMatching: "partial"
-        output: {...}
-
-**OUTPUT ONLY THE YAML CONTENT. NOTHING ELSE.**`
-  }
-
-  private getCriticalRules(): string {
-    return `# CRITICAL RULES FOR MOCK GENERATION
-
-## Mock Structure Rules
-1. Use the exact state names from the state machine
-2. For Lambda tasks, wrap response in { Payload: {...}, StatusCode: ${HTTP_STATUS_OK} }
-3. For Parallel states, mock at the parent level, not individual branches
-4. For Map/Parallel nested states: use ONLY the nested state name (no parent prefix)
-
-⚠️⚠️⚠️ CRITICAL NAMING RULE ⚠️⚠️⚠️
-- Map ItemProcessor states: use "NestedStateName" NOT "MapState.ItemProcessor.NestedStateName"
-- Parallel Branch states: use "BranchStateName" NOT "ParallelState.Branch[0].BranchStateName"
-- Nested states are referenced by their own name only, without parent hierarchy`
-  }
-
-  private getTestCriticalRules(): string {
-    return `# CRITICAL RULES FOR TEST GENERATION
-
-⚠️⚠️⚠️ RULE #1: ALWAYS USE outputMatching: "partial" FOR ALL STATE EXPECTATIONS ⚠️⚠️⚠️
-⚠️⚠️⚠️ RULE #2: BE AWARE OF FIXED EXECUTIONCONTEXT VALUES ⚠️⚠️⚠️
-⚠️⚠️⚠️ RULE #3: NEVER USE stateExpectations FOR MAP/PARALLEL INTERNAL STATES ⚠️⚠️⚠️
-
-## 🔴 CRITICAL: Map/Parallel Internal State Testing Rules 🔴
-
-**ABSOLUTELY FORBIDDEN:**
-❌ NEVER use stateExpectations for states inside Map ItemProcessor
-❌ NEVER use stateExpectations for states inside Parallel branches
-❌ NEVER use stateExpectations for states inside DistributedMap ItemProcessor
-
-**REQUIRED INSTEAD:**
-✅ Use mapExpectations for Map internal state testing
-✅ Use parallelExpectations for Parallel branch state testing
-✅ Use mapExpectations for DistributedMap internal state testing
-
-**CORRECT EXAMPLE:**
-\`\`\`yaml
-testCases:
-  - name: "Test with Map and Parallel"
-    input: {...}
-    # ✅ CORRECT: Top-level states use stateExpectations
-    stateExpectations:
-      - state: "PrepareData"  # Top-level state
-        output: {...}
-      - state: "FinalizeResults"  # Top-level state
-        output: {...}
-    # ✅ CORRECT: Map internal states use mapExpectations
-    mapExpectations:
-      - state: "ProcessItems"  # Map state name
-        iterationCount: 3
-        iterationPaths:
-          all: ["ValidateItem", "TransformItem"]  # Internal states
-    # ✅ CORRECT: Parallel branch states use parallelExpectations  
-    parallelExpectations:
-      - state: "ParallelTasks"  # Parallel state name
-        branchCount: 2
-        branchPaths:
-          0: ["CheckServiceA", "UpdateServiceA"]  # Branch 0 states
-          1: ["CheckServiceB", "UpdateServiceB"]  # Branch 1 states
-\`\`\`
-
-**WRONG EXAMPLE (WILL FAIL):**
-\`\`\`yaml
-# ❌ WRONG: Using stateExpectations for Map internal states
-stateExpectations:
-  - state: "ValidateItem"  # This is INSIDE a Map!
-    output: {...}
-  - state: "CheckServiceA"  # This is INSIDE a Parallel!
-    output: {...}
-\`\`\`
-
-## TIMESTAMP RULES - CRITICAL
-**⚠️ NEVER INCLUDE THESE FIELDS IN STATE EXPECTATIONS:**
-- StartDate, EndDate, StopDate
-- createdAt, updatedAt, timestamp
-- Any field containing ISO date strings (e.g., "2024-01-15T10:00:00.000Z")
-- Any field that looks like a date or time
-
-**NOTE:** ExecutionContext values like timestamps are FIXED during tests for deterministic behavior.
-You CAN include these in exact matching if they come from ExecutionContext variables.
-
-## EXECUTION CONTEXT - FIXED VALUES IN TESTS
-**IMPORTANT:** ExecutionContext values are FIXED during tests for deterministic behavior:
-- \`$$.Execution.Id\` = \`arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution\`
-- \`$$.Execution.Name\` = \`test-execution\`
-- \`$$.Execution.StartTime\` = \`2024-01-01T00:00:00.000Z\`
-- \`$$.State.EnteredTime\` = \`2024-01-01T00:00:00.000Z\`
-
-These values do NOT change during test execution, making them safe for assertions.
-
-## REQUIRED TEST FILE STRUCTURE
-\`\`\`yaml
-version: "1.0"
-name: "Suite Name"
-stateMachine: "<path to ASL file>"  # ⚠️ REQUIRED FIELD
-settings:
-  timeout: 10000  # optional, in milliseconds
-testCases:  # ⚠️ NOT "tests" - MUST BE "testCases"
-  - name: "Test name"
-    input: {...}
-    expectedPath: [...]  # optional
-    stateExpectations:  # For TOP-LEVEL states ONLY
-      - state: "StateName"  # ⚠️ NOT "stateName" - MUST BE "state"
-        outputMatching: "partial"  # ⚠️ ALWAYS "partial"
-        output: 
-          # Include only stable fields, NEVER timestamps
-          ExecutionArn: "..."  # OK - stable
-          Status: "SUCCEEDED"  # OK - stable
-          # StartDate: "..."  # ❌ NEVER include
-          # StopDate: "..."   # ❌ NEVER include
-    mapExpectations:  # For Map internal states
-      - state: "MapStateName"
-        iterationCount: 3
-    parallelExpectations:  # For Parallel branch states
-      - state: "ParallelStateName"
-        branchCount: 2
-\`\`\`
-
-## Test Structure Rules
-1. MUST include "stateMachine" field at root level
-2. MUST use "testCases" NOT "tests"
-3. stateExpectations is ONLY for top-level states
-4. mapExpectations is ONLY for Map state iteration testing
-5. parallelExpectations is ONLY for Parallel branch testing
-6. MUST use "state" NOT "stateName" in expectations
-7. Every expectation MUST have outputMatching: "partial"
-8. Variables go in stateExpectations.variables, NOT in output
-9. **⚠️ CAUTION: ExecutionContext timestamps are FIXED in tests (safe to use) ⚠️**
-10. When copying from mock data, ALWAYS remove timestamp fields
-11. For Parallel states, expect array output
-12. For Map states, expect array output
-13. For Distributed Map, expect execution metadata
-14. DO NOT use "maxSteps" - it's not a valid field`
-  }
-
-  private getParallelSpecializedPrompt(): string {
-    try {
-      return fs.readFileSync(path.join(this.promptsDir, 'parallel-specialized.md'), 'utf-8')
-    } catch {
-      return this.getDefaultParallelPrompt()
-    }
-  }
-
-  private getMapSpecializedPrompt(): string {
-    try {
-      return fs.readFileSync(path.join(this.promptsDir, 'map-specialized.md'), 'utf-8')
-    } catch {
-      return this.getDefaultMapPrompt()
-    }
-  }
-
-  private getDistributedMapSpecializedPrompt(): string {
-    try {
-      return fs.readFileSync(path.join(this.promptsDir, 'distributed-map-specialized.md'), 'utf-8')
-    } catch {
-      return this.getDefaultDistributedMapPrompt()
-    }
-  }
-
-  private getMockableStatesGuidance(mockableStates: string[]): string {
-    return `## Mockable States for This State Machine
-
-The following states can be mocked:
-${mockableStates.map((s) => `- ${s}`).join('\n')}
-
-**Important for Parallel States**: 
-- Mock states inside Parallel branches using their state name ONLY (e.g., "CheckServiceA", NOT "ParallelChecks.CheckServiceA")
-- Each branch state needs its own mock definition
-- The Parallel state itself does NOT need a mock
-
-**Important for Map States**:
-- For inline Map: Mock the Map state itself OR individual states inside ItemProcessor
-- For distributed Map: Mock the Map state for ItemReader data, and individual processor states as needed`
-  }
-
-  private getParallelTestGuidance(): string {
-    return `## Testing Parallel States
-
-🔴 **CRITICAL: NEVER use stateExpectations for states inside Parallel branches!** 🔴
-
-For Parallel states in your tests:
-1. The Parallel state output is an ARRAY with one element per branch
-2. Each array element contains the output from that branch
-3. Always use outputMatching: "partial" for flexibility
-4. Test the combined output at the Parallel state level using stateExpectations
-5. **Use parallelExpectations to test branch execution paths**
-
-**CORRECT STRUCTURE:**
-\`\`\`yaml
-# Test the Parallel state output
-stateExpectations:
-  - state: "ParallelProcessing"  # The Parallel state itself
-    outputMatching: "partial"
-    output: [result1, result2]  # Array of branch results
-
-# Test the branch execution paths
-parallelExpectations:
-  - state: "ParallelProcessing"
-    branchCount: 2
-    branchPaths:
-      0: ["BranchATask1", "BranchATask2"]
-      1: ["BranchBTask1", "BranchBTask2"]
-\`\`\`
-
-❌ **NEVER DO THIS:**
-\`\`\`yaml
-stateExpectations:
-  - state: "BranchATask1"  # WRONG! This is inside Parallel
-    output: {...}
-\`\`\``
-  }
-
-  private getMapTestGuidance(): string {
-    return `## Testing Map States
-
-🔴 **CRITICAL: NEVER use stateExpectations for states inside Map ItemProcessor!** 🔴
-
-For Map states in your tests:
-1. The Map state output is an ARRAY of processed items
-2. Each array element is the result of processing one input item
-3. Test both empty arrays and multiple items
-4. Consider MaxConcurrency effects on execution order
-5. **Use mapExpectations to test iteration behavior**
-
-**CORRECT STRUCTURE:**
-\`\`\`yaml
-# Test the Map state output
-stateExpectations:
-  - state: "ProcessItems"  # The Map state itself
-    outputMatching: "partial"
-    output: [item1Result, item2Result]  # Array of results
-
-# Test the iteration behavior
-mapExpectations:
-  - state: "ProcessItems"
-    iterationCount: 2
-    iterationPaths:
-      all: ["ValidateItem", "TransformItem", "SaveItem"]
-\`\`\`
-
-❌ **NEVER DO THIS:**
-\`\`\`yaml
-stateExpectations:
-  - state: "ValidateItem"  # WRONG! This is inside Map
-    output: {...}
-\`\`\``
-  }
-
-  private getDistributedMapTestGuidance(): string {
-    return `## Testing Distributed Map States
-
-🔴 **CRITICAL: NEVER use stateExpectations for states inside DistributedMap ItemProcessor!** 🔴
-
-For Distributed Map states:
-1. Output contains execution metadata (ProcessedItemCount, FailedItemCount, etc.)
-2. NOT an array like regular Map
-3. Test ResultWriterDetails for S3 output location
-4. Consider testing with different batch sizes
-5. **Use mapExpectations to test processor behavior**
-
-**CORRECT STRUCTURE:**
-\`\`\`yaml
-# Test the DistributedMap state output
-stateExpectations:
-  - state: "BatchProcessing"  # The DistributedMap state itself
-    outputMatching: "partial"
-    output:
-      ProcessedItemCount: 100
-      FailedItemCount: 0
-
-# Test the processor behavior
-mapExpectations:
-  - state: "BatchProcessing"
-    iterationCount: 100
-    iterationPaths:
-      samples:
-        0: ["LoadItem", "ProcessItem", "StoreResult"]
-\`\`\`
-
-❌ **NEVER DO THIS:**
-\`\`\`yaml
-stateExpectations:
-  - state: "ProcessItem"  # WRONG! This is inside DistributedMap
-    output: {...}
-\`\`\``
-  }
-
-  private getVariablesTestGuidance(): string {
-    return `## Testing Variables
-
-When testing states with Variables:
-1. Put variable expectations in stateExpectations.variables
-2. Variables are separate from state output
-3. Test variable persistence across states
-4. Verify variable values change as expected`
-  }
-
-  private getLambdaIntegrationRules(): string {
-    return `## Lambda Integration Rules
-
-### 🚨 CRITICAL: Lambda Task Mock Patterns
-
-AWS Step Functions has TWO Lambda integration patterns:
-
-#### 1. OPTIMIZED INTEGRATION (arn:aws:states:::lambda:invoke) - MOST COMMON
-**Parameters.Payload mapping rule for conditional mocks:**
-- If the state has Parameters.Payload, the mock condition MUST use input.Payload
-
-**Example ASL with Parameters.Payload:**
-\`\`\`json
-"Parameters": {
-  "Payload.$": "$.data"
-}
-\`\`\`
-
-**Corresponding conditional mock structure:**
-\`\`\`yaml
-- state: "LambdaTaskName"
-  type: "conditional"
-  conditions:
-    - when:
-        input:              # REQUIRED wrapper
-          Payload:          # REQUIRED for Lambda input matching
-            userId: "123"   # Your condition fields
-      response:
-        ExecutedVersion: "$LATEST"
-        Payload:            # REQUIRED for Lambda response
-          result: "success"
-        StatusCode: ${HTTP_STATUS_OK}
-    - default:
-        ExecutedVersion: "$LATEST"
-        Payload:
-          result: "default"
-        StatusCode: ${HTTP_STATUS_OK}
-\`\`\`
-
-#### 2. DIRECT ARN (arn:aws:lambda:region:account:function:name) - RARE
-- No Payload wrapper needed for input or output
-- Direct mock structure without Payload field
-
-### ⚠️ COMMON MISTAKES TO AVOID
-
-❌ **WRONG** (missing Payload wrapper for optimized integration):
-\`\`\`yaml
-- state: "GetUser"
-  type: "conditional"
-  conditions:
-    - when:
-        input:          # Missing Payload!
-          userId: "123"
-      response:         # Missing Payload wrapper!
-        name: "John"
-\`\`\`
-
-✅ **CORRECT** (with Payload wrapper for optimized integration):
-\`\`\`yaml
-- state: "GetUser"
-  type: "conditional"
-  conditions:
-    - when:
-        input:
-          Payload:      # Required!
-            userId: "123"
-      response:
-        Payload:        # Required!
-          name: "John"
-        StatusCode: ${HTTP_STATUS_OK}
-        ExecutedVersion: "$LATEST"
-\`\`\`
-
-### Lambda Mock Response Format
-- Response MUST include: { Payload: {...}, StatusCode: ${HTTP_STATUS_OK}, ExecutedVersion: "$LATEST" }
-- The actual Lambda response goes in the Payload field
-- StatusCode should typically be ${HTTP_STATUS_OK} for success
-- Include ExecutedVersion for completeness`
-  }
-
-  private getVariablesRules(): string {
-    return `## Variables and Assign Rules
-
-Variables are stored separately from state output:
-- Use Assign field to set variables
-- Access variables with $variableName
-- Variables persist across states
-- Test variables in stateExpectations.variables`
-  }
-
-  private getDefaultParallelPrompt(): string {
-    return `## Parallel State Guidance
-
-### ⚠️ CRITICAL: Parallel State Mock Pattern ⚠️
-
-**Parallel states execute branches INDEPENDENTLY and IN PARALLEL.**
-
-**How to mock Parallel state tasks:**
-1. **DO NOT mock the Parallel state itself** - it's a control flow state
-2. **MOCK INDIVIDUAL TASK STATES INSIDE EACH BRANCH** - these are the actual execution points
-3. **Use state name ONLY** - e.g., "CheckServiceA", NOT "ParallelChecks.Branch[0].CheckServiceA"
-
-**Example for a Parallel state with 2 branches:**
-\`\`\`yaml
-# Branch 1 has task "CheckServiceA"
-- state: "CheckServiceA"
-  type: "fixed"
-  response:
-    Payload:
-      status: "healthy"
-      
-# Branch 2 has tasks "CheckServiceB" and "ProcessServiceBResult"  
-- state: "CheckServiceB"
-  type: "fixed"
-  response:
-    Payload:
-      status: "degraded"
-      
-- state: "ProcessServiceBResult"
-  type: "fixed"
-  response:
-    Payload:
-      processed: true
-\`\`\`
-
-**Runtime behavior:**
-- Parallel state collects outputs from all branches into an array
-- Output: [branch1_result, branch2_result, ...]
-- Each branch runs independently with its own mocks`
-  }
-
-  private getDefaultMapPrompt(): string {
-    return `## Map State Guidance
-- Can mock entire Map state or individual nested states inside Map
-- For nested states: use ONLY the state name (e.g., "ProcessItem" NOT "MapState.ItemProcessor.ProcessItem")
-- Output is an array of processed items
-- Consider using conditional mocks for item-specific logic`
-  }
-
-  private getDefaultDistributedMapPrompt(): string {
-    return `## Distributed Map Guidance
-
-### ⚠️⚠️⚠️ CRITICAL: DistributedMap REQUIRES TWO MOCKS ⚠️⚠️⚠️
-
-**EVERY DistributedMap needs BOTH:**
-1. **ItemReader mock (MANDATORY)** - for input data
-2. **State result mock** - for output metadata
-
-### 🔴 CRITICAL: ItemReader Data MUST Match ItemProcessor Requirements
-
-**Each item from ItemReader becomes the input to ItemProcessor states!**
-
-Before creating the ItemReader mock, you MUST:
-1. **Analyze the ItemProcessor's first state** - What fields does it expect?
-2. **Check Choice conditions** - Variables like \`$.orderId\` indicate required fields
-3. **Look at Parameters/ItemSelector** - These show field transformations
-4. **Generate matching data** - Each item must have the required fields
-
-Example: If ItemProcessor has a Choice checking \`$.status\` and \`$.amount\`:
-\`\`\`yaml
-- state: "ProcessOrders"
-  type: "itemReader"
-  dataFile: "orders.json"
-  # Generated file MUST contain: [{"status": "pending", "amount": 100}, ...]
-\`\`\`
-
-### MANDATORY ItemReader Mock:
-**⚠️ YOU MUST ALWAYS INCLUDE THIS FOR DISTRIBUTEDMAP WITH ITEMREADER ⚠️**
-\`\`\`yaml
-- state: "YourDistributedMapStateName"
-  type: "itemReader"
-  dataFile: "your-items.jsonl"  # External file with test data
-  dataFormat: "jsonl"  # Match the ItemReader.ReaderConfig.InputType
-\`\`\`
-
-### DistributedMap Output (Automatically Generated):
-The DistributedMap executor automatically generates the output based on ItemReader data:
-- **Without ResultWriter**: Returns an array of processed results
-- **With ResultWriter**: Returns metadata object with ProcessedItemCount and ResultWriterDetails
-
-**⚠️ DO NOT CREATE A FIXED MOCK FOR DISTRIBUTEDMAP OUTPUT ⚠️**
-The executor handles this automatically based on ItemReader processing.
-
-### ItemReader Requirements:
-- **S3:listObjectsV2**: Mock S3 object list
-- **S3:getObject with InputType: JSONL**: Mock JSONL file content
-- **S3:getObject with InputType: CSV**: Mock CSV data
-- **S3:getObject with InputType: JSON**: Mock JSON array
-- **S3:getObject with InputType: MANIFEST**: Mock S3 inventory manifest
-
-**⚠️ NEVER SKIP THE ITEMREADER MOCK FOR DISTRIBUTEDMAP ⚠️**`
-  }
-
-  private getItemReaderMandatorySection(
-    itemReaderStates: Array<{
-      name: string
-      itemReader: ItemReader
-      hasResultWriter: boolean
-    }>,
-  ): string {
-    const sections: string[] = []
-
-    sections.push('## ⚠️⚠️⚠️ MANDATORY ITEMREADER MOCKS AND DATA FILES ⚠️⚠️⚠️')
-    sections.push('')
-    sections.push('**THE FOLLOWING ITEMREADER MOCKS AND DATA FILES ARE REQUIRED:**')
-    sections.push('')
-
-    itemReaderStates.forEach(({ name, itemReader }) => {
-      const readerConfig = itemReader.ReaderConfig || {}
-      const inputType = readerConfig.InputType || 'JSONL'
-      const resource = itemReader.Resource || ''
-      const dataFileName = `${name.toLowerCase().replace(/\s+/g, '-')}-items.${inputType.toLowerCase()}`
-
-      sections.push(`### State: "${name}"`)
-      sections.push(`- Resource: ${resource}`)
-      sections.push(`- InputType: ${inputType}`)
-      sections.push('')
-
-      // Data file content requirements
-      sections.push(`**1. CREATE DATA FILE: "${dataFileName}"**`)
-      sections.push(`\`\`\`${inputType.toLowerCase()}`)
-
-      if (inputType === 'JSONL') {
-        sections.push('{"id": "item-1", "name": "First Item", "value": 100}')
-        sections.push('{"id": "item-2", "name": "Second Item", "value": 200}')
-        sections.push('{"id": "item-3", "name": "Third Item", "value": 300}')
-      } else if (inputType === 'JSON') {
-        sections.push('[')
-        sections.push('  {"id": "item-1", "name": "First Item", "value": 100},')
-        sections.push('  {"id": "item-2", "name": "Second Item", "value": 200},')
-        sections.push('  {"id": "item-3", "name": "Third Item", "value": 300}')
-        sections.push(']')
-      } else if (inputType === 'CSV') {
-        sections.push('id,name,value')
-        sections.push('item-1,First Item,100')
-        sections.push('item-2,Second Item,200')
-        sections.push('item-3,Third Item,300')
-      } else if (inputType === 'MANIFEST') {
-        sections.push('{"Bucket": "my-bucket", "Key": "object1.json", "Size": 1024}')
-        sections.push('{"Bucket": "my-bucket", "Key": "object2.json", "Size": 2048}')
-        sections.push('{"Bucket": "my-bucket", "Key": "object3.json", "Size": 3072}')
-      }
-
-      sections.push('```')
-      sections.push('')
-
-      sections.push('**2. ADD ITEMREADER MOCK IN YAML:**')
-      sections.push('```yaml')
-      sections.push(`- state: "${name}"`)
-      sections.push('  type: "itemReader"')
-      sections.push(`  dataFile: "${dataFileName}"`)
-      sections.push(`  dataFormat: "${inputType.toLowerCase()}"`)
-      sections.push('```')
-      sections.push('')
-
-      // Note: DistributedMap result is automatically generated by the executor
-      // No need for a separate fixed mock
-      sections.push(
-        '**NOTE:** The DistributedMap result (ProcessedItemCount, ResultWriterDetails, etc.)',
-      )
-      sections.push('is automatically generated by the executor based on the ItemReader data.')
-      sections.push('DO NOT create a separate fixed mock for DistributedMap states.')
-      sections.push('')
-    })
-
-    sections.push('## IMPORTANT NOTES:')
-    sections.push('1. **Include the ItemReader mocks in your YAML output**')
-    sections.push('2. **Reference the data file names correctly in dataFile field**')
-    sections.push(
-      '3. **Data files shown above are examples - actual files will be generated separately**',
-    )
-    sections.push('')
-    sections.push('**⚠️ YOUR YAML MUST INCLUDE ALL ITEMREADER MOCKS SHOWN ABOVE ⚠️**')
-
-    return sections.join('\n')
-  }
-
-  hasProblematicChoicePatterns(stateMachine: StateMachine): boolean {
-    // Structure-based analysis for potential infinite loops
-    const result = this.detectChoiceLoops(stateMachine)
-    return result.hasProblematicPatterns || result.hasStructuralLoops
-  }
-
-  detectChoiceLoops(stateMachine: StateMachine): {
-    hasProblematicPatterns: boolean
-    hasStructuralLoops: boolean
-    problematicStates: string[]
-  } {
-    const problematicStates: string[] = []
-    let hasProblematicPatterns = false
-    let hasStructuralLoops = false
-
-    // Only patterns that are truly variable and cannot be made deterministic in tests
-    const variablePatterns = {
-      jsonpath: [
-        // These change during execution and cannot be fixed
-        '$$.State.RetryCount', // Changes on each retry
-        '$$.Map.Item.Index', // Different for each Map item
-        '$$.Task.Token', // waitForTaskToken pattern (not supported)
-      ],
-      jsonata: [
-        // JSONata equivalents
-        '$states.context.State.RetryCount',
-        '$states.context.Map.Item.Index',
-        '$random', // True random function if used
-      ],
-    }
-
-    if (!stateMachine.States) {
-      return {
-        hasProblematicPatterns: false,
-        hasStructuralLoops: false,
-        problematicStates: [],
-      }
-    }
-
-    // StateMachine should already contain processed State instances
-    const states = stateMachine.States
-
-    const stateGraph = this.buildStateGraph(states)
-
-    for (const [stateName, state] of Object.entries(states)) {
-      if (state.isChoice()) {
-        const choices = state.Choices
-
-        if (!choices) continue
-
-        const hasVariablePattern = this.checkChoiceForVariablePatterns(
-          choices,
-          variablePatterns.jsonpath,
-          variablePatterns.jsonata,
-        )
-
-        if (hasVariablePattern) {
-          hasProblematicPatterns = true
-          problematicStates.push(stateName)
-        }
-
-        // Structural loop detection - can this Choice create a loop?
-        const possibleNextStates = this.getChoiceNextStates(state)
-        for (const nextState of possibleNextStates) {
-          if (this.canReachState(stateGraph, nextState, stateName)) {
-            hasStructuralLoops = true
-            if (!problematicStates.includes(stateName)) {
-              problematicStates.push(stateName)
-            }
-          }
-        }
-      }
-    }
-
-    return {
-      hasProblematicPatterns,
-      hasStructuralLoops,
-      problematicStates,
-    }
-  }
-
-  private buildStateGraph(states: Record<string, State>): Map<string, string[]> {
-    const graph = new Map<string, string[]>()
-
-    for (const [stateName, state] of Object.entries(states || {})) {
-      const nextStates: string[] = []
-
-      if (state.Next && typeof state.Next === 'string') {
-        nextStates.push(state.Next)
-      }
-
-      if (state.isChoice()) {
-        const choices = state.Choices || []
-        for (const choice of choices) {
-          if (choice.Next && typeof choice.Next === 'string') nextStates.push(choice.Next)
-        }
-        const defaultState = state.Default
-        if (defaultState && typeof defaultState === 'string') nextStates.push(defaultState)
-      }
-
-      graph.set(stateName, nextStates)
-    }
-
-    return graph
-  }
-
-  /**
-   * Check if Choice rules contain variable patterns that cannot be fixed
-   */
-  private checkChoiceForVariablePatterns(
-    choices: ChoiceRule[],
-    jsonPathPatterns: string[],
-    jsonataPatterns: string[],
-  ): boolean {
-    for (const choice of choices) {
-      if (choice.isJSONata()) {
-        // For JSONata, check the Condition string
-        const conditionStr = choice.Condition?.toLowerCase() || ''
-        if (jsonataPatterns.some((pattern) => conditionStr.includes(pattern.toLowerCase()))) {
-          return true
-        }
-      } else {
-        // For JSONPath, recursively check the choice structure
-        if (this.checkJSONPathChoiceForPatterns(choice, jsonPathPatterns)) {
-          return true
-        }
-      }
-    }
-    return false
-  }
-
-  /**
-   * Recursively check JSONPath Choice rule for variable patterns
-   */
-  private checkJSONPathChoiceForPatterns(choice: ChoiceRule, patterns: string[]): boolean {
-    // Type guard ensures we're working with JSONPathChoiceRule
-    if (!choice.isJSONPath()) {
-      return false
-    }
-
-    if (choice.Variable) {
-      if (patterns.some((pattern) => choice.Variable?.includes(pattern))) {
-        return true
-      }
-    }
-
-    if (choice.And) {
-      return choice.And.some((rule) => this.checkJSONPathChoiceForPatterns(rule, patterns))
-    }
-    if (choice.Or) {
-      return choice.Or.some((rule) => this.checkJSONPathChoiceForPatterns(rule, patterns))
-    }
-    if (choice.Not) {
-      return this.checkJSONPathChoiceForPatterns(choice.Not, patterns)
-    }
-
-    return false
-  }
-
-  private getChoiceNextStates(choiceState: ChoiceState): string[] {
-    const nextStates: string[] = []
-    const choices = choiceState.Choices || []
-    for (const choice of choices) {
-      if (choice.Next && typeof choice.Next === 'string') nextStates.push(choice.Next)
-    }
-    const defaultState = choiceState.Default
-    if (defaultState && typeof defaultState === 'string') nextStates.push(defaultState)
-    return nextStates
-  }
-
-  private canReachState(
-    graph: Map<string, string[]>,
-    from: string,
-    target: string,
-    visited: Set<string> = new Set(),
-  ): boolean {
-    if (from === target) return true
-    if (visited.has(from)) return false
-
-    visited.add(from)
-    const nextStates = graph.get(from) || []
-
-    for (const next of nextStates) {
-      if (this.canReachState(graph, next, target, visited)) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  private getChoiceMockGuidelines(analysis?: {
-    hasProblematicPatterns: boolean
-    hasStructuralLoops: boolean
-    problematicStates: string[]
-  }): string {
-    let guidelines: string
-    try {
-      guidelines = fs.readFileSync(path.join(this.promptsDir, 'choice-mock-guidelines.md'), 'utf-8')
-    } catch {
-      guidelines = this.getDefaultChoiceMockGuidelines()
-    }
-
-    if (analysis && analysis.problematicStates.length > 0) {
-      const header = `# Choice State Mock Guidelines
-
-## ⚠️ IMPORTANT: We detected potential infinite loops in the following Choice states:
-${analysis.problematicStates.map((state) => `- **${state}**`).join('\n')}
-
-${analysis.hasProblematicPatterns ? '**Reason**: Non-deterministic patterns (time-based, random, or context-dependent conditions)' : ''}
-${analysis.hasStructuralLoops ? '**Reason**: Structural loops where Choice states can reach themselves' : ''}
-
-Consider using stateful mocks to break these loops after a reasonable number of iterations.
-
-`
-      // Replace the header in the guidelines
-      guidelines = guidelines.replace(/^# Choice State Mock Guidelines.*?\n\n/s, `${header}\n`)
-    }
-
-    return guidelines
-  }
-
-  private getDefaultChoiceMockGuidelines(): string {
-    return `## Choice State Mock Guidelines
-
-⚠️ IMPORTANT: Only mock Choice states for these specific cases:
-
-1. **Infinite Loop Prevention** (PRIMARY USE)
-   
-   Non-deterministic patterns:
-   - JSONPath: TimestampEqualsPath, $$.State.EnteredTime
-   - JSONata: $random(), $uuid(), $now(), $millis()
-   - Structural loops where Choice can reach itself
-   
-2. **Testing Error Paths**
-   - Force error handling branches
-   
-3. **Breaking Test Deadlocks**
-   - Circular dependencies in tests
-
-DO NOT mock Choice states for normal testing - use appropriate input data instead.
-
-Example for non-deterministic conditions:
-\`\`\`yaml
-# JSONata with random function
-- state: "RandomChoice"
-  type: "stateful"
-  responses:
-    - Next: "PathA"     # First execution
-    - Next: "PathB"     # Second execution  
-    - Next: "Complete"  # Force completion
-
-# Structural loop prevention
-- state: "RetryChoice"
-  type: "stateful"
-  responses:
-    - Next: "ProcessTask"    # Allow 2 retries
-    - Next: "ProcessTask"
-    - Next: "CompleteWork"   # Force exit
-\`\`\``
-  }
-
-  /**
-   * Generate data flow guidance for improved mock generation
-   */
-  private getDataFlowGuidance(analysis: {
-    choiceDependencies: ChoiceDependency[]
-    mapOutputSpecs: MapOutputSpec[]
-    passVariableFlows: PassVariableFlow[]
-    consistencyIssues: string[]
-    recommendations: string[]
-  }): string {
-    const sections: string[] = []
-
-    sections.push('## Data Flow Analysis and Mock Recommendations')
-    sections.push('')
-
-    if (analysis.consistencyIssues.length > 0) {
-      sections.push('⚠️ **CRITICAL: Data flow inconsistencies detected** ⚠️')
-      sections.push('')
-      sections.push('The following issues must be addressed in your mocks:')
-      sections.push('')
-
-      for (const issue of analysis.consistencyIssues) {
-        sections.push(`### Data Flow Issue`)
-        sections.push(issue)
-        sections.push('')
-      }
-    }
-
-    // Choice dependency guidance
-    if (analysis.choiceDependencies.length > 0) {
-      sections.push('### Choice State Dependencies')
-      sections.push('')
-      sections.push('The following Choice states have specific field requirements:')
-      sections.push('')
-
-      for (const dep of analysis.choiceDependencies) {
-        sections.push(`#### ${dep.choiceStateName}`)
-        sections.push(`Required fields: ${dep.requiredFields.join(', ')}`)
-        sections.push(`Field types: ${JSON.stringify(dep.fieldTypes)}`)
-        sections.push('')
-
-        if (dep.upstreamRequirements.length > 0) {
-          sections.push('**Upstream state requirements:**')
-          for (const req of dep.upstreamRequirements) {
-            sections.push(`- ${req.targetStateName || 'Any upstream state'}: ${req.reason}`)
-            sections.push(`  Required fields: ${req.requiredOutputFields.join(', ')}`)
-          }
-          sections.push('')
-        }
-      }
-    }
-
-    // Map output requirements
-    if (analysis.mapOutputSpecs.length > 0) {
-      sections.push('### Map State Output Requirements')
-      sections.push('')
-
-      for (const spec of analysis.mapOutputSpecs) {
-        sections.push(`#### ${spec.stateName}`)
-
-        if (spec.requiredFields.length > 0) {
-          sections.push('**Required fields:**')
-          for (const field of spec.requiredFields) {
-            sections.push(`- ${field.field} (${field.type}): ${field.description}`)
-          }
-        }
-
-        if (spec.dynamicFields.length > 0) {
-          sections.push('**Dynamic fields:**')
-          for (const field of spec.dynamicFields) {
-            sections.push(`- ${field.field}: ${field.calculation}`)
-          }
-        }
-
-        if (spec.conditionalLogic) {
-          sections.push(`**Conditional logic:** ${spec.conditionalLogic}`)
-        }
-
-        sections.push('')
-      }
-    }
-
-    // Pass variable flows
-    if (analysis.passVariableFlows.length > 0) {
-      sections.push('### Pass State Variable Dependencies')
-      sections.push('')
-
-      for (const flow of analysis.passVariableFlows) {
-        sections.push(`#### ${flow.passStateName}`)
-        sections.push(`Variables set: ${JSON.stringify(flow.variables)}`)
-
-        if (flow.choiceCompatibility) {
-          sections.push('**Downstream Choice compatibility:**')
-          sections.push(
-            `Compatible states: ${flow.choiceCompatibility.compatibleChoiceStates.join(', ')}`,
-          )
-          if (flow.choiceCompatibility.missingFields.length > 0) {
-            sections.push(`Missing fields: ${flow.choiceCompatibility.missingFields.join(', ')}`)
-          }
-          if (flow.choiceCompatibility.recommendedChanges.length > 0) {
-            sections.push(
-              `Recommendations: ${flow.choiceCompatibility.recommendedChanges.join('; ')}`,
-            )
-          }
-        }
-        sections.push('')
-      }
-    }
-
-    if (sections.length === 2) {
-      sections.push('✅ No critical data flow issues detected. Standard mocking practices apply.')
-    }
-
-    return sections.join('\n')
-  }
-
-  /**
-   * Generate output transformation guidance for test generation
-   */
-  private getOutputTransformationGuidance(
-    transformationDetails: ReturnType<typeof getOutputTransformationDetails>,
-  ): string {
-    if (transformationDetails.length === 0) {
-      return ''
-    }
-
-    // Group by transformation type
-    const jsonPathTransforms = transformationDetails.filter((d) =>
-      ['ResultSelector', 'OutputPath', 'ResultPath'].includes(d.transformationType),
-    )
-    const jsonataTransforms = transformationDetails.filter((d) =>
-      ['JSONataOutput', 'JSONataAssign'].includes(d.transformationType),
-    )
-
-    let guidance = `## 🔧 CRITICAL: Output Transformation Detected
-
-# ⚠️ IMPORTANT: Test Expectation Adjustment Required ⚠️
-
-**THIS STATE MACHINE TRANSFORMS OUTPUT DATA**
-**TEST EXPECTATIONS MUST MATCH THE TRANSFORMED OUTPUT, NOT RAW TASK RESULTS**
-
-☕ Understanding: When states use JSONPath (ResultSelector/OutputPath/ResultPath) or JSONata (Output/Assign)
-to transform output, test expectations should match the TRANSFORMED result.
-`
-
-    if (jsonPathTransforms.length > 0) {
-      const stateList = jsonPathTransforms
-        .map(
-          (detail) => `- **${detail.stateName}** (${detail.transformationType}): ${detail.reason}`,
-        )
-        .join('\n')
-
-      // Simplified example without field-specific logic
-
-      guidance += `
-### JSONPath Transformations
-
-${stateList}
-
-**Test Expectation Rules for JSONPath:**
-\`\`\`yaml
-stateExpectations:
-  # For ResultSelector: Only expect the selected fields
-  - state: "StateWithResultSelector"
-    output:
-      selectedField: "value"  # Only fields specified in ResultSelector
-
-  # For OutputPath: Only expect the filtered portion
-  - state: "StateWithOutputPath" 
-    output: "filtered_value"  # Only the portion specified by OutputPath
-
-  # For ResultPath: Expect merged input + result
-  - state: "StateWithResultPath"
-    output:
-      # Original input fields remain
-      originalField: "value"
-      # Result is merged at specified path
-      resultField: "task_result"
-\`\`\`
-`
-    }
-
-    if (jsonataTransforms.length > 0) {
-      const stateList = jsonataTransforms
-        .map(
-          (detail) => `- **${detail.stateName}** (${detail.transformationType}): ${detail.reason}`,
-        )
-        .join('\n')
-
-      guidance += `
-### JSONata Transformations
-
-${stateList}
-
-**Test Expectation Rules for JSONata:**
-\`\`\`yaml
-stateExpectations:
-  # For JSONata Output: Expect the computed result
-  - state: "StateWithJSONataOutput"
-    output:
-      # The result of JSONata expression evaluation
-      computedField: "computed_value"
-      
-  # For JSONata Assign: Expect input + assigned values  
-  - state: "StateWithJSONataAssign"
-    output:
-      # Original input preserved
-      originalField: "value"
-      # Assigned values added/updated
-      assignedField: "assigned_value"
-\`\`\`
-`
-    }
-
-    guidance += `
-### ⚡ ACTION REQUIRED ⚡
-
-1. **ANALYZE** each transformation above to understand what the output should be
-2. **MATCH** test expectations to the transformed output, not the raw task response
-3. **VERIFY** that transformations are correctly represented in your test expectations
-4. **TEST** various input scenarios to ensure transformations work as expected
-
-### 🔴 KEY PRINCIPLE 🔴
-
-**Test what the state ACTUALLY outputs, not what the underlying task returns.**
-Transformation changes the shape and content of the output - your tests must reflect this.
-`
-
-    return guidance
-  }
-
-  /**
-   * Get ExecutionContext fixed values information
-   */
-  private getExecutionContextInfo(): string {
-    return `## IMPORTANT: ExecutionContext Fixed Values
-
-During test execution, ExecutionContext values are FIXED for deterministic testing:
-
-- **$$.Execution.Id** = \`arn:aws:states:us-east-1:123456789012:execution:StateMachine:test-execution\`
-- **$$.Execution.Name** = \`test-execution\`
-- **$$.Execution.StartTime** = \`2024-01-01T00:00:00.000Z\`
-- **$$.Execution.RoleArn** = \`arn:aws:iam::123456789012:role/StepFunctionsRole\`
-- **$$.State.EnteredTime** = \`2024-01-01T00:00:00.000Z\`
-
-**IMPLICATIONS FOR MOCKING:**
-1. These values do NOT need to be mocked - they are predictable
-2. Choice states using these values will always get the same result
-3. You can rely on these fixed values when creating conditional mocks
-
-**Example:** If a Choice state checks \`$$.Execution.StartTime\`, it will always see "2024-01-01T00:00:00.000Z"
-`
   }
 }

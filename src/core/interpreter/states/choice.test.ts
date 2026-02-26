@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ChoiceState } from '../../../types/state-classes'
+import type { ChoiceState } from '../../../types/asl'
 import { StateFactory } from '../../../types/state-factory'
 import { ChoiceStateExecutor } from './choice'
 

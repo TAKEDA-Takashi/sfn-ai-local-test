@@ -22,7 +22,7 @@ const baseMockSchema = z.object({
 })
 
 // Fixed mock schema
-export const fixedMockSchema = baseMockSchema
+const fixedMockSchema = baseMockSchema
   .extend({
     type: z.literal('fixed').describe('Fixed response mock'),
     response: jsonValueSchema.optional().describe('Fixed response value'),
@@ -72,7 +72,7 @@ const conditionalRuleSchema = z
   .describe('Conditional rule')
 
 // Conditional mock schema
-export const conditionalMockSchema = baseMockSchema
+const conditionalMockSchema = baseMockSchema
   .extend({
     type: z.literal('conditional').describe('Conditional response mock'),
     conditions: z.array(conditionalRuleSchema).describe('List of conditional rules'),
@@ -80,7 +80,7 @@ export const conditionalMockSchema = baseMockSchema
   .describe('Conditional mock configuration')
 
 // Stateful mock schema
-export const statefulMockSchema = baseMockSchema
+const statefulMockSchema = baseMockSchema
   .extend({
     type: z.literal('stateful').describe('Stateful response mock'),
     responses: z
@@ -96,7 +96,7 @@ export const statefulMockSchema = baseMockSchema
   .describe('Stateful mock configuration')
 
 // Error mock schema
-export const errorMockSchema = baseMockSchema
+const errorMockSchema = baseMockSchema
   .extend({
     type: z.literal('error').describe('Error mock'),
     error: z
@@ -111,7 +111,7 @@ export const errorMockSchema = baseMockSchema
   .describe('Error mock configuration')
 
 // ItemReader mock schema
-export const itemReaderMockSchema = baseMockSchema
+const itemReaderMockSchema = baseMockSchema
   .extend({
     type: z.literal('itemReader').describe('ItemReader mock for DistributedMap'),
     data: z.array(jsonValueSchema).optional().describe('Inline data array'),
@@ -124,7 +124,7 @@ export const itemReaderMockSchema = baseMockSchema
   .describe('ItemReader mock configuration')
 
 // Mock definition union
-export const mockDefinitionSchema = z.discriminatedUnion('type', [
+const mockDefinitionSchema = z.discriminatedUnion('type', [
   fixedMockSchema,
   conditionalMockSchema,
   statefulMockSchema,

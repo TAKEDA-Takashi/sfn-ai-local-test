@@ -503,7 +503,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 ### AI_MODEL
 生成用のデフォルトAIモデル（オプション）
 ```bash
-export AI_MODEL="claude-sonnet-4-20250522"  # デフォルト値
+export AI_MODEL="claude-sonnet-4-6-20250228"  # デフォルト値
 ```
 
 ### 設定ファイルのパス指定

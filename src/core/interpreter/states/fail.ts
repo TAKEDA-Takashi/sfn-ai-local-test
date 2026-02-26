@@ -1,5 +1,4 @@
-import type { ExecutionContext, JsonValue } from '../../../types/asl'
-import type { FailState } from '../../../types/state-classes'
+import type { ExecutionContext, FailState, JsonValue } from '../../../types/asl'
 import { BaseStateExecutor } from './base'
 
 /**

@@ -16,7 +16,7 @@ A powerful tool for locally executing and testing AWS Step Functions state machi
 ## 📦 Installation
 
 ```bash
-npm install -g sfn-test
+pnpm add -g sfn-test
 ```
 
 ## 🚀 Quick Start
@@ -90,16 +90,16 @@ npm install -g sfn-test
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Development mode
-npm run dev
+pnpm run dev
 
 # Quality check
-npm run check
+pnpm run check
 
 # Run tests
-npm test
+pnpm test
 ```
 
 ## 🔍 Supported Features

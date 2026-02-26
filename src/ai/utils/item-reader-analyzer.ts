@@ -2,7 +2,18 @@
  * Analyzes ItemReader configuration in DistributedMap states
  */
 
-import type { ItemProcessor, JsonObject, JsonValue, MapState, StateMachine } from '../../types/asl'
+import {
+  type ItemProcessor,
+  isChoice,
+  isDistributedMap,
+  isJSONataState,
+  isMap,
+  isTask,
+  type JsonObject,
+  type JsonValue,
+  type MapState,
+  type StateMachine,
+} from '../../types/asl'
 import { isJsonObject } from '../../types/type-guards'
 import { findStates, StateFilters } from './state-traversal'
 
@@ -19,7 +30,7 @@ export interface ItemReaderInfo {
  */
 export function analyzeItemReaders(stateMachine: StateMachine): ItemReaderInfo[] {
   return findStates(stateMachine, StateFilters.hasItemReader).map(({ name, state }) => {
-    const itemReader = state.isDistributedMap() ? state.ItemReader : undefined
+    const itemReader = isDistributedMap(state) ? state.ItemReader : undefined
     if (!itemReader) {
       return {
         stateName: name,
@@ -297,14 +308,14 @@ function checkUsageContext(
  * MapState単体でItemProcessor分析を行う
  */
 function analyzeMapStateItemProcessor(mapState: MapState): JsonObject | null {
-  if (!(mapState.isMap() && mapState.ItemProcessor)) {
+  if (!(isMap(mapState) && mapState.ItemProcessor)) {
     return null
   }
 
   const processor = mapState.ItemProcessor
   const sampleInput: JsonObject = {}
 
-  const mapIsJSONata = mapState.isJSONataState()
+  const mapIsJSONata = isJSONataState(mapState)
 
   if ('ItemSelector' in mapState && mapState.ItemSelector) {
     const itemSelector = mapState.ItemSelector
@@ -383,7 +394,7 @@ function extractFieldsFromItemProcessor(
   if (!processor.States) return
 
   for (const [, state] of Object.entries(processor.States)) {
-    if (state.isChoice()) {
+    if (isChoice(state)) {
       if ('Choices' in state && state.Choices) {
         for (const choice of state.Choices) {
           if ('Variable' in choice && choice.Variable) {
@@ -405,7 +416,7 @@ function extractFieldsFromItemProcessor(
           }
         }
       }
-    } else if (state.isTask()) {
+    } else if (isTask(state)) {
       if ('Parameters' in state && state.Parameters) {
         extractFieldsFromParameters(state.Parameters, sampleInput, isJSONata)
       }

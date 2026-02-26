@@ -1,9 +1,11 @@
-import type {
-  ChoiceRule,
-  ChoiceState,
-  JsonObject,
-  JsonValue,
-  StateMachine,
+import {
+  type ChoiceRule,
+  type ChoiceState,
+  isChoice,
+  isJSONataState,
+  type JsonObject,
+  type JsonValue,
+  type StateMachine,
 } from '../../../types/asl'
 import type {
   ChoiceBranch,
@@ -27,9 +29,9 @@ export class ChoiceDependencyAnalyzer {
     const states = this.stateMachine.States || {}
 
     for (const [stateName, state] of Object.entries(states)) {
-      if (!state.isChoice()) continue
+      if (!isChoice(state)) continue
 
-      // state.isChoice() is a type predicate, so state is now ChoiceState
+      // isChoice(state) is a type predicate, so state is now ChoiceState
       const dependency = this.analyzeChoiceState(stateName, state)
       if (dependency) {
         dependencies.push(dependency)
@@ -47,7 +49,7 @@ export class ChoiceDependencyAnalyzer {
     const fieldTypes: Record<string, 'string' | 'number' | 'boolean' | 'object' | 'array' | 'any'> =
       {}
     const branches: ChoiceBranch[] = []
-    const isJSONata = choiceState.isJSONataState()
+    const isJSONata = isJSONataState(choiceState)
 
     for (const choice of choiceState.Choices) {
       const branchAnalysis = this.analyzeChoiceBranch(choice, isJSONata)

@@ -1,4 +1,5 @@
 import type { ExecutionContext, JsonObject, JsonValue, State } from '../../../types/asl'
+import { isJSONataState } from '../../../types/asl'
 import { JSONataEvaluator } from '../expressions/jsonata'
 import type { ProcessingStrategy } from '../processing-strategy'
 
@@ -12,7 +13,7 @@ export class JSONataStrategy implements ProcessingStrategy {
    */
   async preprocess(input: JsonValue, state: State, context: ExecutionContext): Promise<JsonValue> {
     // デバッグアサーション: このStrategyはJSONataモードでのみ使用されるべき
-    if (!state.isJSONataState()) {
+    if (!isJSONataState(state)) {
       throw new Error('JSONataStrategy should only be used with JSONata mode states')
     }
 
@@ -34,7 +35,7 @@ export class JSONataStrategy implements ProcessingStrategy {
     state: State,
     context: ExecutionContext,
   ): Promise<JsonValue> {
-    if (!state.isJSONataState()) {
+    if (!isJSONataState(state)) {
       throw new Error('JSONataStrategy should only be used with JSONata mode states')
     }
 

@@ -1,0 +1,5 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "ignore": ["examples/**"],
+  "ignoreFiles": ["tests/run-local-test.mjs"]
+}

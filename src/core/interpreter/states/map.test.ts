@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ExecutionContext } from '../../../types/asl'
-import type { MapState } from '../../../types/state-classes'
+import type { ExecutionContext, MapState } from '../../../types/asl'
 import { StateFactory } from '../../../types/state-factory'
 import type { MockEngine } from '../../mock/engine'
 import { MapStateExecutor } from './map'

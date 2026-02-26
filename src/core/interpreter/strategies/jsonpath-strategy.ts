@@ -1,11 +1,6 @@
 import { JSONPath } from 'jsonpath-plus'
-import type {
-  ExecutionContext,
-  JSONPathState,
-  JsonObject,
-  JsonValue,
-  State,
-} from '../../../types/asl'
+import type { ExecutionContext, JsonObject, JsonValue, State } from '../../../types/asl'
+import { isJSONPathState, isMap } from '../../../types/asl'
 import { isJsonObject } from '../../../types/type-guards'
 import { deepClone } from '../../../utils/deep-clone'
 import type { ProcessingStrategy } from '../processing-strategy'
@@ -21,14 +16,14 @@ export class JSONPathStrategy implements ProcessingStrategy {
    */
   preprocess(input: JsonValue, state: State, context: ExecutionContext): Promise<JsonValue> {
     // This Strategy should only be used with JSONPath mode
-    if (!state.isJSONPathState()) {
+    if (!isJSONPathState(state)) {
       throw new Error('JSONPathStrategy should only be used with JSONPath mode states')
     }
 
     let processedInput = this.applyInputPath(input, state)
 
     // Map/DistributedMap states apply Parameters per item, not to the whole input
-    if ('Parameters' in state && state.Parameters && !state.isMap()) {
+    if ('Parameters' in state && state.Parameters && !isMap(state)) {
       processedInput = this.applyParameters(processedInput, state, context)
     }
 
@@ -44,7 +39,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
     state: State,
     context: ExecutionContext,
   ): Promise<JsonValue> {
-    if (!state.isJSONPathState()) {
+    if (!isJSONPathState(state)) {
       throw new Error('JSONPathStrategy should only be used with JSONPath mode states')
     }
 
@@ -68,8 +63,8 @@ export class JSONPathStrategy implements ProcessingStrategy {
   /**
    * Apply InputPath to filter input
    */
-  private applyInputPath(input: JsonValue, state: JSONPathState): JsonValue {
-    const inputPath = state.InputPath
+  private applyInputPath(input: JsonValue, state: State): JsonValue {
+    const inputPath = 'InputPath' in state ? state.InputPath : undefined
     if (inputPath === undefined || inputPath === '$') {
       return input
     }
@@ -89,12 +84,8 @@ export class JSONPathStrategy implements ProcessingStrategy {
   /**
    * Apply Parameters (payload template processing)
    */
-  private applyParameters(
-    input: JsonValue,
-    state: JSONPathState,
-    context: ExecutionContext,
-  ): JsonValue {
-    const parameters = state.Parameters
+  private applyParameters(input: JsonValue, state: State, context: ExecutionContext): JsonValue {
+    const parameters = 'Parameters' in state ? state.Parameters : undefined
     if (!parameters) {
       return input
     }
@@ -105,8 +96,8 @@ export class JSONPathStrategy implements ProcessingStrategy {
   /**
    * ResultSelector の適用（ペイロードテンプレート処理）
    */
-  private applyResultSelector(result: JsonValue, state: JSONPathState): JsonValue {
-    const resultSelector = state.ResultSelector
+  private applyResultSelector(result: JsonValue, state: State): JsonValue {
+    const resultSelector = 'ResultSelector' in state ? state.ResultSelector : undefined
     if (!resultSelector) {
       return result
     }
@@ -118,12 +109,8 @@ export class JSONPathStrategy implements ProcessingStrategy {
   /**
    * Apply ResultPath to merge result with original input
    */
-  private applyResultPath(
-    originalInput: JsonValue,
-    result: JsonValue,
-    state: JSONPathState,
-  ): JsonValue {
-    const resultPath = state.ResultPath
+  private applyResultPath(originalInput: JsonValue, result: JsonValue, state: State): JsonValue {
+    const resultPath = 'ResultPath' in state ? state.ResultPath : undefined
     if (resultPath === undefined || resultPath === '$') {
       return result
     }
@@ -159,8 +146,8 @@ export class JSONPathStrategy implements ProcessingStrategy {
   /**
    * Apply OutputPath to filter output
    */
-  private applyOutputPath(output: JsonValue, state: JSONPathState): JsonValue {
-    const outputPath = state.OutputPath
+  private applyOutputPath(output: JsonValue, state: State): JsonValue {
+    const outputPath = 'OutputPath' in state ? state.OutputPath : undefined
     if (outputPath === undefined || outputPath === '$') {
       return output
     }
@@ -209,7 +196,7 @@ export class JSONPathStrategy implements ProcessingStrategy {
   /**
    * Apply Assign to update Variables
    */
-  private applyAssign(output: JsonValue, state: JSONPathState, context: ExecutionContext): void {
+  private applyAssign(output: JsonValue, state: State, context: ExecutionContext): void {
     const assign = state.Assign
     if (!assign || typeof assign !== 'object') {
       return

@@ -2,7 +2,8 @@ import { StateMachineExecutor } from '../../core/interpreter/executor'
 import { MockEngine } from '../../core/mock/engine'
 import type { MockConfig } from '../../schemas/mock-schema'
 import type { TestCase, TestSuite } from '../../schemas/test-schema'
-import type { JsonValue, State, StateMachine } from '../../types/asl'
+import { isTask, type JsonValue, type StateMachine } from '../../types/asl'
+import { findStateByName } from '../utils/state-traversal'
 import { InvalidInputError, TestExecutionError } from './errors'
 
 export interface ValidationCorrection {
@@ -137,7 +138,7 @@ export class TestExecutionValidator {
     actual: JsonValue,
     stateMachine: StateMachine,
   ): string {
-    const state = this.findState(stateName, stateMachine.States)
+    const state = findStateByName(stateMachine, stateName)
 
     if (!state) {
       return 'State not found in state machine'
@@ -161,7 +162,7 @@ export class TestExecutionValidator {
       reasons.push(`ResultPath transformation applied: ${state.ResultPath}`)
     }
 
-    if (state.isTask() && state.Resource === 'arn:aws:states:::lambda:invoke') {
+    if (isTask(state) && state.Resource === 'arn:aws:states:::lambda:invoke') {
       if (this.hasPayloadInExpected(expected) && !this.hasPayloadInActual(actual)) {
         reasons.push('Lambda Payload extraction detected - removed wrapper fields')
       }
@@ -172,33 +173,6 @@ export class TestExecutionValidator {
     }
 
     return reasons.join('; ')
-  }
-
-  /**
-   * Find a state in the state machine (including nested states)
-   */
-  private findState(stateName: string, states: Record<string, State>): State | null {
-    if (states[stateName]) {
-      return states[stateName]
-    }
-
-    for (const state of Object.values(states)) {
-      if (state.isMap() && state.ItemProcessor?.States) {
-        const found = this.findState(stateName, state.ItemProcessor.States)
-        if (found) return found
-      }
-
-      if (state.isParallel() && state.Branches) {
-        for (const branch of state.Branches) {
-          if (branch.States) {
-            const found = this.findState(stateName, branch.States)
-            if (found) return found
-          }
-        }
-      }
-    }
-
-    return null
   }
 
   /**

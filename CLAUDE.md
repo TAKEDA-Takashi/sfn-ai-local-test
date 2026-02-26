@@ -44,19 +44,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Linter/Formatter**: Biome
 - **CLI Framework**: Commander.js
 - **AI**: Anthropic SDK / Claude CLI
-- **パッケージマネージャ**: npm
+- **パッケージマネージャ**: pnpm
 
 ## 開発環境のセットアップ
 
 ```bash
 # 依存関係のインストール
-npm install
+pnpm install
 
 # 開発モードで実行
-npm run dev
+pnpm run dev
 
 # CLIをグローバルにリンク（開発時）
-npm link
+pnpm link --global
 ```
 
 ## よく使うコマンド
@@ -64,32 +64,32 @@ npm link
 ### ビルド・テスト
 ```bash
 # TypeScriptの型チェック（ビルドなし）
-npm run typecheck
+pnpm run typecheck
 
 # ビルド（本番用）
-npm run build
+pnpm run build
 
 # テスト実行
-npm test
-npm test -- --coverage  # カバレッジ付き
+pnpm test
+pnpm test -- --coverage  # カバレッジ付き
 
 # 開発モードでテスト
-npm run test:watch
+pnpm run test:watch
 ```
 
 ### 品質チェック（コミット前に必須）
 ```bash
 # Biomeによるlint
-npm run lint
+pnpm run lint
 
 # Biomeによる自動修正
-npm run lint:fix
+pnpm run lint:fix
 
 # フォーマット
-npm run format
+pnpm run format
 
 # すべての品質チェック
-npm run check
+pnpm run check
 ```
 
 ### 🚨 作業完了前の必須チェックリスト
@@ -97,13 +97,13 @@ npm run check
 # これらのコマンドをすべて実行してエラーがないことを確認してから「完了」と報告すること
 
 # 1. TypeScript型チェック（必須）
-npm run typecheck
+pnpm run typecheck
 
 # 2. Lintチェック（必須）
-npm run lint
+pnpm run lint
 
 # 3. テスト実行（必須）
-npm test -- --run
+pnpm test -- --run
 
 # すべてOKの場合のみ「作業完了」と報告
 ```
@@ -426,7 +426,7 @@ sfn-test run
 
 - `ANTHROPIC_API_KEY`: Claude API キー（Claude Code環境では不要）
 - `DEBUG_OUTPUT_PATH`: モックマッチングの詳細ログ出力
-- `AI_MODEL`: 使用するAIモデル（デフォルト: claude-sonnet-4-20250522）
+- `AI_MODEL`: 使用するAIモデル（デフォルト: claude-sonnet-4-6-20250228）
 
 ## 既知の制限事項
 

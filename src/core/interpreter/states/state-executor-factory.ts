@@ -3,6 +3,17 @@
  */
 
 import type { State, StateMachine } from '../../../types/asl'
+import {
+  isChoice,
+  isDistributedMap,
+  isFail,
+  isMap,
+  isParallel,
+  isPass,
+  isSucceed,
+  isTask,
+  isWait,
+} from '../../../types/asl'
 import type { MockEngine } from '../../mock/engine'
 import type { BaseStateExecutor } from './base'
 import { ChoiceStateExecutor } from './choice'
@@ -28,35 +39,35 @@ export class StateExecutorFactory {
     mockEngine?: MockEngine,
     stateMachine?: StateMachine,
   ): BaseStateExecutor {
-    if (state.isTask()) {
+    if (isTask(state)) {
       return new TaskStateExecutor(state, mockEngine, stateMachine)
     }
-    if (state.isChoice()) {
+    if (isChoice(state)) {
       return new ChoiceStateExecutor(state, mockEngine, stateMachine)
     }
-    if (state.isDistributedMap()) {
+    if (isDistributedMap(state)) {
       return new DistributedMapStateExecutor(state, mockEngine, stateMachine)
     }
-    if (state.isMap()) {
+    if (isMap(state)) {
       return new MapStateExecutor(state, mockEngine, stateMachine)
     }
-    if (state.isParallel()) {
+    if (isParallel(state)) {
       return new ParallelStateExecutor(state, mockEngine, stateMachine)
     }
-    if (state.isPass()) {
+    if (isPass(state)) {
       return new PassStateExecutor(state, mockEngine, stateMachine)
     }
-    if (state.isWait()) {
+    if (isWait(state)) {
       return new WaitStateExecutor(state, mockEngine, stateMachine)
     }
-    if (state.isSucceed()) {
+    if (isSucceed(state)) {
       return new SucceedStateExecutor(state, mockEngine, stateMachine)
     }
-    if (state.isFail()) {
+    if (isFail(state)) {
       return new FailStateExecutor(state, mockEngine, stateMachine)
     }
 
     // This should never happen if all state types are properly implemented
-    throw new Error(`Unknown state type: ${state.Type}`)
+    throw new Error(`Unknown state type: ${(state as State).Type}`)
   }
 }

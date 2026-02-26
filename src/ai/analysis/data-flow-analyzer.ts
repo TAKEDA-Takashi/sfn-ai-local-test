@@ -1,4 +1,10 @@
-import type { JsonObject, JsonValue, StateMachine } from '../../types/asl'
+import {
+  isChoice,
+  isJSONataState,
+  type JsonObject,
+  type JsonValue,
+  type StateMachine,
+} from '../../types/asl'
 import { ChoiceDependencyAnalyzer } from './analyzers/choice-dependency-analyzer'
 import { DataFlowHelpers } from './analyzers/data-flow-helpers'
 import { MapOutputAnalyzer } from './analyzers/map-output-analyzer'
@@ -173,7 +179,7 @@ export class DataFlowAnalyzer {
         node.consumes.push(...DataFlowHelpers.extractVariableReferences(paramsStr))
       }
 
-      if (state.isChoice() && state.isJSONataState()) {
+      if (isChoice(state) && isJSONataState(state)) {
         const choices = state.Choices || []
         for (const choice of choices) {
           if ('Condition' in choice && choice.Condition) {

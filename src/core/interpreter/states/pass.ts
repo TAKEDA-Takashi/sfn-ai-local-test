@@ -1,5 +1,5 @@
-import type { ExecutionContext, JsonValue } from '../../../types/asl'
-import type { PassState } from '../../../types/state-classes'
+import type { ExecutionContext, JsonValue, PassState } from '../../../types/asl'
+import { isJSONataState } from '../../../types/asl'
 import { BaseStateExecutor } from './base'
 
 /**
@@ -14,7 +14,7 @@ export class PassStateExecutor extends BaseStateExecutor<PassState> {
    */
   protected executeState(input: JsonValue, _context: ExecutionContext): Promise<JsonValue> {
     // JSONPathモードでResultフィールドがある場合は優先
-    if (!this.state.isJSONataState() && 'Result' in this.state && this.state.Result !== undefined) {
+    if (!isJSONataState(this.state) && 'Result' in this.state && this.state.Result !== undefined) {
       return Promise.resolve(this.state.Result)
     }
 

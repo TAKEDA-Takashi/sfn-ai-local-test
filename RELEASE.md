@@ -17,7 +17,7 @@
 4. **PRをマージ** - マージすると自動的に：
    - Gitタグが作成される
    - GitHub Releaseが作成される
-   - npm publishがトリガーされる
+   - pnpm publishがトリガーされる
 
 ### 2. 手動リリース
 
@@ -25,7 +25,7 @@
 
 ```bash
 # 1. package.jsonのバージョンを更新
-npm version patch # または minor, major
+pnpm version patch # または minor, major
 
 # 2. タグをプッシュ
 git push origin main --tags
@@ -75,7 +75,7 @@ git push origin main --tags
 3. **実行時** - ビルドされたコードには正しいバージョンが埋め込まれている
 
 これにより：
-- npm installされた後も正しいバージョンが表示される
+- pnpm installされた後も正しいバージョンが表示される
 - グローバルインストール後も正しく動作する
 - GitHub Actionsでのビルドでも問題なく動作する
 
@@ -83,13 +83,13 @@ git push origin main --tags
 
 ### バージョンの不整合
 タグとpackage.jsonのバージョンが一致しない場合、publish.ymlが失敗します。
-手動でタグを作成する場合は、必ず`npm version`コマンドを使用してください。
+手動でタグを作成する場合は、必ず`pnpm version`コマンドを使用してください。
 
-### npm publish失敗
+### pnpm publish失敗
 - NPM_TOKENが正しく設定されているか確認
 - パッケージ名が既に使用されていないか確認
 - スコープ付きパッケージの場合は`--access public`が必要
 
 ### ビルドエラー
 - Node.jsのバージョンが20以上であることを確認
-- 依存関係が正しくインストールされているか確認（`npm ci`）
+- 依存関係が正しくインストールされているか確認（`pnpm install --frozen-lockfile`）

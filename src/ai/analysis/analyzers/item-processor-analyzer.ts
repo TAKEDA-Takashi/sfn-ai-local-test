@@ -1,4 +1,15 @@
-import type { JsonObject, JsonValue, MapState, State, StateMachine } from '../../../types/asl'
+import {
+  isChoice,
+  isDistributedMap,
+  isJSONataState,
+  isMap,
+  isTask,
+  type JsonObject,
+  type JsonValue,
+  type MapState,
+  type State,
+  type StateMachine,
+} from '../../../types/asl'
 import { StateFilters, traverseStates } from '../../utils/state-traversal'
 import type { InputRequirement, ItemProcessorAnalysis } from '../data-flow-analyzer'
 import { DataFlowHelpers } from './data-flow-helpers'
@@ -19,7 +30,7 @@ export class ItemProcessorAnalyzer {
     traverseStates(this.stateMachine, (stateName, state, _context) => {
       if (StateFilters.isDistributedMap(stateName, state, _context)) {
         // isDistributedMap ensures this is a Map state
-        if (!state.isMap()) return undefined
+        if (!isMap(state)) return undefined
         const analysis = this.analyzeItemProcessorInput(state)
         if (analysis) {
           analysis.stateName = stateName
@@ -42,7 +53,7 @@ export class ItemProcessorAnalyzer {
    * - DistributedMap (without ItemSelector): ItemReader → Child workflow ($states.input directly)
    */
   analyzeItemProcessorInput(mapState: MapState): ItemProcessorAnalysis | null {
-    if (!(mapState.isMap() && mapState.ItemProcessor)) {
+    if (!(isMap(mapState) && mapState.ItemProcessor)) {
       return null
     }
     const processor = mapState.ItemProcessor
@@ -50,8 +61,8 @@ export class ItemProcessorAnalyzer {
     const requirements: InputRequirement[] = []
     const sampleInput: JsonObject = {}
 
-    const isDistributedMap = mapState.isDistributedMap()
-    const mapIsJSONata = mapState.isJSONataState()
+    const isDistributedMapState = isDistributedMap(mapState)
+    const mapIsJSONata = isJSONataState(mapState)
 
     if ('ItemSelector' in mapState && mapState.ItemSelector) {
       // ItemSelector transforms data before passing to ItemProcessor
@@ -73,7 +84,7 @@ export class ItemProcessorAnalyzer {
       )
     } else {
       // No ItemSelector: ItemProcessor receives data directly
-      if (isDistributedMap) {
+      if (isDistributedMapState) {
         // DistributedMap: ItemReader data passed directly to child workflow
         this.analyzeItemProcessorForItemReaderData(
           processor.States,
@@ -338,7 +349,7 @@ export class ItemProcessorAnalyzer {
     ) => void,
   ): void {
     // Analyze Task state
-    if (state.isTask()) {
+    if (isTask(state)) {
       if (isJSONata && 'Arguments' in state && state.Arguments) {
         // JSONata mode uses Arguments
         extractor(state.Arguments, requirements, sampleInput, true)
@@ -355,7 +366,7 @@ export class ItemProcessorAnalyzer {
     }
 
     // Analyze Choice state (JSONata mode only for string expressions)
-    if (state.isChoice() && isJSONata) {
+    if (isChoice(state) && isJSONata) {
       for (const choice of state.Choices) {
         if ('Condition' in choice && choice.Condition && typeof choice.Condition === 'string') {
           extractor(choice.Condition, requirements, sampleInput, true)
@@ -471,7 +482,7 @@ export class ItemProcessorAnalyzer {
     isJSONata: boolean,
   ): void {
     // Use proper type guards for type-safe access
-    if (state.isChoice()) {
+    if (isChoice(state)) {
       if (isJSONata) {
         // JSONata mode: Choice uses Condition field
         for (const choice of state.Choices) {
@@ -523,7 +534,7 @@ export class ItemProcessorAnalyzer {
     }
 
     // Analyze Task state
-    if (state.isTask()) {
+    if (isTask(state)) {
       if (isJSONata && 'Arguments' in state && state.Arguments) {
         // JSONata mode uses Arguments
         this.extractDirectInputReferences(state.Arguments, requirements, sampleInput, true)

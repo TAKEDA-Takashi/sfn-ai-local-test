@@ -1,4 +1,5 @@
 import type { ChoiceRule, StateMachine } from '../../types/asl.js'
+import { isChoice } from '../../types/asl.js'
 
 export interface CoverageData {
   totalStates: number
@@ -31,7 +32,7 @@ export class CoverageTracker {
       this.coverage.coveredStates.add(stateName)
 
       const state = this.stateMachine.States[stateName]
-      if (state?.isChoice()) {
+      if (state && isChoice(state)) {
         this.trackChoiceBranches(stateName, executionPath)
       }
     }
@@ -50,7 +51,7 @@ export class CoverageTracker {
     let count = 0
     const states = this.stateMachine.States || { SingleState: this.stateMachine }
     for (const [, state] of Object.entries(states)) {
-      if (state.isChoice()) {
+      if (isChoice(state)) {
         count += state.Choices?.length || 0
         if (state.Default) count++
       }
@@ -101,7 +102,7 @@ export class CoverageTracker {
     const states = this.stateMachine.States || { SingleState: this.stateMachine }
 
     for (const [stateName, state] of Object.entries(states)) {
-      if (state.isChoice()) {
+      if (isChoice(state)) {
         if (state.Choices) {
           state.Choices.forEach((choice: ChoiceRule) => {
             if (choice.Next) {

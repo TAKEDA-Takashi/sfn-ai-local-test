@@ -426,7 +426,7 @@ sfn-test run
 
 - `ANTHROPIC_API_KEY`: Claude API キー（Claude Code環境では不要）
 - `DEBUG_OUTPUT_PATH`: モックマッチングの詳細ログ出力
-- `AI_MODEL`: 使用するAIモデル（デフォルト: claude-sonnet-4-5-20250929）
+- `AI_MODEL`: 使用するAIモデル（デフォルト: claude-sonnet-4-6-20250228）
 
 ## 既知の制限事項
 

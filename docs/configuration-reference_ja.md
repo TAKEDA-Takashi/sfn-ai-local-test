@@ -1437,7 +1437,7 @@ sfn-test generate <type> [options]
 | `--cdk-state-machine <name>` | CDKテンプレート内のステートマシンの論理ID | - |
 | `-o, --output <path>` | 出力ファイルパス | 自動生成 |
 | `-m, --mock <path>` | モックファイルへのパス（テスト生成用） | - |
-| `--ai-model <model>` | 使用するAIモデル | claude-sonnet-4-5-20250929 |
+| `--ai-model <model>` | 使用するAIモデル | claude-sonnet-4-6-20250228 |
 | `--timeout <ms>` | AI生成タイムアウト（ミリ秒） | 60000 + 複雑度ベース |
 | `--max-attempts <number>` | 検証フィードバック付き最大生成試行回数 | 2 |
 | `--concurrency <number>` | 最大同時AI操作数 | 1 |
@@ -1514,4 +1514,4 @@ sfn-test run --asl ./workflow.asl.json --mock ./mock.yaml --input '{"id": 123}'
 |------|------|------------|
 | `ANTHROPIC_API_KEY` | Claude APIキー（Claude Code環境では不要） | - |
 | `DEBUG_OUTPUT_PATH` | 詳細なモックマッチングログを有効化 | false |
-| `AI_MODEL` | 生成用のデフォルトAIモデル | claude-sonnet-4-5-20250929 |
+| `AI_MODEL` | 生成用のデフォルトAIモデル | claude-sonnet-4-6-20250228 |
